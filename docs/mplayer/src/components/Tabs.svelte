@@ -1,0 +1,27 @@
+<script lang="ts">
+    export let activeTabId: string, i18n: any = {};
+
+    // 标签页配置（无源时隐藏 TVBox）
+    const showTV = !!((window as any)?.tvboxSources?.sources?.length);
+    const tabs = [
+        { id: 'playlist', title: () => i18n.playList?.title || '列表' },
+        ...(showTV ? [{ id: 'tvbox', title: () => i18n.tvbox?.title || 'TVBox' }] : []),
+        { id: 'assistant', title: () => i18n.assistant?.title || '助手' },
+        { id: 'notes', title: () => i18n.notes?.title || '笔记' },
+        { id: 'settings', title: () => i18n.setting?.title || '设置' }
+    ];
+
+    // 切换标签页
+    const switchTab = (tabId: string) => {
+        if (tabId !== activeTabId) window.dispatchEvent(new CustomEvent('mediaPlayerTabChange', { detail: { tabId } }));
+    };
+</script>
+
+<div class="panel-header">
+    <div class="panel-nav">
+        {#each tabs as tab}
+            <h3 class:active={activeTabId === tab.id} on:click={() => switchTab(tab.id)}>{tab.title()}</h3>
+        {/each}
+    </div>
+    <div class="header-controls"><slot name="controls" /></div>
+</div>

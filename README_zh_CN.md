@@ -1,13 +1,15 @@
-# Siyuan Plugin Template - Vite & Vue3
+# M阅读 - 思源笔记阅读增强插件
 
 [English](./README.md)
 
-> 本例同 [siyuan/plugin-sample](https://github.com/siyuan-note/plugin-sample).
+> 基于 Vue3 + Vite 开发的思源笔记阅读增强插件。
 
-1. 使用 Vite 打包
-2. 使用 Vue3 进行开发
-3. 提供一个github action 模板，能自动生成package.zip并上传到新版本中
-4. 提供自动更新 `plugin.json` 中的 `version` 并发布新版本的脚本。[link](#release-script)
+## 技术栈
+
+1. Vue3 + Composition API - 现代化的前端框架
+2. TypeScript - 类型安全
+3. Vite - 快速的开发和构建工具
+4. Sass - CSS 预处理器
 
 > [!NOTE]
 >

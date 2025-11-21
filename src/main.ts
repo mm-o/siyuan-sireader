@@ -6,7 +6,6 @@ import App from './App.vue'
 
 let plugin = null
 export function usePlugin(pluginProps?: Plugin): Plugin {
-  console.log('usePlugin', pluginProps, plugin)
   if (pluginProps) {
     plugin = pluginProps
   }

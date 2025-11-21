@@ -1,12 +1,12 @@
 {
-  "name": "plugin-sample-vite-vue",
+  "name": "siyuan-mreader",
   "version": "0.0.1",
   "type": "module",
-  "description": "This is a sample plugin based on vite and vue for Siyuan (https://b3log.org/siyuan)",
-  "author": "",
+  "description": "思源笔记阅读增强插件 - M阅读",
+  "author": "mm-o",
   "license": "MIT",
-  "homepage": "",
-  "repository": "",
+  "homepage": "https://github.com/mm-o/siyuan-mreader",
+  "repository": "https://github.com/mm-o/siyuan-mreader",
   "scripts": {
     "dev": "vite build --watch",
     "release": "node ./release.js",
@@ -17,6 +17,7 @@
     "build": "vite build"
   },
   "dependencies": {
+    "epubjs": "^0.3.93",
     "vue": "^3.3.8"
   },
   "devDependencies": {

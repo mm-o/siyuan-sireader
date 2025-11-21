@@ -1,7 +1,7 @@
 {
-  "name": "plugin-sample-vite-vue",
-  "author": "wetoria",
-  "url": "https://github.com/Wetoria/plugin-sample-vite-vue",
+  "name": "siyuan-mreader",
+  "author": "mm-o",
+  "url": "https://github.com/mm-o/siyuan-mreader",
   "version": "0.0.1",
   "minAppVersion": "2.10.14",
   "disabledInPublish": true,
@@ -12,14 +12,14 @@
     "all"
   ],
   "displayName": {
-    "default": "plugin-sample-vite-vue",
-    "en_US": "plugin-sample-vite-vue",
-    "zh_CN": "plugin-sample-vite-vue"
+    "default": "M阅读",
+    "en_US": "MReader",
+    "zh_CN": "M阅读"
   },
   "description": {
-    "default": "plugin-sample-vite-vue",
-    "en_US": "plugin-sample-vite-vue",
-    "zh_CN": "plugin-sample-vite-vue"
+    "default": "思源笔记阅读增强插件",
+    "en_US": "Enhanced reading experience plugin for SiYuan",
+    "zh_CN": "思源笔记阅读增强插件"
   },
   "readme": {
     "default": "README.md",
@@ -29,5 +29,5 @@
   "funding": {
     "custom": []
   },
-  "keywords": []
+  "keywords": ["阅读", "reading", "mreader"]
 }

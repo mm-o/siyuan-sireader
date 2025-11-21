@@ -50,8 +50,6 @@ export default class PluginSample extends Plugin {
       this.isElectron = false
     }
 
-    console.log('Plugin loaded, the plugin is ', this)
-
     init(this)
   }
 
