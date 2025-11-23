@@ -64,6 +64,22 @@ export async function setNotebookConf(
 }
 
 // **************************************** File Tree ****************************************
+export async function createDoc(
+  notebook: NotebookId,
+  path: string,
+  title: string,
+  md?: string
+): Promise<{ id: DocumentId }> {
+  let data = {
+    notebook: notebook,
+    path: path,
+    title: title,
+    md: md || ""
+  };
+  let url = "/api/filetree/createDoc";
+  return request(url, data);
+}
+
 export async function createDocWithMd(
   notebook: NotebookId,
   path: string,
@@ -317,6 +333,11 @@ export async function getBlockByID(blockId: string): Promise<Block> {
   let sqlScript = `select * from blocks where id ='${blockId}'`;
   let data = await sql(sqlScript);
   return data[0];
+}
+
+export async function searchDocs(keyword: string): Promise<any[]> {
+  const url = "/api/search/fullTextSearchBlock";
+  return request(url, { query: keyword, types: { document: true } });
 }
 
 // **************************************** Template ****************************************

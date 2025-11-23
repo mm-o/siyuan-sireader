@@ -53,7 +53,15 @@ export default class PluginSample extends Plugin {
     init(this)
   }
 
-  onunload() {
+  async onunload() {
+    // ✅ 保存所有活跃 Tab 的进度
+    const { saveAllProgress } = await import('@/core/epub')
+    const { cleanupAllProgressSavers } = await import('@/core/epubView')
+    
+    await saveAllProgress()
+    cleanupAllProgressSavers()
+    console.log('[MReader] 插件卸载，已保存所有进度并清理定时器')
+    
     destroy()
   }
 

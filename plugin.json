@@ -2,7 +2,7 @@
   "name": "siyuan-mreader",
   "author": "mm-o",
   "url": "https://github.com/mm-o/siyuan-mreader",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "minAppVersion": "2.10.14",
   "disabledInPublish": true,
   "backends": [
