@@ -17,20 +17,23 @@ export function usePlugin(pluginProps?: Plugin): Plugin {
 
 
 let app = null
+let pluginInstance: Plugin | null = null
 export function init(plugin: Plugin) {
   // bind plugin hook
   usePlugin(plugin);
+  pluginInstance = plugin
 
   const div = document.createElement('div')
   div.classList.toggle('plugin-sample-vite-vue-app')
-  div.id = this.name
+  div.id = plugin.name
   app = createApp(App)
   app.mount(div)
   document.body.appendChild(div)
 }
 
 export function destroy() {
-  app.unmount()
-  const div = document.getElementById(this.name)
-  document.body.removeChild(div)
+  if (!pluginInstance) return
+  app?.unmount()
+  const div = document.getElementById(pluginInstance.name)
+  div && document.body.removeChild(div)
 }

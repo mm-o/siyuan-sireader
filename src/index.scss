@@ -331,12 +331,73 @@
 .epub-reader-wrap { position: relative; width: 100%; height: 100%; display: flex; }
 
 // ==================== 目录面板 ====================
-.epub-toc-overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.1); z-index: 9; }
+.epub-toc-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.1);
+  z-index: 9;
+}
+
 .epub-toc-panel {
-  position: absolute; top: 0; bottom: 0; width: 300px; background: var(--b3-theme-background); border: 1px solid var(--b3-border-color); display: flex; flex-direction: column; z-index: 10;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 300px;
+  background: var(--b3-theme-background);
+  border: 1px solid var(--b3-border-color);
+  display: flex;
+  flex-direction: column;
+  z-index: 10;
   &--left { left: 0; }
   &--right { right: 0; }
 }
+
 .toc-panel-header { flex-shrink: 0; }
+
 .toc-panel-body { flex: 1; overflow-y: auto; }
+
+// ==================== 目录样式 ====================
+.epub-toc { --toc-transition: all .2s cubic-bezier(.4,0,.2,1); }
+
+.toc-search { position: relative; padding: 12px; border-bottom: 1px solid var(--b3-border-color); z-index: 1;
+  input { padding-right: 32px;
+    &:focus { border-color: var(--b3-theme-primary); box-shadow: 0 0 0 2px var(--b3-theme-primary-lighter); }
+  }
+}
+
+.search-icon { position: absolute; right: 20px; top: 50%; transform: translateY(-50%); width: 14px; height: 14px; opacity: .5; pointer-events: none; }
+
+.toc-body { overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--b3-scroll-color) transparent;
+  &::-webkit-scrollbar { width: 6px; }
+  &::-webkit-scrollbar-track { background: transparent; }
+  &::-webkit-scrollbar-thumb { background: var(--b3-scroll-color); border-radius: 3px;
+    &:hover { background: var(--b3-theme-primary); }
+  }
+}
+
+.toc-state { padding: 40px 20px; flex-direction: column; gap: 12px; opacity: .6; user-select: none; color: var(--b3-theme-on-surface-light); }
+
+.toc-list { padding: 6px 0;
+  .b3-list-item { transition: var(--toc-transition); cursor: pointer; border-radius: 4px; margin: 2px 8px;
+    &:hover { background: var(--b3-list-hover);
+      button[aria-label] { opacity: 0.6 !important; }
+      .b3-list-item__meta { opacity: 1; }
+    }
+    button[aria-label]:hover { opacity: 1 !important; }
+    &--focus { background: var(--b3-theme-primary-lighter); font-weight: 500;
+      &:hover { background: var(--b3-theme-primary-light); }
+    }
+    &__text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    &__meta { opacity: .7; transition: opacity .2s; }
+  }
+}
+
+.toc-progress { height: 2px; background: var(--b3-theme-background-light); margin: 0 12px 4px;
+  &-bar { height: 100%; background: var(--b3-theme-primary); transition: width .3s; }
+}
+
+.mark-list .toc-list .b3-list-item { margin: 6px 8px;
+  &:hover { transform: translateX(2px); }
+}
+
 .toc-btn.active { color: var(--b3-theme-primary); background: var(--b3-theme-primary-lighter); transform: scale(1); }
