@@ -1,6 +1,8 @@
 <template>
   <div class="epub-reader" @click="handleClick">
-    <div ref="containerRef" class="epub-container" tabindex="0"></div>
+    <div ref="readerWrapRef" class="epub-reader-wrap">
+      <div ref="containerRef" class="epub-container" tabindex="0"></div>
+    </div>
     
     <div v-if="ui.loading" class="epub-loading">
       <div class="loading-spinner"></div>
@@ -12,13 +14,7 @@
       <span>加载下一章...</span>
     </div>
     
-    <Transition name="toolbar">
-      <div 
-        v-show="ui.toolbarShow" 
-        class="epub-toolbar"
-        @mouseenter="ui.toolbarHover = true" 
-        @mouseleave="ui.toolbarHover = false"
-      >
+    <div class="epub-toolbar">
         <button class="toolbar-btn b3-tooltips b3-tooltips__n" @click.stop="showTocDialog" aria-label="目录">
           <svg><use xlink:href="#iconList"></use></svg>
         </button>
@@ -31,8 +27,7 @@
         <button class="toolbar-btn b3-tooltips b3-tooltips__n" @click.stop="emit('settings')" aria-label="设置">
           <svg><use xlink:href="#iconSettings"></use></svg>
         </button>
-      </div>
-    </Transition>
+    </div>
     
     <div v-show="ui.menuShow" class="epub-selection-menu" :style="{ left: ui.menuX + 'px', top: ui.menuY + 'px' }" @mousedown.stop @mouseleave="ui.colorShow = false">
       <div class="menu-btn-wrapper">
@@ -60,20 +55,20 @@
 // ========================================
 
 <script setup lang="ts">
-import { reactive, ref, watch, onMounted, onUnmounted, nextTick, h, render } from 'vue'
+import { reactive, ref, watch, onMounted, onUnmounted } from 'vue'
 import type { Book, Rendition } from 'epubjs'
 import ePub from 'epubjs'
-import { Dialog, showMessage } from 'siyuan'
+import { showMessage } from 'siyuan'
 import type { Plugin } from 'siyuan'
 import type { ReaderSettings } from '@/composables/useSetting'
 import * as API from '@/api'
 import { openDict } from '@/core/dictionary'
 import { getOrCreateDoc, addHighlight as saveHighlight, restoreHighlights, clearCache, addSingleHighlight } from '@/core/epubDoc'
 import { HL_STYLES } from '@/core/epub'
+import { useEpubToc, createTocDialog, mapTocItem } from '@/composables/useEpubToc'
 import EpubToc from './EpubToc.vue'
 
 // ===== 类型定义 =====
-export interface TocItemData { id: string; href: string; label: string; subitems?: TocItemData[] }
 export type HighlightColor = 'red' | 'orange' | 'yellow' | 'green' | 'pink' | 'blue' | 'purple'
 
 // ===== 常量配置 =====
@@ -87,8 +82,7 @@ const COLORS: { color: HighlightColor; bg: string; title: string }[] = [
   { color: 'purple', bg: '#9c27b0', title: '紫色' },
 ]
 
-const TIMERS = { HIGHLIGHT_DELAY: 300, PROGRESS_SAVE: 2000, MENU_DEBOUNCE: 100, TOOLBAR_HIDE: 1000, TOOLBAR_AUTO: 500, THROTTLE: 100, INIT_DELAY: 1000 }
-const TOC_DIALOG = { WIDTH: 420, HEIGHT: 600 }
+const TIMERS = { HIGHLIGHT_DELAY: 300, PROGRESS_SAVE: 2000, MENU_DEBOUNCE: 100, INIT_DELAY: 1000 }
 const SCROLL_THRESHOLD = 800
 
 interface Props {
@@ -117,30 +111,26 @@ const emit = defineEmits<{
 }>()
 
 const containerRef = ref<HTMLElement>()
+const readerWrapRef = ref<HTMLElement>()
 // ===== 响应式状态 =====
 const ui = reactive({ 
   loading: true, error: '', loadingNext: false, 
-  toolbarShow: false, toolbarHover: false, 
-  menuShow: false, menuX: 0, menuY: 0, menuText: '', menuCfi: '', colorShow: false,
-  tocLoading: false,
+  menuShow: false, menuX: 0, menuY: 0, menuText: '', menuCfi: '', colorShow: false
 })
 
-const tocData = ref<TocItemData[]>([])
-const currentHref = ref('')
-const tocProgress = ref<Record<string, number>>({})
-const bookmarks = ref<string[]>([])
+// 使用目录 composable
+const toc = useEpubToc(props.blockId)
 
 // ===== 内部状态 =====
 let book: Book | null = null
 let rendition: Rendition | null = null
-let timers = { hide: 0, throttle: 0, progress: 0, menu: 0 }
-let tocDialog: Dialog | null = null
+let timers = { progress: 0, menu: 0 }
+let tocDialog: ReturnType<typeof createTocDialog> | null = null
 let progress = -1
 let lastSavedProgress = 0
 let annotationDocId = ''
 
-// ===== 工具方法 =====
-const closeMenu = () => (ui.menuShow = false, ui.colorShow = false)
+const closeMenu = () => (ui.menuShow = ui.colorShow = false)
 
 // ===== 滚动加载 =====
 const handleScroll = () => {
@@ -185,9 +175,7 @@ const openBook = async () => {
     }
     
     // 加载目录
-    ui.tocLoading = true
-    const mapToc = (item: any): TocItemData => ({ id: item.id || item.href, href: item.href, label: item.label, subitems: item.subitems?.map(mapToc) })
-    book.loaded.navigation.then((nav: any) => (tocData.value = nav.toc.map(mapToc), ui.tocLoading = false)).catch(() => ui.tocLoading = false)
+    book.loaded.navigation.then((nav: any) => toc.loadToc(nav)).catch(() => {})
     
     props.onRenditionReady?.(rendition)
     
@@ -197,7 +185,7 @@ const openBook = async () => {
       const attrs = await API.getBlockAttrs(props.blockId)
       lastSavedProgress = parseFloat(attrs['custom-epub-progress'] || '0')
       annotationDocId = attrs['custom-epub-doc-id'] || ''
-      try { attrs['custom-epub-bookmarks'] && (bookmarks.value = JSON.parse(attrs['custom-epub-bookmarks'])) } catch {}
+      await toc.loadBookmarks()
       await rendition.display(props.cfi || attrs['custom-epub-cfi'] || undefined)
       annotationDocId && setTimeout(() => restoreHighlights(annotationDocId, rendition, HL_STYLES), TIMERS.HIGHLIGHT_DELAY)
     } else {
@@ -213,8 +201,8 @@ const openBook = async () => {
     rendition.on('relocated', (loc: any) => {
       closeMenu()
       if (!loc?.start) return
-      currentHref.value = loc.start.href || ''
-      tocProgress.value[currentHref.value] = (loc.start.percentage || 0) * 100
+      toc.updateProgress(loc.start.href || '', loc.start.percentage || 0)
+      tocDialog?.update() // 仅更新已打开的目录
       annotationDocId && restoreHighlights(annotationDocId, rendition, HL_STYLES)
       if (!props.blockId || isInitializing || !loc.start.cfi) return
       const prog = (loc.start.percentage || (loc.start.index + 1) / (book?.spine.length || 1)) * 100
@@ -287,11 +275,7 @@ const openBook = async () => {
 }
 
 // ===== 目录操作 =====
-const handleTocNavigate = (href: string) => rendition?.display(href).catch(() => {})
-const updateBookmarks = (marks: string[]) => {
-  bookmarks.value = marks
-  props.blockId && API.setBlockAttrs(props.blockId, { 'custom-epub-bookmarks': JSON.stringify(marks) }).catch(() => {})
-}
+const handleTocNavigate = (href: string) => toc.navigate(rendition, href)
 
 // ===== 文本操作 =====
 const copySelection = () => {
@@ -341,124 +325,49 @@ const addHighlightWithNote = async () => {
 
 // ===== 目录对话框 =====
 const showTocDialog = () => {
-  if (tocDialog) return tocDialog.destroy(), tocDialog = null
-  
-  const container = document.createElement('div')
-  container.className = 'fn__flex-1'
-  tocDialog = new Dialog({ 
-    title: '目录', 
-    content: container.outerHTML, 
-    width: `${TOC_DIALOG.WIDTH}px`, 
-    height: `${TOC_DIALOG.HEIGHT}px`, 
-    destroyCallback: () => (render(null, containerEl), tocDialog = null) 
-  })
-  
-  const header = tocDialog.element.querySelector('.b3-dialog__header')!
-  const containerEl = tocDialog.element.querySelector('.b3-dialog__body .fn__flex-1')!
-  
-  // 定位对话框
-  const btn = containerRef.value?.parentElement?.querySelector('[aria-label="目录"]') as HTMLElement
-  if (btn) {
-    const r = btn.getBoundingClientRect()
-    const dialogContainer = tocDialog.element.querySelector('.b3-dialog__container') as HTMLElement
-    const h = TOC_DIALOG.HEIGHT + 20, w = TOC_DIALOG.WIDTH
-    dialogContainer.style.left = `${Math.max(10, Math.min(r.left, window.innerWidth - w - 10))}px`
-    dialogContainer.style.top = `${Math.max(10, Math.min(r.top - h, window.innerHeight - h - 10))}px`
-    tocDialog.element.querySelector('.b3-dialog')?.setAttribute('style', 'display:block')
+  const mode = props.settings?.tocPosition || 'dialog'
+  if (!tocDialog || (tocDialog as any)._mode !== mode) {
+    tocDialog?.destroy()
+    tocDialog = createTocDialog(EpubToc, () => ({
+      toc: toc.state.value.data,
+      currentHref: toc.state.value.currentHref,
+      progress: toc.state.value.progress,
+      bookmarks: toc.state.value.bookmarks,
+      loading: toc.state.value.loading,
+      onNavigate: handleTocNavigate,
+      'onUpdate:bookmarks': toc.updateBookmarks
+    }), containerRef.value?.parentElement?.querySelector('[aria-label="目录"]') as HTMLElement, mode, readerWrapRef.value)
+    ;(tocDialog as any)._mode = mode
   }
-  
-  // 添加工具按钮
-  header.style.cssText = 'display:flex;align-items:center;gap:8px'
-  header.insertAdjacentHTML('beforeend', '<div style="display:flex;gap:4px;margin-left:auto"><button class="toc-btn b3-tooltips b3-tooltips__n" data-action="reverse" aria-label="反序"><svg><use xlink:href="#iconSort"></use></svg></button><button class="toc-btn b3-tooltips b3-tooltips__n" data-action="top" aria-label="跳到顶部"><svg><use xlink:href="#iconUp"></use></svg></button><button class="toc-btn b3-tooltips b3-tooltips__n" data-action="bottom" aria-label="跳到底部"><svg><use xlink:href="#iconDown"></use></svg></button><button class="toc-btn b3-tooltips b3-tooltips__n" data-action="bookmark" aria-label="书签模式"><svg><use xlink:href="#iconBookmark"></use></svg></button></div>')
-  
-  // 渲染目录组件
-  const vnode = h(EpubToc, { 
-    toc: tocData.value, 
-    currentHref: currentHref.value, 
-    progress: tocProgress.value, 
-    bookmarks: bookmarks.value, 
-    onNavigate: (href: string) => (handleTocNavigate(href), tocDialog?.destroy()), 
-    'onUpdate:bookmarks': updateBookmarks 
-  })
-  render(vnode, containerEl)
-  
-  // 绑定工具按钮事件
-  nextTick(() => {
-    const tocRef = vnode.component?.exposed
-    header.querySelectorAll('.toc-btn').forEach(btn => btn.addEventListener('click', () => {
-      const action = (btn as HTMLElement).dataset.action
-      if (action === 'reverse') tocRef?.toggleReverse(), (btn as HTMLElement).classList.toggle('active', tocRef?.reverseOrder.value)
-      else if (action === 'top') tocRef?.scrollTo(0)
-      else if (action === 'bottom') tocRef?.scrollTo(-1)
-      else tocRef?.toggleBookmarkMode(), (btn as HTMLElement).classList.toggle('active', tocRef?.bookmarkMode.value)
-    }))
-  })
+  tocDialog.toggle()
 }
 
-// ===== 工具栏自动隐藏 =====
-watch(() => ui.toolbarHover, (hover) => {
-  if (hover) return
-  clearTimeout(timers.hide)
-  timers.hide = window.setTimeout(() => ui.toolbarShow = false, TIMERS.TOOLBAR_HIDE)
-})
-
-// ===== 点击事件 =====
+// ===== 事件处理 =====
 const handleClick = (e: MouseEvent) => {
   if ((e.target as HTMLElement).closest('.epub-toolbar, .epub-selection-menu')) return
   closeMenu()
-  if (props.settings?.pageTurnMode === 'toolbar') return ui.toolbarShow = !ui.toolbarShow
+  if (props.settings?.pageTurnMode === 'toolbar') return
   const rect = containerRef.value?.getBoundingClientRect()
-  if (!rect) return
-  const x = (e.clientX - rect.left) / rect.width
-  x < 0.33 ? rendition?.prev() : x > 0.67 ? rendition?.next() : ui.toolbarShow = true
-}
-
-const handleMove = (e: MouseEvent) => {
-  if (timers.throttle) return
-  timers.throttle = window.setTimeout(() => {
-    timers.throttle = 0
-    clearTimeout(timers.hide)
-    if (e.clientY > window.innerHeight - 120) {
-      ui.toolbarShow = true
-    } else if (!ui.toolbarHover) {
-      timers.hide = window.setTimeout(() => ui.toolbarShow = false, TIMERS.TOOLBAR_AUTO)
-    }
-  }, TIMERS.THROTTLE)
+  const x = rect ? (e.clientX - rect.left) / rect.width : 0.5
+  x < 0.33 ? rendition?.prev() : x > 0.67 && rendition?.next()
 }
 
 const handleKey = (e: KeyboardEvent) => {
   if (!containerRef.value?.contains(document.activeElement)) return
-  const actions: Record<string, () => void> = { 
-    ArrowLeft: () => rendition?.prev(), 
-    ArrowRight: () => rendition?.next(), 
-    Escape: () => (ui.toolbarShow = false, closeMenu()) 
-  }
-  actions[e.key]?.() && e.preventDefault()
+  const actions = { ArrowLeft: () => rendition?.prev(), ArrowRight: () => rendition?.next(), Escape: closeMenu }
+  actions[e.key as keyof typeof actions]?.() && e.preventDefault()
 }
 
 // ===== 生命周期 =====
-onMounted(() => {
-  containerRef.value?.focus()
-  window.addEventListener('keydown', handleKey)
-  document.addEventListener('mousemove', handleMove)
-  openBook()
-})
+onMounted(() => (containerRef.value?.focus(), window.addEventListener('keydown', handleKey), openBook()))
 
 onUnmounted(async () => {
-  // 保存最终进度
   if (props.blockId && rendition) {
     const loc = (rendition as any).currentLocation()
-    loc && await API.setBlockAttrs(props.blockId, { 
-      'custom-epub-cfi': loc.start.cfi, 
-      'custom-epub-progress': ((loc.start.percentage || 0) * 100).toFixed(3), 
-      'custom-epub-last-read': new Date().toISOString() 
-    }).catch(() => {})
+    loc && await API.setBlockAttrs(props.blockId, { 'custom-epub-cfi': loc.start.cfi, 'custom-epub-progress': ((loc.start.percentage || 0) * 100).toFixed(3), 'custom-epub-last-read': new Date().toISOString() }).catch(() => {})
   }
-  
-  // 清理资源
   Object.values(timers).forEach(clearTimeout)
   window.removeEventListener('keydown', handleKey)
-  document.removeEventListener('mousemove', handleMove)
   rendition && clearCache.highlight(rendition)
   rendition?.destroy()
   book?.destroy()

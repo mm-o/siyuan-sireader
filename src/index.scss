@@ -14,33 +14,23 @@
 }
 
 .epub-toolbar {
-  position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); z-index: 1000;
+  position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); z-index: 1000; opacity: 0.3; transition: opacity 0.2s;
+  &:hover { opacity: 1; }
 }
 
 .epub-selection-menu {
   position: fixed; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15); z-index: 1001;
 }
 
-.toolbar-btn, .menu-btn {
-  border: none;
-  border-radius: 4px;
-  background: transparent;
-  color: var(--b3-theme-on-surface);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.15s;
+.toolbar-btn, .menu-btn, .toc-btn {
+  padding: 0; border: none; border-radius: 4px; background: transparent; color: var(--b3-theme-on-surface); cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: all 0.15s;
   &:hover { background: var(--b3-theme-background); transform: scale(1.05); }
   &:active { transform: scale(0.95); }
 }
 
-.toolbar-btn { width: 28px; height: 28px; svg { width: 14px; height: 14px; } }
+.toolbar-btn, .toc-btn { width: 28px; height: 28px; svg { width: 14px; height: 14px; } }
 .menu-btn { width: 32px; height: 32px; svg { width: 16px; height: 16px; } }
 
-// ==================== 工具栏过渡 ====================
-.toolbar-enter-active, .toolbar-leave-active { transition: all 0.2s ease-out; }
-.toolbar-enter-from, .toolbar-leave-to { opacity: 0; transform: translateY(20px); }
 
 // ==================== 颜色选择器 ====================
 .menu-btn-wrapper {
@@ -337,10 +327,16 @@
   z-index: 2;
 }
 
-// ==================== 目录 ====================
-.toc-btn {
-  width: 28px; height: 28px; padding: 0; border: none; background: transparent; cursor: pointer; border-radius: 4px; display: flex; align-items: center; justify-content: center; color: var(--b3-theme-on-surface); flex-shrink: 0;
-  svg { width: 14px; height: 14px; }
-  &:hover { background: var(--b3-theme-background-light); }
-  &.active { color: var(--b3-theme-primary); background: var(--b3-theme-primary-lighter); }
+// ==================== 阅读器布局 ====================
+.epub-reader-wrap { position: relative; width: 100%; height: 100%; display: flex; }
+
+// ==================== 目录面板 ====================
+.epub-toc-overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.1); z-index: 9; }
+.epub-toc-panel {
+  position: absolute; top: 0; bottom: 0; width: 300px; background: var(--b3-theme-background); border: 1px solid var(--b3-border-color); display: flex; flex-direction: column; z-index: 10;
+  &--left { left: 0; }
+  &--right { right: 0; }
 }
+.toc-panel-header { flex-shrink: 0; }
+.toc-panel-body { flex: 1; overflow-y: auto; }
+.toc-btn.active { color: var(--b3-theme-primary); background: var(--b3-theme-primary-lighter); transform: scale(1); }
