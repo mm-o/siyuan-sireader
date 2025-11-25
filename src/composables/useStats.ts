@@ -2,6 +2,7 @@ import { ref } from 'vue'
 import type { Plugin } from 'siyuan'
 
 export function useStats(plugin: Plugin) {
+  const i18n = plugin.i18n as any
   const stats = ref({
     readingTime: 0,
     todayReadingTime: 0,
@@ -20,7 +21,7 @@ export function useStats(plugin: Plugin) {
       const data = await plugin.loadData('stats.json')
       if (data) stats.value = { ...stats.value, ...data }
     } catch (e) {
-      console.error('加载统计数据失败:', e)
+      console.error(`${i18n?.statsLoadError || '加载统计数据失败'}:`, e)
     }
   }
 
@@ -28,7 +29,7 @@ export function useStats(plugin: Plugin) {
     try {
       await plugin.saveData('stats.json', stats.value)
     } catch (e) {
-      console.error('保存统计数据失败:', e)
+      console.error(`${i18n?.statsSaveError || '保存统计数据失败'}:`, e)
     }
   }
 
@@ -58,12 +59,11 @@ export function useStats(plugin: Plugin) {
       min-width: 150px;
     `
     popup.innerHTML = `
-      <div style="font-weight: bold; margin-bottom: 6px; color: var(--b3-theme-on-background);">📊 阅读统计</div>
-      <div style="color: var(--b3-theme-on-background-light);">本次: ${formatTime(currentSession)}</div>
-      <div style="color: var(--b3-theme-on-background-light);">今日: ${formatTime(stats.value.todayReadingTime + currentSession)}</div>
-      <div style="color: var(--b3-theme-on-background-light);">累计: ${formatTime(stats.value.readingTime)}</div>
+      <div style="font-weight: bold; margin-bottom: 6px; color: var(--b3-theme-on-background);">📊 ${i18n?.statsTitle || '阅读统计'}</div>
+      <div style="color: var(--b3-theme-on-background-light);">${i18n?.statsSession || '本次'}: ${formatTime(currentSession)}</div>
+      <div style="color: var(--b3-theme-on-background-light);">${i18n?.statsToday || '今日'}: ${formatTime(stats.value.todayReadingTime + currentSession)}</div>
+      <div style="color: var(--b3-theme-on-background-light);">${i18n?.statsTotal || '累计'}: ${formatTime(stats.value.readingTime)}</div>
     `
-
     document.body.appendChild(popup)
 
     // 定位：按钮左上方
@@ -93,7 +93,7 @@ export function useStats(plugin: Plugin) {
       <svg class="toolbar__icon"><use xlink:href="#iconClock"></use></svg>
       <span style="font-size: 12px; margin-left: 4px;" id="stats-time">0:00</span>
     `
-    statusBar.title = '点击查看阅读统计'
+    statusBar.title = i18n?.statsTooltip || '点击查看阅读统计'
     statusBar.style.cursor = 'pointer'
     statusBar.addEventListener('click', open)
     

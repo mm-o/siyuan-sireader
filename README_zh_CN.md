@@ -1,155 +1,292 @@
-# 思阅 SiReader - 思源笔记电子书阅读增强插件
+<div class="sy__outline" style="max-width: 900px; margin: 0 auto;">
+    <div style="text-align: center; padding: 2.5em 1.5em; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 16px; box-shadow: 0 8px 32px rgba(0,0,0,0.1);">
+        <h1 style="color: white; margin: 0 0 0.3em; font-size: 2.5em; font-weight: 600;">📖 思阅 SiReader</h1>
+        <p style="color: rgba(255,255,255,0.9); margin: 0 0 2em; font-size: 1.1em;">专业电子书阅读 · 智能标注 · 多主题切换</p>
+        <div style="display: flex; justify-content: center; gap: 15px; flex-wrap: wrap;">
+            <a href="" 
+               style="display: inline-block; min-width: 160px; padding: 18px 28px; background: white; color: #667eea; border-radius: 12px; text-decoration: none; font-size: 1.1em; font-weight: 600; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
+                📖 使用说明
+            </a>
+            <a href="" 
+               style="display: inline-block; min-width: 160px; padding: 18px 28px; background: white; color: #667eea; border-radius: 12px; text-decoration: none; font-size: 1.1em; font-weight: 600; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
+                🔄 更新日志
+            </a>
+            <a href="" 
+               style="display: inline-block; min-width: 160px; padding: 18px 28px; background: white; color: #667eea; border-radius: 12px; text-decoration: none; font-size: 1.1em; font-weight: 600; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
+                🔗 友情链接
+            </a>
+        </div>
+    </div>
+    <div style="padding: 2em 1.5em;">
+        <div style="background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%); border-radius: 12px; padding: 1.5em; margin-bottom: 2em; border-left: 4px solid #667eea;">
+            <h3 style="margin: 0 0 0.5em; color: #667eea;">🎯 插件简介</h3>
+            <p style="margin: 0; line-height: 1.6;">让思源笔记变身专业电子书阅读器，支持智能标注、多主题切换、词典查询，打造沉浸式阅读体验。当前支持 EPUB 格式，未来计划支持 PDF、MOBI 等更多格式。</p>
+        </div>
+    </div>
 
-[English](./README.md)
+## 📖 快速开始
 
-> 基于 Vue3 + Vite 开发的思源笔记电子书阅读增强插件  
-> 支持智能标注、多主题切换、词典查询，打造沉浸式阅读体验  
-> 当前支持：EPUB格式，后续将扩展更多格式
+### 🚀 安装插件
+1. 在思源笔记中打开 `设置` → `集市` → `插件`
+2. 搜索 "思阅" 或 "SiReader" 并安装
+3. 启用插件后，工具栏会出现 📖 阅读器图标
 
-## 技术栈
-
-1. Vue3 + Composition API - 现代化的前端框架
-2. TypeScript - 类型安全
-3. Vite - 快速的开发和构建工具
-4. Sass - CSS 预处理器
-
-> [!NOTE]
->
-> 在开始之前，你需要先安装 [NodeJS](https://nodejs.org/en/download) 和 [pnpm](https://pnpm.io/installation)。
-
-## 开始
-
-1. 通过 `Use the template` 按钮，以该仓库为模板创建你自己的项目。
-> [!WARNING]
->
-> 请注意库名和插件名称一致，默认分支必须为 `main`.
-
-> [!WARNING]
->
-> 初次尝试，请不要修改任何内容，直接通过下述方式，成功在思源里加载插件模板以后，再进行调整。
->
-> 例如删除 README_zh_CN.md 也会导致插件加载不成功。
-
-
-2. 使用 `git clone` 克隆创建好的仓库。
-3. 使用 `pnpm i` 安装项目所需的依赖。
-
-4. 复制 `.env.example` 文件并取名为 `.env`，修改其中的 `VITE_SIYUAN_WORKSPACE_PATH` 为你的思源工作空间。
-
-
-> [!TIP]
->
-> 如果你不喜欢将项目打包至工作空间中，可以使用 `软链接` 的方式。
->
-> 直接写入思源空间下，可通过思源的同步功能直接同步至其他设备，而软链接的方式则不会参与同步。
-> 
-> 本模板不提供软链接的具体内容，相关内容可参考 [plugin-sample-vite-svelte](https://github.com/siyuan-note/plugin-sample-vite-svelte)。
-> 
-
-
-5. 使用 `pnpm dev` 启动项目，看到类似下面的内容表示构建成功
-
-  ```
-
-  > plugin-sample-vite-vue@0.0.1 dev /path/to/your/plugin-sample-vite-vue
-  > vite build --watch
-
-  mode=> production
-  env=> {
-    VITE_SIYUAN_WORKSPACE_PATH: '/path/to/siyuan/workspace',
-  }
-
-  Siyuan workspace path is set:
-  /path/to/siyuan/workspace
-
-  Plugin will build to:
-  # ✅ 插件将会构建至下面的位置
-  /path/to/siyuan/workspace/data/plugins/plugin-sample-vite-vue
-
-  isWatch=> true
-  distDir=> /path/to/siyuan/workspace/data/plugins/plugin-sample-vite-vue
-  vite v6.3.5 building for production...
-
-  watching for file changes...
-
-  build started...
-  ✓ 26 modules transformed.
-  rendering chunks (1)...LiveReload enabled
-  ../../Siyuan-plugin/data/plugins/plugin-sample-vite-vue/index.css    1.08 kB │ gzip:  0.41 kB
-  ../../Siyuan-plugin/data/plugins/plugin-sample-vite-vue/index.js   198.60 kB │ gzip: 46.59 kB
-  [vite-plugin-static-copy] Copied 7 items.
-  built in 502ms.
-  ```
-
-   刷新思源，你将会在 `思源 - 设置 - 集市` 中看到名为 `plugin-sample-vite-vue` 的插件。
-   
-6. 启用插件, 并检查 `App.vue` 文件进行开发。
-
-   这个文件中包含了一些代码示例。
-
-
-> [!TIP]
->
-> 更多的插件代码案例，请查看： [siyuan/plugin-sample/src/index.ts](https://github.com/siyuan-note/plugin-sample/blob/main/src/index.ts)
-
-
-
-## 上架集市
-
-### 使用 Github Action
-
-1. 你可以在本地使用插件的版本创建一个名为 `v*` 的 tag。
-2. 将创建好的 tag 推送至 Github。模板项目提供了 Action 脚本自动构建新版本。
-
-
-> [!TIP]
->
-> <div id="release-script"></div>这个项目提供了自动创建 `tag` 并发布新版本的脚本，你可以通过运行 `pnpm release` 创建一个修正版本。
->
-> 你可以通过使用参数 `--mode=manual|patch|minor|major` 设置版本号的调整模式，或者通过 `pnpm release:manual` 的方式直接以特定参数进行发布。
->
-> 完整的命令列表请查看 `package.json` 文件。
-
-
-样例中自带了 github action，可以自动打包发布，请遵循以下操作：
-
-1. 设置项目 `https://github.com/OWNER/REPO/settings/actions` 页面向下划到 Workflow Permissions，打开配置
-
-![img](./asset/action.png)
-
-2. 需要发布版本的时候，push 一个格式为 `v*` 的 tag，github 就会自动打包发布 release（包括 package.zip）
-3. 默认使用保守策略进行 pre-release 发布，如果觉得没有必要，可以更改 release.yml 中的设置：
-
-```yaml
-- name: Release
-    uses: ncipollo/release-action@v1
-    with.
-        allowUpdates: true
-        artifactErrorsFailBuild: true
-        artifacts: 'package.zip'
-        token: ${{ secrets.GITHUB_TOKEN }}
-        prerelease: true # change this to false
-```
-
-### 手动发布
-
-1. 使用 `pnpm build` 构建 `package.zip`
-2. 在 GitHub 上创建一个新的发布，使用插件版本号作为 “Tag version”，示例: https://github.com/siyuan-note/plugin-sample/releases
-3. 上传 package.zip 作为二进制附件
-4. 提交发布
-
-> [!NOTE]
-> 
-> 如果是第一次发布版本，还需要创建一个 PR 到 [Community Bazaar](https://github.com/siyuan-note/bazaar)  社区集市仓库，修改该库的 plugins.json。该文件是所有社区插件库的索引，格式为：
-
-```json
-{
-  "repos": [
-    "username/reponame"
-  ]
-}
-```
+### 📝 打开EPUB书籍
+拖拽EPUB文件到思源文档中，会自动创建链接，点击链接即可打开
 
 ---
 
-更多有关于插件的信息，请查看： [siyuan/plugin-sample](https://github.com/siyuan-note/plugin-sample).
+## 🎨 主要功能
+
+### 📚 阅读体验
+
+#### 🎨 多主题切换
+提供8款精美主题 + 自定义主题，适应不同阅读场景：
+
+**8款预设主题：**
+| 主题 | 适用场景 | 特色 |
+|------|----------|------|
+| **默认** | 日常阅读 | 经典白底黑字，清晰易读 |
+| **杏仁黄** | 长时间阅读 | 护眼配色，减少视疲劳 |
+| **秋叶褐** | 温馨阅读 | 温暖色调，舒适体验 |
+| **青草绿** | 自然阅读 | 清新绿色，护眼养神 |
+| **海天蓝** | 平静阅读 | 宁静蓝色，平和心境 |
+| **夜间** | 夜晚阅读 | 深色背景，保护视力 |
+| **暗黑** | 专注阅读 | 纯黑模式，沉浸体验 |
+| **赤金** | 高端阅读 | 奢华配色，尊享体验 |
+
+**自定义主题：**
+- **字体颜色**：自定义文字显示颜色（支持HEX色值）
+- **背景颜色**：自定义页面背景色（支持HEX色值）
+- **背景图片**：上传自定义背景图片（支持URL或本地路径）
+- **实时预览**：修改后立即看到效果，支持导入导出配置
+
+#### 📱 阅读模式
+- **分页模式**：传统翻页体验，适合小说阅读
+- **滚动模式**：连续滚动，适合学术文档
+- **单页显示**：专注当前页面
+- **双页显示**：模拟纸质书阅读
+
+#### ⌨️ 便捷操作
+- **键盘导航**：← → 方向键翻页
+- **工具栏控制**：上一页、下一页、目录按钮
+
+### 📝 智能标注
+
+#### 🎨 7色标注系统
+使用7种颜色标记不同类型的内容：
+
+| 颜色 | 字母标注 | 建议用途 |
+|------|--------|----------|
+| 🔴 **红色** | R | 重要内容、关键概念 |
+| 🟠 **橙色** | O | 需要注意的问题 |
+| 🟡 **黄色** | Y | 一般重点、提醒事项 |
+| 🟢 **绿色** | G | 正面信息、好的观点 |
+| 🩷 **粉色** | P | 个人感悟、思考 |
+| 🔵 **蓝色** | B | 补充信息、扩展内容 |
+| 🟣 **紫色** | V | 疑问点、需要查证 |
+
+#### 📖 章节自动标记
+- 标注时自动添加所在章节信息
+- 标注格式：`- R [标注文本（第三章）](链接#位置)`
+- 在标注面板中章节信息独立显示
+
+#### 📝 标注文档管理
+**两种管理模式**：
+1. **笔记本模式**：为每本书在指定笔记本下创建独立文档
+2. **文档模式**：在指定文档下为每本书创建子文档
+
+### 📚 目录导航
+
+#### 📂 三种浏览模式
+
+**1. 目录模式**
+- **章节导航**：显示完整的书籍目录结构
+- **层级展示**：支持多级目录，自动缩进显示
+- **进度显示**：每章节显示阅读进度百分比
+- **书签操作**：悬停章节显示📖书签按钮，点击添加/删除书签
+- **当前位置**：高亮显示当前阅读的章节
+
+**2. 书签模式**
+- **书签列表**：显示所有已保存的书签
+- **快速跳转**：点击书签直接跳转到对应位置
+- **书签管理**：悬停显示🗑️删除按钮，一键删除书签
+- **空状态提示**：无书签时显示"暂无书签"提示
+- **章节标题**：显示书签所在的章节名称
+
+**3. 标注模式**
+- **标注列表**：显示所有颜色标注内容
+- **颜色分类**：左侧颜色边框标识不同标注类型
+- **内容展示**：标注文本 + 章节信息分离显示
+- **快速定位**：点击标注直接跳转到原文位置
+- **删除功能**：悬停显示🗑️删除按钮，管理标注内容
+
+### 📚 词典查询
+
+#### 🌐 多词典支持
+支持7个专业词典源，自动选择最合适的词典：
+
+| 词典 | 语言 | 特色功能 |
+|------|------|----------|
+| **剑桥词典** | 英语 | 专业释义，美英音标，例句丰富，自动发音 |
+| **有道词典** | 英语 | 快速联想搜索，智能推荐 |
+| **海词词典** | 英语 | 详细解析，发音音频，词性标注 |
+| **汉字词典** | 中文 | 部首笔画，拼音注音，字形解析 |
+| **词语词典** | 中文 | 词汇释义，近反义词，成语典故 |
+| **汉典词典** | 中文 | 古汉语，字源解析，文言文支持 |
+| **必应词典** | 通用 | 外部跳转，完整词典功能 |
+
+#### 🎯 智能识别
+- **中文单字** → 自动选择汉字词典
+- **中文词组** → 自动选择词语词典  
+- **英文词汇** → 自动选择剑桥词典
+
+### 🎨 EPUB块样式设置
+支持多种EPUB块显示样式，让文档中的EPUB链接更加美观：
+
+#### 5种块样式
+| 样式 | 效果 | 适用场景 |
+|------|------|----------|
+| **默认** | 普通链接样式 | 简单引用 |
+| **边框** | 添加边框装饰 | 突出显示 |
+| **卡片** | 卡片式布局，显示封面和信息 | 图书展示 |
+| **封面** | 仅显示封面图片 | 图书收藏 |
+| **阅读器** | 嵌入式阅读器 | 直接阅读 |
+
+---
+
+## ⚙️ 设置说明
+
+### 🎨 主题设置
+1. 点击工具栏设置按钮 ⚙️
+2. 选择 `主题` 选项卡
+3. 在预设主题中选择喜欢的配色
+4. 或选择"自定义"创建个人专属主题
+
+### 📝 标注设置
+1. 选择 `标注` 选项卡
+2. 选择标注文档创建方式：
+   - **笔记本模式**：每本书创建独立文档
+   - **文档模式**：在指定文档下创建子文档
+3. 设置目标笔记本或父文档
+
+### 📖 阅读设置
+1. 选择 `阅读` 选项卡
+2. 设置翻页方式：
+3. 选择翻页动画效果
+4. 设置单页或双页显示模式
+
+### 🔧 通用设置
+1. 选择 `通用` 选项卡
+2. 设置书籍打开方式：
+   - **新标签**：在新标签页打开
+   - **右侧标签**：在右侧打开
+   - **底部标签**：在底部打开
+   - **新窗口**：在新窗口打开
+3. 选择目录打开位置：
+   - **窗口**：弹窗显示
+   - **左侧**：左侧面板
+   - **右侧**：右侧面板
+
+---
+
+## 💡 使用技巧
+
+### 📖 高效阅读技巧
+1. **主题切换**：根据时间和环境选择合适主题
+   - 白天使用"默认"或"杏仁黄"
+   - 夜晚使用"夜间"或"暗黑"模式
+2. **阅读模式**：根据内容类型选择
+   - 小说类：分页模式 + 单页显示
+   - 学术类：滚动模式 + 双页显示
+
+### 📝 标注管理技巧
+1. **颜色分类法**：
+   - 🔴 红色：核心概念和重要理论
+   - 🟡 黄色：一般重点和关键信息
+   - 🟢 绿色：正面案例和成功经验
+   - 🔵 蓝色：补充资料和扩展阅读
+   - 🟣 紫色：疑问和需要进一步验证的内容
+
+2. **标注整理**：定期在标注模式下回顾所有标注内容
+3. **标注导出**：标注会自动保存到思源笔记文档，便于后续整理
+
+### 📚 词典查询技巧
+1. **快速查词**：遇到生词直接双击选中查询
+2. **固定窗口**：学习时点击📌固定词典窗口
+3. **多词典对比**：切换不同词典标签对比释义
+
+---
+
+## ❓ 常见问题
+
+### 📱 使用问题
+
+**Q：EPUB文件打不开？**  
+A：检查文件格式是否为标准EPUB，确保文件未损坏
+
+**Q：标注没有保存？**  
+A：检查标注设置中是否正确配置了笔记本或父文档
+
+**Q：词典查询没反应？**  
+A：检查网络连接，部分词典需要联网查询
+
+**Q：主题切换无效？**  
+A：刷新阅读器页面，或重新打开EPUB文件
+
+### ⚙️ 设置问题
+
+**Q：找不到设置按钮？**  
+A：设置按钮在工具栏右侧，图标为 ⚙️
+
+**Q：标注文档在哪里？**  
+A：根据设置的模式，在对应笔记本或文档下查找
+
+**Q：如何修改快捷键？**  
+A：目前快捷键固定，后续版本将支持自定义
+
+**Q：EPUB块样式无效？**  
+A：确保EPUB文件已正确拖拽到文档中，点击块标图标通过菜单选择对应样式
+
+---
+
+## 🔧 技术架构
+
+### 技术栈
+
+| 技术 | 版本 | 用途 |
+|------|------|------|
+| **Vue 3** | Composition API | 响应式前端框架 |
+| **ePub.js** | v0.3+ | EPUB渲染引擎 |
+| **思源笔记** | Plugin API | 块级集成、数据持久化 |
+| **TypeScript** | 5.0+ | 类型安全，代码提示 |
+
+### 设计理念
+
+- **🎯 职责清晰**：单一职责，模块化设计
+- **🔗 松耦合**：组合函数，依赖注入  
+- **📱 用户友好**：现代UI，智能交互
+- **⚡ 性能优先**：算法优化，内存管理
+- **🛠️ 可扩展性**：插件架构，配置化
+
+### 性能优化
+
+- **🚀 简洁高效**：单行函数，链式操作
+- **💾 智能缓存**：标注缓存，进度防抖
+- **🔄 响应式更新**：直接数组操作，避免重载
+- **🧹 内存管理**：自动清理，防内存泄漏
+
+---
+
+## 🙏 致谢
+
+- 感谢思源笔记团队提供的优秀插件开发框架和模板，让插件开发变得更加便捷高效。
+- **[思源笔记插件开发指南](https://ld246.com/article/1723732790981#START-UP)** 及其作者提供的详细开发文档
+- **归叶插件开发者 [vv](https://github.com/Wetoria)** 提供的 [Vue3 + Vite 思源插件模板](https://github.com/siyuan-note/plugin-sample-vite-vue)
+- **[Epub.js](https://github.com/futurepress/epub.js)** 开源项目提供强大的 EPUB 渲染引擎
+- 同时感谢所有使用和反馈的用户，您们的建议让思阅不断完善。
+
+**开发理念**：极简、高效、优雅、完美  
+**技术选型**：Vue3 + Epub.js + 思源笔记API  
+**架构特点**：模块化、组合式、响应式、可扩展
+</div>

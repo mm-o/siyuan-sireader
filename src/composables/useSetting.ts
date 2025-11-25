@@ -31,14 +31,14 @@ export interface ReaderSettings {
 
 // ===== 主题配置 =====
 export const PRESET_THEMES: Record<string, ReadTheme> = {
-  default: { name: '默认', color: '#202124', bg: '#ffffff' },
-  almond: { name: '杏仁黄', color: '#414441', bg: '#FAF9DE' },
-  autumn: { name: '秋叶褐', color: '#414441', bg: '#FFF2E2' },
-  green: { name: '青草绿', color: '#414441', bg: '#E3EDCD' },
-  blue: { name: '海天蓝', color: '#414441', bg: '#DCE2F1' },
-  night: { name: '夜间', color: '#fff6e6', bg: '#415062' },
-  dark: { name: '暗黑', color: '#d5cecd', bg: '#414441' },
-  gold: { name: '赤金', color: '#b58931', bg: '#081010' },
+  default: { name: 'themeDefault', color: '#202124', bg: '#ffffff' },
+  almond: { name: 'themeAlmond', color: '#414441', bg: '#FAF9DE' },
+  autumn: { name: 'themeAutumn', color: '#414441', bg: '#FFF2E2' },
+  green: { name: 'themeGreen', color: '#414441', bg: '#E3EDCD' },
+  blue: { name: 'themeBlue', color: '#414441', bg: '#DCE2F1' },
+  night: { name: 'themeNight', color: '#fff6e6', bg: '#415062' },
+  dark: { name: 'themeDark', color: '#d5cecd', bg: '#414441' },
+  gold: { name: 'themeGold', color: '#b58931', bg: '#081010' },
 }
 
 const fixUrl = (url: string) => url.startsWith('http') || url.startsWith('/') ? url : `/${url}`
@@ -66,7 +66,7 @@ const DEFAULT_SETTINGS: ReaderSettings = {
   columnMode: 'single',
   tocPosition: 'left',
   theme: 'default',
-  customTheme: { name: '自定义', color: '#202124', bg: '#ffffff' },
+  customTheme: { name: 'custom', color: '#202124', bg: '#ffffff' },
   annotationMode: 'notebook',
   notebookId: '',
   parentDoc: undefined,
@@ -99,6 +99,7 @@ const options = (items: Record<string, string>) => Object.entries(items).map(([v
 export function useSetting(plugin: Plugin) {
   const settings = ref<ReaderSettings>({ ...DEFAULT_SETTINGS })
   let dialog: Dialog | null = null
+  const i18n = plugin.i18n as any
 
   // 加载配置
   const load = async () => {
@@ -106,108 +107,108 @@ export function useSetting(plugin: Plugin) {
       const data = await plugin.loadData('config.json')
       if (data?.settings) settings.value = { ...DEFAULT_SETTINGS, ...data.settings }
     } catch (e) {
-      console.error('[MReader] 加载设置失败:', e)
+      console.error(`[MReader] ${i18n?.loadError || '加载设置失败'}:`, e)
     }
   }
 
   // 保存配置
-  const save = async (msg = '设置已保存') => {
+  const save = async (msg = i18n?.saved || '设置已保存') => {
     try {
       await plugin.saveData('config.json', { settings: settings.value })
       window.dispatchEvent(new CustomEvent('mreaderSettingsUpdated', { detail: settings.value }))
       showMessage(msg, 2000, 'info')
     } catch (e) {
-      console.error('[MReader] 保存设置失败:', e)
+      console.error(`[MReader] ${i18n?.saveError || '保存设置失败'}:`, e)
     }
   }
 
   // 打开设置对话框
   const open = () => {
     if (dialog) return dialog.destroy(), dialog = null
-    const btn = document.querySelector('[aria-label="设置"]') as HTMLElement
+    const btn = document.querySelector(`[aria-label="${i18n?.settingsLabel || '设置'}"]`) as HTMLElement
     dialog = new Dialog({
-      title: 'M阅读 - 设置',
+      title: i18n?.settingsTitle || '设置',
       content: `
         <div class="fn__flex" style="height:400px">
           <ul class="b3-list b3-list--background" style="width:140px;padding:8px;border-right:1px solid var(--b3-border-color);flex-shrink:0">
             <li class="b3-list-item b3-list-item--focus" data-group="general" style="cursor:pointer">
-              <span class="b3-list-item__text">⚙️ 通用</span>
+              <span class="b3-list-item__text">⚙️ ${i18n?.tabGeneral || '通用'}</span>
             </li>
             <li class="b3-list-item" data-group="reader" style="cursor:pointer">
-              <span class="b3-list-item__text">📖 阅读</span>
+              <span class="b3-list-item__text">📚 ${i18n?.tabReader || '阅读'}</span>
             </li>
             <li class="b3-list-item" data-group="theme" style="cursor:pointer">
-              <span class="b3-list-item__text">🎨 主题</span>
+              <span class="b3-list-item__text">🎨 ${i18n?.tabTheme || '主题'}</span>
             </li>
             <li class="b3-list-item" data-group="annotation" style="cursor:pointer">
-              <span class="b3-list-item__text">📝 标注</span>
+              <span class="b3-list-item__text">📝 ${i18n?.tabAnnotation || '标注'}</span>
             </li>
           </ul>
           
           <div class="fn__flex-1" style="overflow-y:auto;padding:16px 20px">
             <div class="setting-group" data-group="general">
-              ${item('打开方式', '选择打开书籍时的显示位置', select('openMode', options({ newTab: '新标签', rightTab: '右侧标签', bottomTab: '底部标签', newWindow: '新窗口' })))}
-              ${item('目录位置', '选择目录打开方式', select('tocPosition', options({ dialog: '窗口', left: '左侧', right: '右侧' })))}
+              ${item(i18n?.openMode || '打开方式', i18n?.openModeDesc || '选择打开书籍时的显示位置', select('openMode', options({ newTab: i18n?.newTab || '新标签', rightTab: i18n?.rightTab || '右侧标签', bottomTab: i18n?.bottomTab || '底部标签', newWindow: i18n?.newWindow || '新窗口' })))}
+              ${item(i18n?.tocPosition || '目录位置', i18n?.tocPositionDesc || '选择目录打开方式', select('tocPosition', options({ dialog: i18n?.dialog || '窗口', left: i18n?.left || '左侧', right: i18n?.right || '右侧' })))}
             </div>
             
             <div class="setting-group" data-group="annotation" style="display:none">
               <div class="b3-label" style="margin-bottom:16px">
-                <div class="b3-label__text" style="font-weight:500;margin-bottom:8px">标注文档创建方式</div>
+                <div class="b3-label__text" style="font-weight:500;margin-bottom:8px">${i18n?.annotationMode || '标注文档创建方式'}</div>
                 <select id="setting-annotationMode" class="b3-select fn__block">
-                  <option value="notebook">笔记本下创建文档</option>
-                  <option value="document">指定文档下创建子文档</option>
+                  <option value="notebook">${i18n?.notebook || '笔记本下创建文档'}</option>
+                  <option value="document">${i18n?.document || '指定文档下创建子文档'}</option>
                 </select>
               </div>
               
               <div id="notebook-mode" style="display:none">
                 <div class="b3-label" style="margin-bottom:16px">
-                  <div class="b3-label__text" style="font-weight:500;margin-bottom:4px">目标笔记本</div>
-                  <div class="b3-label__text" style="font-size:12px;opacity:0.7;margin-bottom:8px">在此笔记本下为每本书创建标注文档</div>
-                  <select id="setting-notebookId" class="b3-select fn__block"><option value="">未选择</option></select>
+                  <div class="b3-label__text" style="font-weight:500;margin-bottom:4px">${i18n?.targetNotebook || '目标笔记本'}</div>
+                  <div class="b3-label__text" style="font-size:12px;opacity:0.7;margin-bottom:8px">${i18n?.targetNotebookDesc || '在此笔记本下为每本书创建标注文档'}</div>
+                  <select id="setting-notebookId" class="b3-select fn__block"><option value="">${i18n?.notSelected || '未选择'}</option></select>
                 </div>
               </div>
               
               <div id="document-mode" style="display:none">
                 <div class="b3-label" style="margin-bottom:12px">
-                  <div class="b3-label__text" style="font-weight:500;margin-bottom:4px">搜索文档</div>
-                  <div class="b3-label__text" style="font-size:12px;opacity:0.7;margin-bottom:8px" id="selected-doc-hint">输入关键字搜索文档</div>
-                  <input id="setting-docSearch" type="text" class="b3-text-field fn__block" placeholder="按回车搜索">
+                  <div class="b3-label__text" style="font-weight:500;margin-bottom:4px">${i18n?.searchDoc || '搜索文档'}</div>
+                  <div class="b3-label__text" style="font-size:12px;opacity:0.7;margin-bottom:8px" id="selected-doc-hint">${i18n?.searchDocDesc || '输入关键字搜索文档'}</div>
+                  <input id="setting-docSearch" type="text" class="b3-text-field fn__block" placeholder="${i18n?.searchPlaceholder || '按回车搜索'}">
                 </div>
                 <div class="b3-label" style="margin-bottom:16px" id="doc-results" style="display:none">
-                  <div class="b3-label__text" style="font-weight:500;margin-bottom:8px">选择文档</div>
+                  <div class="b3-label__text" style="font-weight:500;margin-bottom:8px">${i18n?.selectDoc || '选择文档'}</div>
                   <select id="setting-parentDoc" class="b3-select fn__block"></select>
                 </div>
               </div>
               
               <div style="padding:12px;background:var(--b3-theme-background-light);border-radius:6px;font-size:12px;line-height:1.6">
-                💡 <b>使用说明</b><br>
-                • 7种颜色：R🔴红 O🟠橙 Y🟡黄 G🟢绿 P🩷粉 B🔵蓝 V🟣紫<br>
-                • 标注格式：<code>- R [文本](链接)</code><br>
-                • 笔记本模式：为每本书自动创建独立文档<br>
-                • 文档模式：在指定文档下创建子文档管理
+                💡 <b>${i18n?.usageTitle || '使用说明'}</b><br>
+                • ${i18n?.usageColors || '7种颜色：R🔴红 O🟠橙 Y🟡黄 G🟢绿 P🩷粉 B🔵蓝 V🟣紫'}<br>
+                • ${i18n?.usageFormat || '标注格式：<code>- R [文本](链接)</code>'}<br>
+                • ${i18n?.usageNotebook || '笔记本模式：为每本书自动创建独立文档'}<br>
+                • ${i18n?.usageDocument || '文档模式：在指定文档下创建子文档管理'}
               </div>
             </div>
             
             <div class="setting-group" data-group="reader" style="display:none">
-              ${item('翻页方式', '选择如何进行页面翻转', select('pageTurnMode', options({ click: '点击翻页', toolbar: '仅工具栏' })))}
-              ${item('翻页动画', '选择翻页时的动画效果', select('pageAnimation', options({ slide: '平移', fade: '淡入淡出', flip: '仿真翻页', scroll: '滚动', vertical: '上下翻页', none: '无动画' })))}
-              ${item('显示模式', '选择单页或双页显示', select('columnMode', options({ single: '单页', double: '双页' })))}
+              ${item(i18n?.pageTurnMode || '翻页方式', i18n?.pageTurnModeDesc || '选择如何进行页面翻转', select('pageTurnMode', options({ click: i18n?.click || '点击翻页', toolbar: i18n?.toolbar || '仅工具栏' })))}
+              ${item(i18n?.pageAnimation || '翻页动画', i18n?.pageAnimationDesc || '选择翻页时的动画效果', select('pageAnimation', options({ slide: i18n?.slide || '平移', fade: i18n?.fade || '淡入淡出', flip: i18n?.flip || '仿真翻页', scroll: i18n?.scroll || '滚动', vertical: i18n?.vertical || '上下翻页', none: i18n?.none || '无动画' })))}
+              ${item(i18n?.displayMode || '显示模式', i18n?.displayModeDesc || '选择单页或双页显示', select('columnMode', options({ single: i18n?.single || '单页', double: i18n?.double || '双页' })))}
             </div>
             
             <div class="setting-group" data-group="theme" style="display:none">
-              ${item('预设主题', '选择预设的配色方案', select('theme', `${Object.entries(PRESET_THEMES).map(([k, v]) => `<option value="${k}">${v.name}</option>`).join('')}<option value="custom">自定义</option>`))}
+              ${item(i18n?.presetTheme || '预设主题', i18n?.presetThemeDesc || '选择预设的配色方案', select('theme', `${Object.entries(PRESET_THEMES).map(([k, v]) => `<option value="${k}">${i18n?.[v.name] || v.name}</option>`).join('')}<option value="custom">${i18n?.custom || '自定义'}</option>`))}
               <div id="custom-theme" style="display:none">
-                ${item('文字颜色', '自定义文字颜色', '<input id="setting-color" type="color" class="b3-text-field" style="width:60px;height:32px;padding:2px;cursor:pointer">')}
-                ${item('背景颜色', '自定义背景颜色', '<input id="setting-bg" type="color" class="b3-text-field" style="width:60px;height:32px;padding:2px;cursor:pointer">')}
+                ${item(i18n?.textColor || '文字颜色', i18n?.textColorDesc || '自定义文字颜色', '<input id="setting-color" type="color" class="b3-text-field" style="width:60px;height:32px;padding:2px;cursor:pointer">')}
+                ${item(i18n?.bgColor || '背景颜色', i18n?.bgColorDesc || '自定义背景颜色', '<input id="setting-bg" type="color" class="b3-text-field" style="width:60px;height:32px;padding:2px;cursor:pointer">')}
                 <div class="b3-label" style="margin-bottom:20px">
-                  <div class="b3-label__text" style="font-weight:500;margin-bottom:4px">背景图片</div>
-                  <div class="b3-label__text" style="font-size:12px;opacity:0.7;margin-bottom:8px">输入图片URL（留空使用纯色）</div>
+                  <div class="b3-label__text" style="font-weight:500;margin-bottom:4px">${i18n?.bgImage || '背景图片'}</div>
+                  <div class="b3-label__text" style="font-size:12px;opacity:0.7;margin-bottom:8px">${i18n?.bgImageDesc || '输入图片URL（留空使用纯色）'}</div>
                   <input id="setting-bgImg" type="text" class="b3-text-field fn__block" placeholder="https://example.com/image.jpg">
                 </div>
               </div>
               <div style="margin-top:16px;padding:12px;background:var(--b3-theme-background-light);border-radius:6px">
-                <div style="font-size:12px;opacity:0.7;margin-bottom:8px">预览效果：</div>
-                <div id="theme-preview">春江潮水连海平，海上明月共潮生。<br>滟滟随波千万里，何处春江无月明。</div>
+                <div style="font-size:12px;opacity:0.7;margin-bottom:8px">${i18n?.previewLabel || '预览效果：'}</div>
+                <div id="theme-preview">${i18n?.previewText || '春江潮水连海平，海上明月共潮生。<br>滟滟随波千万里，何处春江无月明。'}</div>
               </div>
             </div>
           </div>
@@ -247,7 +248,7 @@ export function useSetting(plugin: Plugin) {
       const el = $<HTMLSelectElement>(`#setting-${key}`)
       if (el) {
         el.value = settings.value[key] as string
-        el.addEventListener('change', () => ((settings.value[key] as any) = el.value, save()))
+        el.addEventListener('change', () => ((settings.value[key] as string) = el.value, save()))
       }
     })
     
@@ -273,7 +274,7 @@ export function useSetting(plugin: Plugin) {
       notebook.initSelect(notebookSelect, settings.value.notebookId || '', id => {
         settings.value.notebookId = id
         save()
-      })
+      }, i18n)
     ).catch(() => {})
     
     // ===== 文档搜索（委托至epubDoc） =====
@@ -284,7 +285,7 @@ export function useSetting(plugin: Plugin) {
       document.initSearchSelect(docSearch, parentDocSelect, docResults, docHint, settings.value.parentDoc, doc => {
         settings.value.parentDoc = doc
         save()
-      })
+      }, i18n)
     ).catch(() => {})
     
     // ===== 主题配置 =====

@@ -55,7 +55,7 @@ export function mapTocItem(item: any): TocItemData {
 }
 
 // ===== 目录管理 Composable =====
-export function useEpubToc(docId?: string) {
+export function useEpubToc(docId?: string, i18n?) {
   const state = ref<TocState>({
     data: [],
     currentHref: '',
@@ -70,7 +70,7 @@ export function useEpubToc(docId?: string) {
   const loadToc = async (navigation: any) => {
     state.value.loading = true
     try { state.value.data = navigation.toc.map(mapTocItem) } 
-    catch (e) { console.error('[MReader] 加载目录失败', e) } 
+    catch (e) { console.error(`[MReader] ${i18n?.tocLoadError || '加载目录失败'}`, e) } 
     finally { state.value.loading = false }
   }
 
@@ -96,7 +96,7 @@ export function useEpubToc(docId?: string) {
 
 // ===== 对话框工具 =====
 const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(v, max))
-const BTNS = [['reverse', '反序', '#iconSort'], ['top', '跳到顶部', '#iconUp'], ['bottom', '跳到底部', '#iconDown'], ['bookmark', '书签模式', '#iconBookmark'], ['marks', '标记模式', '#iconMark']]
+const getBtns = (i18n?) => [['reverse', i18n?.tocReverse || '反序', '#iconSort'], ['top', i18n?.tocTop || '跳到顶部', '#iconUp'], ['bottom', i18n?.tocBottom || '跳到底部', '#iconDown'], ['bookmark', i18n?.tocBookmarkMode || '书签模式', '#iconBookmark'], ['marks', i18n?.tocMarkMode || '标记模式', '#iconMark']]
 const BTN_ACTIONS: Record<string, (r: any) => void> = { reverse: r => r.toggleReverse(), top: r => r.scrollTo(0), bottom: r => r.scrollTo(-1), bookmark: r => r.toggleBookmarkMode(), marks: r => r.toggleMarkMode() }
 const ACTIVE_PROPS: Record<string, string> = { reverse: 'reverseOrder', bookmark: 'bookmarkMode', marks: 'markMode' }
 
@@ -109,14 +109,14 @@ const positionDialog = (el: HTMLElement, btn: HTMLElement, { width: w, height: h
   el.querySelector('.b3-dialog')?.setAttribute('style', 'display:block')
 }
 
-export function createTocDialog(component: any, getProps: () => any, btnEl?: HTMLElement, mode: 'dialog' | 'left' | 'right' = 'dialog', parentEl?: HTMLElement) {
+export function createTocDialog(component: any, getProps: () => any, btnEl?: HTMLElement, mode: 'dialog' | 'left' | 'right' = 'dialog', parentEl?: HTMLElement, i18n?) {
   let dialog: Dialog | null = null, panel: HTMLElement | null = null, overlay: HTMLElement | null = null, container: Element | null = null, vnode: any = null
 
   const isOpen = () => mode === 'dialog' ? !!dialog : !!panel
   const close = () => (overlay?.remove(), panel?.remove(), dialog = panel = overlay = container = vnode = null)
   const renderToolbar = (hdr: Element, ref: any) => {
     (hdr as HTMLElement).style.cssText = 'position:relative;z-index:2;display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--b3-border-color)'
-    hdr.innerHTML = `<span style="flex:1;font-weight:500">目录</span><div style="display:flex;gap:4px">${BTNS.map(([a, l, i]) => `<button class="toc-btn b3-tooltips b3-tooltips__s" data-action="${a}" aria-label="${l}"><svg style="width:14px;height:14px"><use xlink:href="${i}"></use></svg></button>`).join('')}</div>`
+    hdr.innerHTML = `<span style="flex:1;font-weight:500">${i18n?.tocTitle || '目录'}</span><div style="display:flex;gap:4px">${getBtns(i18n).map(([a, l, i]) => `<button class="toc-btn b3-tooltips b3-tooltips__s" data-action="${a}" aria-label="${l}"><svg style="width:14px;height:14px"><use xlink:href="${i}"></use></svg></button>`).join('')}</div>`
     hdr.querySelectorAll('.toc-btn').forEach(btn => btn.addEventListener('click', () => {
       const action = (btn as HTMLElement).dataset.action
       if (!action) return
@@ -142,13 +142,13 @@ export function createTocDialog(component: any, getProps: () => any, btnEl?: HTM
   const toggle = () => {
     if (isOpen()) return close()
     if (mode === 'dialog') {
-      dialog = new Dialog({ title: '目录', content: '<div class="fn__flex-1"></div>', width: `${TOC_DIALOG_CONFIG.width}px`, height: `${TOC_DIALOG_CONFIG.height}px`, destroyCallback: close })
+      dialog = new Dialog({ title: i18n?.tocTitle || '目录', content: '<div class="fn__flex-1"></div>', width: `${TOC_DIALOG_CONFIG.width}px`, height: `${TOC_DIALOG_CONFIG.height}px`, destroyCallback: close })
       const { element } = dialog
       const hdr = element.querySelector('.b3-dialog__header')!
       container = element.querySelector('.b3-dialog__body .fn__flex-1')!
       btnEl && positionDialog(element, btnEl, TOC_DIALOG_CONFIG)
       ;(hdr as HTMLElement).style.cssText = 'position:relative;z-index:2;display:flex;align-items:center;gap:8px'
-      hdr.insertAdjacentHTML('beforeend', `<div style="display:flex;gap:4px;margin-left:auto">${BTNS.map(([a, l, i]) => `<button class="toc-btn b3-tooltips b3-tooltips__s" data-action="${a}" aria-label="${l}"><svg><use xlink:href="${i}"></use></svg></button>`).join('')}</div>`)
+      hdr.insertAdjacentHTML('beforeend', `<div style="display:flex;gap:4px;margin-left:auto">${getBtns(i18n).map(([a, l, i]) => `<button class="toc-btn b3-tooltips b3-tooltips__s" data-action="${a}" aria-label="${l}"><svg><use xlink:href="${i}"></use></svg></button>`).join('')}</div>`)
       renderToc(hdr, container, el => el.scrollIntoView({ block: 'nearest' }))
     } else {
       overlay = Object.assign(document.createElement('div'), { className: 'epub-toc-overlay', onclick: close })

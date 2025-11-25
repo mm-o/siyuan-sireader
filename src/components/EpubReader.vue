@@ -6,25 +6,25 @@
     
     <div v-if="ui.loading" class="epub-loading">
       <div class="loading-spinner"></div>
-      <div>{{ ui.error || '加载中...' }}</div>
+      <div>{{ ui.error || i18n?.loading || '加载中...' }}</div>
     </div>
     
     <div v-if="ui.loadingNext" class="epub-loading-next">
       <div class="loading-spinner-small"></div>
-      <span>加载下一章...</span>
+      <span>{{ i18n?.loadingNext || '加载下一章...' }}</span>
     </div>
     
     <div class="epub-toolbar">
-        <button class="toolbar-btn b3-tooltips b3-tooltips__n" @click.stop="showTocDialog" aria-label="目录">
+        <button class="toolbar-btn b3-tooltips b3-tooltips__n" @click.stop="showTocDialog" :aria-label="i18n?.tocBtn || '目录'">
           <svg><use xlink:href="#iconList"></use></svg>
         </button>
-        <button class="toolbar-btn b3-tooltips b3-tooltips__n" @click.stop="rendition?.prev()" aria-label="上一页">
+        <button class="toolbar-btn b3-tooltips b3-tooltips__n" @click.stop="rendition?.prev()" :aria-label="i18n?.prevBtn || '上一页'">
           <svg><use xlink:href="#iconLeft"></use></svg>
         </button>
-        <button class="toolbar-btn b3-tooltips b3-tooltips__n" @click.stop="rendition?.next()" aria-label="下一页">
+        <button class="toolbar-btn b3-tooltips b3-tooltips__n" @click.stop="rendition?.next()" :aria-label="i18n?.nextBtn || '下一页'">
           <svg><use xlink:href="#iconRight"></use></svg>
         </button>
-        <button class="toolbar-btn b3-tooltips b3-tooltips__n" @click.stop="emit('settings')" aria-label="设置">
+        <button class="toolbar-btn b3-tooltips b3-tooltips__n" @click.stop="emit('settings')" :aria-label="i18n?.settingsBtn || '设置'">
           <svg><use xlink:href="#iconSettings"></use></svg>
         </button>
     </div>
@@ -40,11 +40,11 @@
             @click.stop="addHighlight(c.color), closeMenu()"
           ></button>
         </div>
-        <button class="menu-btn b3-tooltips b3-tooltips__n" @mouseenter="ui.colorShow = true" @click.stop="addHighlight('yellow'), closeMenu()" aria-label="标注"><svg><use xlink:href="#iconMark"></use></svg></button>
+        <button class="menu-btn b3-tooltips b3-tooltips__n" @mouseenter="ui.colorShow = true" @click.stop="addHighlight('yellow'), closeMenu()" :aria-label="i18n?.highlight || '标注'"><svg><use xlink:href="#iconMark"></use></svg></button>
       </div>
-      <button class="menu-btn b3-tooltips b3-tooltips__n" @click.stop="addHighlightWithNote(), closeMenu()" aria-label="添加笔记"><svg><use xlink:href="#iconEdit"></use></svg></button>
-      <button class="menu-btn b3-tooltips b3-tooltips__n" @click.stop="copySelection(), closeMenu()" aria-label="复制"><svg><use xlink:href="#iconCopy"></use></svg></button>
-      <button class="menu-btn b3-tooltips b3-tooltips__n" @click.stop="openDict(ui.menuText, ui.menuX, ui.menuY + 50), closeMenu()" aria-label="词典"><svg><use xlink:href="#iconLanguage"></use></svg></button>
+      <button class="menu-btn b3-tooltips b3-tooltips__n" @click.stop="addHighlightWithNote(), closeMenu()" :aria-label="i18n?.addNote || '添加笔记'"><svg><use xlink:href="#iconEdit"></use></svg></button>
+      <button class="menu-btn b3-tooltips b3-tooltips__n" @click.stop="copySelection(), closeMenu()" :aria-label="i18n?.copyBtn || '复制'"><svg><use xlink:href="#iconCopy"></use></svg></button>
+      <button class="menu-btn b3-tooltips b3-tooltips__n" @click.stop="openDict(ui.menuText, ui.menuX, ui.menuY + 50), closeMenu()" :aria-label="i18n?.dictBtn || '词典'"><svg><use xlink:href="#iconLanguage"></use></svg></button>
     </div>
   </div>
 </template>
@@ -71,17 +71,6 @@ import EpubToc from './EpubToc.vue'
 // ===== 类型定义 =====
 export type HighlightColor = 'red' | 'orange' | 'yellow' | 'green' | 'pink' | 'blue' | 'purple'
 
-// ===== 常量配置 =====
-const COLORS: { color: HighlightColor; bg: string; title: string }[] = [
-  { color: 'red', bg: '#f44336', title: '红色' },
-  { color: 'orange', bg: '#ff9800', title: '橙色' },
-  { color: 'yellow', bg: '#ffeb3b', title: '黄色' },
-  { color: 'green', bg: '#4caf50', title: '绿色' },
-  { color: 'pink', bg: '#e91e63', title: '粉色' },
-  { color: 'blue', bg: '#2196f3', title: '蓝色' },
-  { color: 'purple', bg: '#9c27b0', title: '紫色' },
-]
-
 const TIMERS = { HIGHLIGHT_DELAY: 300, PROGRESS_SAVE: 2000, MENU_DEBOUNCE: 100, INIT_DELAY: 1000 }
 const SCROLL_THRESHOLD = 800
 
@@ -92,7 +81,7 @@ interface Props {
   url?: string
   blockId?: string
   cfi?: string
-  onRenditionReady?: (rendition: any) => void  // ✅ 暴露 rendition
+  onRenditionReady?: (rendition: any) => void  //  暴露 rendition
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -105,6 +94,18 @@ const props = withDefaults(defineProps<Props>(), {
   })
 })
 
+const i18n = props.plugin.i18n as any
+// ===== 常量配置 =====
+const COLORS: { color: HighlightColor; bg: string; title: string }[] = [
+  { color: 'red', bg: '#f44336', title: i18n?.colorRed || '红色' },
+  { color: 'orange', bg: '#ff9800', title: i18n?.colorOrange || '橙色' },
+  { color: 'yellow', bg: '#ffeb3b', title: i18n?.colorYellow || '黄色' },
+  { color: 'green', bg: '#4caf50', title: i18n?.colorGreen || '绿色' },
+  { color: 'pink', bg: '#e91e63', title: i18n?.colorPink || '粉色' },
+  { color: 'blue', bg: '#2196f3', title: i18n?.colorBlue || '蓝色' },
+  { color: 'purple', bg: '#9c27b0', title: i18n?.colorPurple || '紫色' },
+]
+
 const emit = defineEmits<{
   toc: []
   settings: []
@@ -114,7 +115,7 @@ const containerRef = ref<HTMLElement>()
 const readerWrapRef = ref<HTMLElement>()
 // ===== 响应式状态 =====
 const ui = reactive({ loading: true, error: '', loadingNext: false, menuShow: false, menuX: 0, menuY: 0, menuText: '', menuCfi: '', colorShow: false })
-const toc = useEpubToc()
+const toc = useEpubToc(undefined, i18n)
 const timers = { progress: 0, menu: 0 }
 
 let rendition: Rendition | null = null, book: Book | null = null, annotationDocId = '', progress = 0
@@ -218,7 +219,7 @@ const openBook = async () => {
     window.addEventListener('mreaderSettingsUpdated', onSettings)
     onUnmounted(() => window.removeEventListener('mreaderSettingsUpdated', onSettings))
   } catch (e) {
-    ui.error = e instanceof Error ? e.message : '加载失败'
+    ui.error = e instanceof Error ? e.message : i18n?.loadFailed || '加载失败'
     console.error('[MReader]', e)
   } finally {
     ui.loading = false
@@ -251,19 +252,19 @@ const addHighlight = async (color: HighlightColor = 'yellow', note = '', tags: s
   if (!text || !cfi || !props.blockId || !props.url) return
   if (!annotationDocId) {
     const cfg = { mode: props.settings?.annotationMode || 'notebook', notebookId: props.settings?.notebookId, parentDoc: props.settings?.parentDoc } as any
-    if (cfg.mode === 'notebook' && !cfg.notebookId) return showMessage('请先在设置中选择笔记本')
-    if (cfg.mode === 'document' && !cfg.parentDoc?.id) return showMessage('请先在设置中选择文档')
+    if (cfg.mode === 'notebook' && !cfg.notebookId) return showMessage(i18n?.selectNotebook || '请先在设置中选择笔记本')
+    if (cfg.mode === 'document' && !cfg.parentDoc?.id) return showMessage(i18n?.selectDocument || '请先在设置中选择文档')
     annotationDocId = await getOrCreateDoc(props.blockId, book?.packaging?.metadata?.title || props.file.name.replace('.epub', ''), cfg) || ''
     if (!annotationDocId) return
   }
   const textWithChapter = `${text}${toc.getCurrentChapter()}`
   addSingleHighlight(rendition, cfi, color, HL_STYLES), await saveHighlight(annotationDocId, textWithChapter, props.url, cfi, color, note, tags)
-  toc.setDocId(annotationDocId), toc.addMark(cfi, color, textWithChapter), tocDialog?.update(), showMessage('标注已保存')
+  toc.setDocId(annotationDocId), toc.addMark(cfi, color, textWithChapter), tocDialog?.update(), showMessage(i18n?.annotationSaved || '标注已保存')
 }
 const addHighlightWithNote = async () => {
-  const note = prompt('输入笔记（可选）：')
+  const note = prompt(i18n?.inputNote || '输入笔记（可选）：')
   if (note === null) return
-  const tags = prompt('输入标签（空格分隔，可选）：')?.split(' ').filter(Boolean) || []
+  const tags = prompt(i18n?.inputTags || '输入标签（空格分隔，可选）：')?.split(' ').filter(Boolean) || []
   await addHighlight('yellow', note, tags)
 }
 
@@ -279,12 +280,12 @@ const showTocDialog = () => {
       bookmarks: toc.state.value.bookmarks,
       marks: toc.state.value.marks,
       loading: toc.state.value.loading,
-      baseUrl: props.url,
+      baseUrl: props.url,i18n,
       onNavigate: handleTocNavigate,
       onNavigateToMark: handleMarkNavigate,
       onToggleBookmark: handleToggleBookmark,
       onRemoveMark: handleRemoveMark
-    }), containerRef.value?.parentElement?.querySelector('[aria-label="目录"]') as HTMLElement, mode, readerWrapRef.value)
+    }), containerRef.value?.parentElement?.querySelector('[aria-label="目录"]') as HTMLElement, mode, readerWrapRef.value, i18n)
     ;(tocDialog as any)._mode = mode
   }
   tocDialog.toggle()

@@ -8,13 +8,13 @@ import type { Book, Rendition } from 'epubjs'
 let pluginInstance: Plugin
 let getSettings: () => { openMode: string }
 
-const VIEW_STYLES = [
-  { icon: 'iconLink', label: '默认', value: '' },
-  { icon: 'iconEmbed', label: '边框', value: 'border' },
-  { icon: 'iconGallery', label: '卡片', value: 'card' },
-  { icon: 'iconImage', label: '封面', value: 'thumb' },
-  { icon: 'iconPreview', label: '阅读器', value: 'reader' },
-]
+const getViewStyles = (i18n?) => ([
+  { icon: 'iconLink', label: i18n?.styleDefault || '默认', value: '' },
+  { icon: 'iconEmbed', label: i18n?.styleBorder || '边框', value: 'border' },
+  { icon: 'iconGallery', label: i18n?.styleCard || '卡片', value: 'card' },
+  { icon: 'iconImage', label: i18n?.styleThumb || '封面', value: 'thumb' },
+  { icon: 'iconPreview', label: i18n?.styleReader || '阅读器', value: 'reader' },
+])
 
 const progressSavers = new Map<string, { timer: number; lastProgress: number; lastCfi: string }>()
 const loadingReaders = new Set<string>()
@@ -30,7 +30,7 @@ export async function parseEpubMetadata(file: File) {
     const title = metadata.title || file.name.replace('.epub', '')
     return { book, metadata: { title, author: metadata.creator || '', publisher: metadata.publisher || '', language: metadata.language || '', description: metadata.description || '', pubdate: metadata.pubdate || '', identifier: metadata.identifier || '', cover: '' } }
   } catch (e) {
-    return console.error('[MReader] 元数据解析失败:', e), null
+    return console.error('[MReader]', e), null
   }
 }
 
@@ -59,7 +59,7 @@ const saveMetadata = async (blockId: string, url: string) => {
   uploadCover(book, metadata.title, blockId)
 }
 
-const batchUpdate = async (docId: string, attrs: Record<string, string>, msg: string) => {
+const batchUpdate = async (docId: string, attrs: Record<string, string>, msg: string, i18n?) => {
   const t = performance.now()
   try {
     const existingIds = (await API.sql(`SELECT block_id FROM attributes WHERE name='custom-epub' AND block_id IN (SELECT id FROM blocks WHERE root_id='${docId}')`))?.map((r: any) => r.block_id) || []
@@ -72,16 +72,16 @@ const batchUpdate = async (docId: string, attrs: Record<string, string>, msg: st
         return id && !existingSet.has(id) && getEpubUrl(b)
       }).map(b => ({ id: b.getAttribute('data-node-id')!, url: getEpubUrl(b)! }))
       if (newBlocks.length) {
-        showMessage(`⏳ 提取 ${newBlocks.length} 个元数据...`, 2000, 'info')
+        showMessage(`⏳ ${i18n?.extractingMetadata || '提取元数据...'} ${newBlocks.length}`, 2000, 'info')
         for (let i = 0; i < newBlocks.length; i += 3) await Promise.allSettled(newBlocks.slice(i, i + 3).map(({ id, url }) => saveMetadata(id, url))), await new Promise(ok => setTimeout(ok, 200))
       }
     }
     const blockIds = attrs['custom-epub-width'] ? (await API.sql(`SELECT block_id FROM attributes WHERE name='custom-epub-view' AND value='card' AND block_id IN (SELECT id FROM blocks WHERE root_id='${docId}')`))?.map((r: any) => r.block_id) || [] : [...existingIds, ...newBlocks.map(b => b.id)]
-    if (!blockIds.length) return showMessage('当前文档未找到EPUB块', 3000, 'info')
+    if (!blockIds.length) return showMessage(i18n?.noEpubBlocks || '当前文档未找到EPUB块', 3000, 'info')
     for (let i = 0; i < blockIds.length; i += 100) document.querySelectorAll(blockIds.slice(i, i + 100).map(id => `[data-node-id="${id}"]`).join(',')).forEach(b => (b.querySelector('.epub-embedded-reader')?.remove(), destroyReader(b.getAttribute('data-node-id')!)))
     for (let i = 0; i < blockIds.length; i += 10) await Promise.allSettled(blockIds.slice(i, i + 10).map(id => API.setBlockAttrs(id, attrs))), await new Promise(ok => setTimeout(ok, 50))
-    setTimeout(renderAllEpubBlocks, 100), showMessage(`✅ ${msg} ${blockIds.length} 个 (${((performance.now() - t) / 1000).toFixed(2)}秒)`, 3000, 'info')
-  } catch (e) { showMessage('❌ 批量操作失败', 3000, 'error') }
+    setTimeout(renderAllEpubBlocks, 100), showMessage(`✅ ${msg} ${blockIds.length} (${((performance.now() - t) / 1000).toFixed(2)}s)`, 3000, 'info')
+  } catch (e) { showMessage(`❌ ${i18n?.batchOperationFailed || '批量操作失败'}`, 3000, 'error') }
 }
 
 // ==================== 菜单集成 ====================
@@ -93,13 +93,14 @@ export function initEpubBlockMenu(plugin: Plugin, settingsGetter: () => { openMo
     if (!menu) return
     const docId = protyle?.block?.rootID || (protyle?.element || document.querySelector('.protyle:not(.fn__none)'))?.querySelector('.protyle-title')?.dataset?.nodeId
     if (!docId) return
+    const i18n = pluginInstance.i18n
     menu.addItem({
       icon: 'iconTheme',
-      label: '批量转换EPUB样式',
+      label: i18n?.batchConvertStyle || '批量转换EPUB样式',
       submenu: [
-        ...VIEW_STYLES.map(s => ({ icon: s.icon, label: s.label, click: () => batchUpdate(docId, { 'custom-epub-view': s.value || '' }, '已转换') })),
+        ...getViewStyles(i18n).map(s => ({ icon: s.icon, label: s.label, click: () => batchUpdate(docId, { 'custom-epub-view': s.value || '' }, i18n?.converted || '已转换', i18n) })),
         { type: 'separator' },
-        { icon: 'iconFullscreen', label: '批量宽度', type: 'submenu', submenu: [100, 200, 300, 400, 500].map(w => ({ label: `${w}px`, click: () => batchUpdate(docId, { 'custom-epub-width': `${w}px` }, '已调整宽度') })) },
+        { icon: 'iconFullscreen', label: i18n?.batchWidth || '批量宽度', type: 'submenu', submenu: [100, 200, 300, 400, 500].map(w => ({ label: `${w}px`, click: () => batchUpdate(docId, { 'custom-epub-width': `${w}px` }, i18n?.widthAdjusted || '已调整宽度', i18n) })) },
       ]
     })
   }
@@ -115,11 +116,12 @@ export function initEpubBlockMenu(plugin: Plugin, settingsGetter: () => { openMo
     if (!blockId || !epubUrl) return
     
     const currentView = block.getAttribute('custom-epub-view') || ''
+    const i18n = pluginInstance.i18n
     
     menu.addItem({
       icon: 'iconTheme',
-      label: 'EPUB样式',
-      submenu: VIEW_STYLES.map(s => ({
+      label: i18n?.epubStyle || 'EPUB样式',
+      submenu: getViewStyles(i18n).map(s => ({
         icon: s.icon,
         label: s.label,
         click: async () => {
@@ -150,7 +152,7 @@ export function initEpubBlockMenu(plugin: Plugin, settingsGetter: () => { openMo
       
       menu.addItem({
         icon: 'iconFullscreen',
-        label: '宽度',
+        label: i18n?.width || '宽度',
         type: 'submenu',
         submenu: [
           el(`<input class="b3-text-field" type="number" value="${percent}" style="width:100%;margin:2px 0">`, i => i.onkeydown = e => e.key === 'Enter' && apply(+i.value)),
@@ -215,7 +217,7 @@ const loadEmbeddedReader = async (block: Element, url: string) => {
   
   destroyReader(blockId), block.querySelector('.epub-embedded-reader')?.remove(), loadingReaders.add(blockId)
   try {
-    const overlay = Object.assign(document.createElement('div'), { className: 'epub-embedded-reader', innerHTML: '<div class="epub-reader-loading"><div class="loading-spinner"></div><div>加载中...</div></div>' })
+    const overlay = Object.assign(document.createElement('div'), { className: 'epub-embedded-reader', innerHTML: `<div class="epub-reader-loading"><div class="loading-spinner"></div><div>${pluginInstance.i18n?.loading || '加载中...'}</div></div>` })
     const w = (block as HTMLElement).style.getPropertyValue('--epub-width') || block.getAttribute('custom-epub-width')
     w && overlay.style.setProperty('--epub-width', w)
     block.appendChild(overlay)

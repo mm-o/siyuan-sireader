@@ -127,13 +127,13 @@ export const clearCache = {
 // ===== 笔记本工具 =====
 export const notebook = {
   list: async () => (await API.lsNotebooks()).notebooks?.filter((n: any) => !n.closed) || [],
-  options: async () => (await notebook.list()).map((n: any) => ({ label: n.name || '未命名', value: n.id })),
+  options: async (i18n?) => (await notebook.list()).map((n: any) => ({ label: n.name || i18n?.unnamed || '未命名', value: n.id })),
   search: async (k: string) => k.trim() ? (await fetchSyncPost('/api/filetree/searchDocs', { k: k.trim() }))?.data || [] : [],
   
   // UI 初始化
-  initSelect: async (el: HTMLSelectElement, value: string, onChange: (v: string) => void) => {
+  initSelect: async (el: HTMLSelectElement, value: string, onChange: (v: string) => void, i18n?) => {
     const list = await notebook.list()
-    el.innerHTML = '<option value="">未选择</option>' + list.map(n => `<option value="${n.id}">${n.name}</option>`).join('')
+    el.innerHTML = `<option value="">${i18n?.notSelected || '未选择'}</option>` + list.map(n => `<option value="${n.id}">${n.name}</option>`).join('')
     value && (el.value = value)
     el.addEventListener('change', () => onChange(el.value))
   }
@@ -161,22 +161,23 @@ export const document = {
     container: HTMLElement,
     hint: HTMLElement,
     current: DocInfo | undefined,
-    onSelect: (doc: DocInfo) => void
+    onSelect: (doc: DocInfo) => void,
+    i18n?
   ) => {
     // 初始化
-    current?.name && (hint.textContent = `已选择：${current.name}`)
+    current?.name && (hint.textContent = `${i18n?.selected || '已选择：'}${current.name}`)
     
     // 搜索
     search.addEventListener('keydown', async (e) => {
       if (e.key !== 'Enter' || !search.value.trim()) return
       const docs = await notebook.search(search.value.trim())
-      if (!docs.length) return (await import('siyuan')).showMessage('未找到文档', 3000, 'info')
+      if (!docs.length) return (await import('siyuan')).showMessage(i18n?.notFoundDoc || '未找到文档', 3000, 'info')
       
       container.style.display = 'block'
-      select.innerHTML = docs.map(d => `<option value="${d.id}" data-box="${d.box}" data-path="${d.path}">${d.hPath || d.content || '无标题'}</option>`).join('')
+      select.innerHTML = docs.map(d => `<option value="${d.id}" data-box="${d.box}" data-path="${d.path}">${d.hPath || d.content || i18n?.noTitle || '无标题'}</option>`).join('')
       select.addEventListener('change', () => {
         const doc = document.parseOption(select.selectedOptions[0])
-        hint.textContent = `已选择：${doc.name}`
+        hint.textContent = `${i18n?.selected || '已选择：'}${doc.name}`
         onSelect(doc)
       }, { once: true })
     })
