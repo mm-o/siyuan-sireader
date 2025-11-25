@@ -64,7 +64,7 @@ const DEFAULT_SETTINGS: ReaderSettings = {
   pageTurnMode: 'click',
   pageAnimation: 'slide',
   columnMode: 'single',
-  tocPosition: 'dialog',
+  tocPosition: 'left',
   theme: 'default',
   customTheme: { name: '自定义', color: '#202124', bg: '#ffffff' },
   annotationMode: 'notebook',
@@ -147,6 +147,7 @@ export function useSetting(plugin: Plugin) {
           <div class="fn__flex-1" style="overflow-y:auto;padding:16px 20px">
             <div class="setting-group" data-group="general">
               ${item('打开方式', '选择打开书籍时的显示位置', select('openMode', options({ newTab: '新标签', rightTab: '右侧标签', bottomTab: '底部标签', newWindow: '新窗口' })))}
+              ${item('目录位置', '选择目录打开方式', select('tocPosition', options({ dialog: '窗口', left: '左侧', right: '右侧' })))}
             </div>
             
             <div class="setting-group" data-group="annotation" style="display:none">
@@ -188,7 +189,6 @@ export function useSetting(plugin: Plugin) {
             </div>
             
             <div class="setting-group" data-group="reader" style="display:none">
-              ${item('目录位置', '选择目录打开方式', select('tocPosition', options({ dialog: '窗口', left: '左侧', right: '右侧' })))}
               ${item('翻页方式', '选择如何进行页面翻转', select('pageTurnMode', options({ click: '点击翻页', toolbar: '仅工具栏' })))}
               ${item('翻页动画', '选择翻页时的动画效果', select('pageAnimation', options({ slide: '平移', fade: '淡入淡出', flip: '仿真翻页', scroll: '滚动', vertical: '上下翻页', none: '无动画' })))}
               ${item('显示模式', '选择单页或双页显示', select('columnMode', options({ single: '单页', double: '双页' })))}

@@ -1,12 +1,12 @@
 {
-  "name": "siyuan-mreader",
-  "version": "0.0.1",
+  "name": "siyuan-sireader",
+  "version": "0.1.0",
   "type": "module",
-  "description": "思源笔记阅读增强插件 - M阅读",
+  "description": "思源笔记电子书阅读增强插件 - 思阅 SiReader",
   "author": "mm-o",
   "license": "MIT",
-  "homepage": "https://github.com/mm-o/siyuan-mreader",
-  "repository": "https://github.com/mm-o/siyuan-mreader",
+  "homepage": "https://github.com/mm-o/siyuan-sireader",
+  "repository": "https://github.com/mm-o/siyuan-sireader",
   "scripts": {
     "dev": "vite build --watch",
     "release": "node ./release.js",

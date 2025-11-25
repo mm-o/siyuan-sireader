@@ -256,8 +256,9 @@ const addHighlight = async (color: HighlightColor = 'yellow', note = '', tags: s
     annotationDocId = await getOrCreateDoc(props.blockId, book?.packaging?.metadata?.title || props.file.name.replace('.epub', ''), cfg) || ''
     if (!annotationDocId) return
   }
-  addSingleHighlight(rendition, cfi, color, HL_STYLES), await saveHighlight(annotationDocId, text, props.url, cfi, color, note, tags)
-  toc.setDocId(annotationDocId), await toc.loadMarks(annotationDocId), showMessage('标注已保存')
+  const textWithChapter = `${text}${toc.getCurrentChapter()}`
+  addSingleHighlight(rendition, cfi, color, HL_STYLES), await saveHighlight(annotationDocId, textWithChapter, props.url, cfi, color, note, tags)
+  toc.setDocId(annotationDocId), toc.addMark(cfi, color, textWithChapter), tocDialog?.update(), showMessage('标注已保存')
 }
 const addHighlightWithNote = async () => {
   const note = prompt('输入笔记（可选）：')
@@ -293,10 +294,6 @@ const showTocDialog = () => {
 const handleClick = (e: MouseEvent) => {
   if ((e.target as HTMLElement).closest('.epub-toolbar, .epub-selection-menu')) return
   closeMenu()
-  if (props.settings?.pageTurnMode === 'toolbar') return
-  const rect = containerRef.value?.getBoundingClientRect()
-  const x = rect ? (e.clientX - rect.left) / rect.width : 0.5
-  x < 0.33 ? rendition?.prev() : x > 0.67 && rendition?.next()
 }
 
 const handleKey = (e: KeyboardEvent) => {

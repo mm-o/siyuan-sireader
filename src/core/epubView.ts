@@ -88,34 +88,31 @@ const batchUpdate = async (docId: string, attrs: Record<string, string>, msg: st
 export function initEpubBlockMenu(plugin: Plugin, settingsGetter: () => { openMode: string }) {
   pluginInstance = plugin
   getSettings = settingsGetter
-  const menuListener = (e: CustomEvent) => {
-    const { menu, blockElements, protyle } = e.detail || {}
+  const titleMenuListener = (e: CustomEvent) => {
+    const { menu, protyle } = e.detail || {}
     if (!menu) return
-    
+    const docId = protyle?.block?.rootID || (protyle?.element || document.querySelector('.protyle:not(.fn__none)'))?.querySelector('.protyle-title')?.dataset?.nodeId
+    if (!docId) return
+    menu.addItem({
+      icon: 'iconTheme',
+      label: '批量转换EPUB样式',
+      submenu: [
+        ...VIEW_STYLES.map(s => ({ icon: s.icon, label: s.label, click: () => batchUpdate(docId, { 'custom-epub-view': s.value || '' }, '已转换') })),
+        { type: 'separator' },
+        { icon: 'iconFullscreen', label: '批量宽度', type: 'submenu', submenu: [100, 200, 300, 400, 500].map(w => ({ label: `${w}px`, click: () => batchUpdate(docId, { 'custom-epub-width': `${w}px` }, '已调整宽度') })) },
+      ]
+    })
+  }
+  
+  const blockMenuListener = (e: CustomEvent) => {
+    const { menu, blockElements } = e.detail || {}
+    if (!menu) return
     const block = blockElements?.[0]
-    const isTitleMenu = block?.classList?.contains('protyle-title') || block?.querySelector('.protyle-title')
-    
-    // 批量转换菜单
-    if (isTitleMenu || (protyle && !block?.getAttribute('custom-epub'))) {
-      const docId = (protyle?.element || document.querySelector('.protyle:not(.fn__none)'))?.querySelector('.protyle-title')?.dataset?.nodeId || protyle?.block?.rootID
-      return docId && menu.addItem({
-        icon: 'iconTheme',
-        label: '批量转换EPUB样式',
-        submenu: [
-          ...VIEW_STYLES.map(s => ({ icon: s.icon, label: s.label, click: () => batchUpdate(docId, { 'custom-epub-view': s.value || '' }, '已转换') })),
-          { type: 'separator' },
-          { icon: 'iconFullscreen', label: '批量宽度', type: 'submenu', submenu: [100, 200, 300, 400, 500].map(w => ({ label: `${w}px`, click: () => batchUpdate(docId, { 'custom-epub-width': `${w}px` }, '已调整宽度') })) },
-        ]
-      })
-    }
-    
-    // 单个EPUB块菜单
-    const blockId = block?.dataset?.nodeId
-    if (!blockId) return
-    
+    if (!block) return
+    const blockId = block.dataset?.nodeId
     const isEpub = block.getAttribute('custom-epub')
     const epubUrl = isEpub ? block.getAttribute('custom-epub-url') : getEpubUrl(block)
-    if (!epubUrl) return
+    if (!blockId || !epubUrl) return
     
     const currentView = block.getAttribute('custom-epub-view') || ''
     
@@ -166,13 +163,13 @@ export function initEpubBlockMenu(plugin: Plugin, settingsGetter: () => { openMo
   
   const renderListener = () => setTimeout(renderAllEpubBlocks, 200)
   
-  plugin.eventBus.on('click-blockicon', menuListener)
-  plugin.eventBus.on('click-editortitleicon', menuListener)
+  plugin.eventBus.on('click-blockicon', blockMenuListener)
+  plugin.eventBus.on('click-editortitleicon', titleMenuListener)
   plugin.eventBus.on('loaded-protyle-static', renderListener)
   
   return () => {
-    plugin.eventBus.off('click-blockicon', menuListener)
-    plugin.eventBus.off('click-editortitleicon', menuListener)
+    plugin.eventBus.off('click-blockicon', blockMenuListener)
+    plugin.eventBus.off('click-editortitleicon', titleMenuListener)
     plugin.eventBus.off('loaded-protyle-static', renderListener)
   }
 }

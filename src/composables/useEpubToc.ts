@@ -84,27 +84,14 @@ export function useEpubToc(docId?: string) {
   const updateProgress = (href: string, percentage: number) => (state.value.currentHref = href, state.value.progress[href] = percentage * 100)
 
   const refreshBookmarks = async () => currentDocId && (state.value.bookmarks = await loadBookmarks(currentDocId))
-  const toggleBookmark = async (href: string, label: string, url?: string) => {
-    if (!currentDocId) return
-    const exists = state.value.bookmarks.find(b => b.href === href)
-    exists ? (state.value.bookmarks = state.value.bookmarks.filter(b => b.href !== href), removeBookmark(currentDocId, href)) : (state.value.bookmarks.push({ href, label, url: url || href }), addBookmark(currentDocId, label, href, url))
-  }
+  const toggleBookmark = async (href: string, label: string, url?: string) => currentDocId && ((exists) => (state.value.bookmarks = exists ? state.value.bookmarks.filter(b => b.href !== href) : [...state.value.bookmarks, { href, label, url: url || href }], exists ? removeBookmark(currentDocId, href) : addBookmark(currentDocId, label, href, url)))(state.value.bookmarks.some(b => b.href === href))
   const setDocId = (id: string) => currentDocId = id
 
   const COLOR_MAP = { R: 'red', O: 'orange', Y: 'yellow', G: 'green', P: 'pink', L: 'blue', V: 'purple' } as const
-  const loadMarks = async (docId: string) => {
-    if (!docId) return
-    try {
-      const blocks = await API.sql(`SELECT markdown FROM blocks WHERE root_id='${docId}' AND markdown LIKE '%epubcfi%'`).catch(() => [])
-      const marks = blocks.map((b: any) => {
-        const m = b.markdown?.match(/^-\s*([ROYGPLV])\s\[([^\]]+)\].*#(epubcfi\([^)]+\))/)
-        return m ? { cfi: m[3], color: COLOR_MAP[m[1] as keyof typeof COLOR_MAP] || 'yellow', text: m[2] } : null
-      }).filter(Boolean) as MarkData[]
-      state.value.marks = Array.from(new Map(marks.map(m => [m.cfi, m])).values())
-    } catch (e) { console.error('[MReader] 加载标记失败', e) }
-  }
-
-  return { state, loadToc, navigate, updateProgress, toggleBookmark, refreshBookmarks, loadMarks, setDocId }
+  const loadMarks = async (docId: string) => docId && (state.value.marks = Array.from(new Map((await API.sql(`SELECT markdown FROM blocks WHERE root_id='${docId}' AND markdown LIKE '%epubcfi%'`).catch(() => [])).map((b: any) => b.markdown?.match(/^-\s*([ROYGPLV])\s\[([^\]]+)\].*#(epubcfi\([^)]+\))/)).filter(Boolean).map((m: any) => ({ cfi: m[3], color: COLOR_MAP[m[1] as keyof typeof COLOR_MAP] || 'yellow', text: m[2] })).map((m: MarkData) => [m.cfi, m])).values()))
+  const addMark = (cfi: string, color: HighlightColor, text?: string) => cfi && (state.value.marks = [...state.value.marks.filter(m => m.cfi !== cfi), { cfi, color, text }])
+  const getCurrentChapter = () => ((find) => find ? `（${find.label}）` : '')((function search(items): TocItemData | null { return items.find(i => state.value.currentHref.includes(i.href.split('#')[0])) || items.map(i => i.subitems ? search(i.subitems) : null).find(Boolean) })(state.value.data))
+  return { state, loadToc, navigate, updateProgress, toggleBookmark, refreshBookmarks, loadMarks, addMark, getCurrentChapter, setDocId }
 }
 
 // ===== 对话框工具 =====

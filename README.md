@@ -1,13 +1,27 @@
-# Siyuan Plugin Template - Vite & Vue3
+# SiReader - Enhanced eBook Reading Plugin for SiYuan
 
 [简体中文](./README_zh_CN.md)
 
-> Consistent with [siyuan/plugin-sample](https://github.com/siyuan-note/plugin-sample).
+> An enhanced eBook reading plugin for SiYuan, built with Vue3 + Vite  
+> Features: Smart Annotations, Multiple Themes, Dictionary Integration, Immersive Reading Experience  
+> Currently supports: EPUB format, more formats coming soon
 
-1. Use Vite for packaging
-2. Use Vue3 for development
-3. Provides a github action template to automatically generate package.zip and upload to new release
-4. Provides a script to auto create tag and release. [link](#release-script)
+## Features
+
+- 📚 **eBook Reading**: Full EPUB support with smooth pagination (more formats coming)
+- 🎨 **Multiple Themes**: 8 preset themes + custom theme support
+- 📝 **Smart Annotations**: 7-color annotation system with chapter auto-tagging
+- 📖 **Table of Contents**: Smart navigation with bookmarks and progress tracking
+- 🔍 **Dictionary Integration**: 7 dictionary sources with auto language detection
+- 💎 **Block Styles**: 5 block display styles for in-document reading
+
+## Development
+
+Built with modern web technologies:
+1. Vue3 + Composition API for reactive UI
+2. TypeScript for type safety
+3. Vite for fast bundling
+4. Epub.js for EPUB rendering
 
 > [!NOTE]
 >

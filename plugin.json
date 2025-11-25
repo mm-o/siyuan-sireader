@@ -1,8 +1,8 @@
 {
-  "name": "siyuan-mreader",
+  "name": "siyuan-sireader",
   "author": "mm-o",
-  "url": "https://github.com/mm-o/siyuan-mreader",
-  "version": "0.0.2",
+  "url": "https://github.com/mm-o/siyuan-sireader",
+  "version": "0.1.0",
   "minAppVersion": "2.10.14",
   "disabledInPublish": true,
   "backends": [
@@ -12,14 +12,14 @@
     "all"
   ],
   "displayName": {
-    "default": "M阅读",
-    "en_US": "MReader",
-    "zh_CN": "M阅读"
+    "default": "思阅",
+    "en_US": "SiReader",
+    "zh_CN": "思阅"
   },
   "description": {
-    "default": "思源笔记阅读增强插件",
-    "en_US": "Enhanced reading experience plugin for SiYuan",
-    "zh_CN": "思源笔记阅读增强插件"
+    "default": "思源笔记电子书阅读增强插件，支持智能标注、多主题切换、词典查询",
+    "en_US": "Enhanced eBook reading plugin for SiYuan with smart annotations, themes, and dictionary",
+    "zh_CN": "思源笔记电子书阅读增强插件，支持智能标注、多主题切换、词典查询"
   },
   "readme": {
     "default": "README.md",
@@ -29,5 +29,5 @@
   "funding": {
     "custom": []
   },
-  "keywords": ["阅读", "reading", "mreader"]
+  "keywords": ["阅读", "reading", "电子书", "ebook", "epub", "sireader", "思阅"]
 }
