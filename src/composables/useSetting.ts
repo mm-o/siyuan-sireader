@@ -73,7 +73,6 @@ const DEFAULT_SETTINGS: ReaderSettings = {
 }
 
 // ===== 常量配置 =====
-const DIALOG_SIZE = { width: 560, height: 460 }
 const DEBOUNCE_DELAY = 300
 const SAVE_DELAY = 100
 
@@ -144,8 +143,7 @@ export function useSetting(plugin: Plugin) {
 
   // 打开设置对话框
   const open = () => {
-    if (dialog) return dialog.destroy(), dialog = null
-    const btn = document.querySelector(`[aria-label="${i18n?.settingsLabel || '设置'}"]`) as HTMLElement
+    if (dialog) dialog.destroy()
     dialog = new Dialog({
       title: i18n?.settingsTitle || '设置',
       content: `
@@ -242,16 +240,6 @@ export function useSetting(plugin: Plugin) {
     // 查询辅助函数
     const $ = <T = HTMLElement>(sel: string) => dialog.element.querySelector(sel) as T
     const $$ = (sel: string) => dialog.element.querySelectorAll(sel)
-    
-    // 定位对话框（按钮附近）
-    if (btn) {
-      const r = btn.getBoundingClientRect()
-      const container = $<HTMLElement>('.b3-dialog__container')
-      const { width: w, height: h } = DIALOG_SIZE
-      container.style.left = `${Math.max(10, Math.min(r.left, innerWidth - w - 10))}px`
-      container.style.top = `${Math.max(10, Math.min(r.top - h, innerHeight - h - 10))}px`
-      $('.b3-dialog')?.setAttribute('style', 'display:block')
-    }
     
     // ===== 分组导航 =====
     const groups = $$('.b3-list-item')
