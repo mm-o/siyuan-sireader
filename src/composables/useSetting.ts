@@ -12,16 +12,16 @@ import type { DocInfo } from '@/core/epubDoc'
 export type PageTurnMode = 'click' | 'toolbar'
 export type PageAnimation = 'slide' | 'fade' | 'flip' | 'scroll' | 'vertical' | 'none'
 export type ColumnMode = 'single' | 'double'
-export type TocPosition = 'dialog' | 'left' | 'right'
+export type TocPosition = 'left' | 'right'
 export interface ReadTheme { name: string; color: string; bg: string; bgImg?: string }
 
 export interface ReaderSettings {
   enabled: boolean
   openMode: 'newTab' | 'rightTab' | 'bottomTab' | 'newWindow'
+  tocPosition: TocPosition
   pageTurnMode: PageTurnMode
   pageAnimation: PageAnimation
   columnMode: ColumnMode
-  tocPosition: TocPosition
   theme: string
   customTheme: ReadTheme
   annotationMode: 'notebook' | 'document'
@@ -61,10 +61,10 @@ export const applyTheme = (el: HTMLElement, settings: ReaderSettings) => {
 const DEFAULT_SETTINGS: ReaderSettings = {
   enabled: true,
   openMode: 'newTab',
+  tocPosition: 'left',
   pageTurnMode: 'click',
   pageAnimation: 'slide',
   columnMode: 'single',
-  tocPosition: 'left',
   theme: 'default',
   customTheme: { name: 'custom', color: '#202124', bg: '#ffffff' },
   annotationMode: 'notebook',
@@ -107,7 +107,7 @@ export function useSetting(plugin: Plugin) {
       const data = await plugin.loadData('config.json')
       if (data?.settings) settings.value = { ...DEFAULT_SETTINGS, ...data.settings }
     } catch (e) {
-      console.error(`[MReader] ${i18n?.loadError || '加载设置失败'}:`, e)
+      console.error(`[SiReader] ${i18n?.loadError || '加载设置失败'}:`, e)
     }
   }
 
@@ -115,10 +115,10 @@ export function useSetting(plugin: Plugin) {
   const save = async (msg = i18n?.saved || '设置已保存') => {
     try {
       await plugin.saveData('config.json', { settings: settings.value })
-      window.dispatchEvent(new CustomEvent('mreaderSettingsUpdated', { detail: settings.value }))
+      window.dispatchEvent(new CustomEvent('sireaderSettingsUpdated', { detail: settings.value }))
       showMessage(msg, 2000, 'info')
     } catch (e) {
-      console.error(`[MReader] ${i18n?.saveError || '保存设置失败'}:`, e)
+      console.error(`[SiReader] ${i18n?.saveError || '保存设置失败'}:`, e)
     }
   }
 
@@ -148,7 +148,7 @@ export function useSetting(plugin: Plugin) {
           <div class="fn__flex-1" style="overflow-y:auto;padding:16px 20px">
             <div class="setting-group" data-group="general">
               ${item(i18n?.openMode || '打开方式', i18n?.openModeDesc || '选择打开书籍时的显示位置', select('openMode', options({ newTab: i18n?.newTab || '新标签', rightTab: i18n?.rightTab || '右侧标签', bottomTab: i18n?.bottomTab || '底部标签', newWindow: i18n?.newWindow || '新窗口' })))}
-              ${item(i18n?.tocPosition || '目录位置', i18n?.tocPositionDesc || '选择目录打开方式', select('tocPosition', options({ dialog: i18n?.dialog || '窗口', left: i18n?.left || '左侧', right: i18n?.right || '右侧' })))}
+              ${item(i18n?.tocPosition || '目录位置', i18n?.tocPositionDesc || '选择目录打开位置', select('tocPosition', options({ left: i18n?.left || '左侧', right: i18n?.right || '右侧' })))}
             </div>
             
             <div class="setting-group" data-group="annotation" style="display:none">

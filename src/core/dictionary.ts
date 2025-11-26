@@ -1,3 +1,5 @@
+import { Dialog } from 'siyuan'
+
 const BASE_URL = 'https://dictionary.cambridge.org'
 const MXNZP_ID = 'guuhjloujpkfenn1', MXNZP_SECRET = 'izYrfPlqfRMxrXHUCf5vEbD4WSxnjSow'
 
@@ -13,25 +15,42 @@ const DICTS = [
   { id: 'bing', name: '必应', icon: 'https://cn.bing.com/favicon.ico', url: 'https://cn.bing.com/dict/search?q={{word}}' },
 ]
 
-let popup: HTMLElement | null, state = { dragging: false, resizing: false, pinned: false, word: '', offset: { x: 0, y: 0 }, start: { x: 0, y: 0, w: 0, h: 0 } }
+let dialog: Dialog | null = null, state = { word: '' }
 
 const fetchHTML = async (url: string) => new DOMParser().parseFromString(await (await fetch(url)).text(), 'text/html')
 const getTexts = (doc: Document, selector: string) => Array.from(doc.querySelectorAll(selector)).map(el => el.textContent?.trim()).filter(Boolean)
 const makeTag = (words: string[], color: string, label: string) => words.length ? [`<div style="margin-top:8px;color:${color};font-size:13px">${label}：${words.slice(0, 8).join('、')}</div>`] : []
 
-export async function openDict(word: string, x: number, y: number) {
-  if (!popup) createPopup()
+export async function openDict(word: string, _x?: number, _y?: number) {
   state.word = word
-  Object.assign(popup!.style, { left: Math.max(0, Math.min(window.innerWidth - 520, x)) + 'px', top: Math.max(32, Math.min(window.innerHeight - 600, y)) + 'px', display: 'flex', zIndex: String(++(window.siyuan as any).zIndex || 9999) })
+  if (dialog) dialog.destroy()
+  
+  const tabs = DICTS.map(d => {
+    const icon = d.icon.startsWith('#') ? `<svg style="width:14px;height:14px"><use xlink:href="${d.icon}"></use></svg>` : `<img src="${d.icon}" style="width:14px;height:14px">`
+    return `<button class="b3-button b3-button--outline" data-id="${d.id}" style="padding:4px 8px;font-size:12px">${icon} ${d.name}</button>`
+  }).join('')
+  
+  dialog = new Dialog({
+    title: '📖 词典',
+    content: `<div class="b3-dialog__content" style="display:flex;flex-direction:column;gap:8px;height:100%">
+      <div style="display:flex;gap:4px;flex-wrap:wrap">${tabs}</div>
+      <div class="dict-body fn__flex-1" style="overflow-y:auto;padding:8px"></div>
+    </div>`,
+    width: '540px',
+    height: '600px'
+  })
+  
+  dialog.element.querySelectorAll('[data-id]').forEach(btn => btn.addEventListener('click', () => switchDict((btn as HTMLElement).dataset.id!)))
   switchDict(/[一-龥]/.test(word) ? (word.length === 1 ? 'mxnzp' : 'ciyu') : 'cambridge')
 }
 
 function switchDict(dictId: string) {
-  popup!.querySelectorAll('.dict-tab').forEach(tab => tab.classList.toggle('active', tab.getAttribute('data-id') === dictId))
+  if (!dialog) return
+  dialog.element.querySelectorAll('[data-id]').forEach(btn => btn.classList.toggle('b3-button--cancel', (btn as HTMLElement).dataset.id === dictId))
   const dict = DICTS.find(d => d.id === dictId)
   if (dict?.url) return setBody(`<iframe src="${dict.url.replace('{{word}}', state.word)}" style="width:100%;height:100%;border:none"/>`)
   
-  setBody('<div class="dict-loading"><span>查询中...</span></div>')
+  setBody('<div style="text-align:center;padding:20px;color:var(--b3-theme-on-surface-light)">查询中...</div>')
   const queries: Record<string, () => Promise<any>> = {
     cambridge: () => fetchDict(state.word.split(' ').join('-'), 'dictionary/english-chinese-simplified').then(r => r || fetchDict(state.word.split(' ').join('-'), 'dictionary/english')),
     youdao: () => queryYoudao(state.word),
@@ -40,52 +59,10 @@ function switchDict(dictId: string) {
     ciyu: () => queryCiyu(state.word),
     zdic: () => queryZdic(state.word)
   }
-  queries[dictId]?.().then(r => r ? (dictId === 'cambridge' ? renderCambridge(r) : renderCommon(r)) : setBody('<div class="dict-error">未找到释义</div>')).catch(() => setBody('<div class="dict-error">查询失败</div>'))
+  queries[dictId]?.().then(r => r ? (dictId === 'cambridge' ? renderCambridge(r) : renderCommon(r)) : setBody('<div style="text-align:center;padding:20px;color:var(--b3-theme-error)">未找到释义</div>')).catch(() => setBody('<div style="text-align:center;padding:20px;color:var(--b3-theme-error)">查询失败</div>'))
 }
 
-function createPopup() {
-  popup = document.createElement('div')
-  popup.className = 'mreader-dict-popup'
-  
-  const tabsHTML = DICTS.map(d => {
-    const iconHTML = d.icon.startsWith('#') 
-      ? `<svg style="width:14px;height:14px"><use xlink:href="${d.icon}"></use></svg>` 
-      : `<img src="${d.icon}" style="width:14px;height:14px" />`
-    return `<div class="dict-tab" data-id="${d.id}">${iconHTML} ${d.name}</div>`
-  }).join('')
-  
-  popup.innerHTML = `
-    <div class="dict-header">
-      <h3 class="dict-title">📖 词典</h3>
-      <button class="dict-btn pin-btn"><svg><use xlink:href="#iconPin"></use></svg></button>
-      <button class="dict-btn close-btn">×</button>
-    </div>
-    <div class="dict-tabs">${tabsHTML}</div>
-    <div class="dict-body"></div>
-    <div class="resize-handle"></div>
-  `
-  
-  popup.querySelector('.dict-header')!.addEventListener('mousedown', (e: any) => !e.target.closest('.dict-btn') && (state.dragging = true, state.offset.x = e.clientX - popup!.offsetLeft, state.offset.y = e.clientY - popup!.offsetTop))
-  popup.querySelector('.resize-handle')!.addEventListener('mousedown', (e: MouseEvent) => (e.stopPropagation(), state.resizing = true, state.start = { x: e.clientX, y: e.clientY, w: popup!.offsetWidth, h: popup!.offsetHeight }))
-  
-  document.addEventListener('mousemove', (e) => {
-    if (state.dragging && popup) popup.style.left = Math.max(0, Math.min(window.innerWidth - popup.offsetWidth, e.clientX - state.offset.x)) + 'px', popup.style.top = Math.max(32, Math.min(window.innerHeight - popup.offsetHeight, e.clientY - state.offset.y)) + 'px'
-    if (state.resizing && popup) popup.style.width = Math.min(Math.max(320, state.start.w + e.clientX - state.start.x), window.innerWidth - popup.offsetLeft) + 'px', popup.style.height = Math.min(Math.max(400, state.start.h + e.clientY - state.start.y), window.innerHeight - popup.offsetTop) + 'px'
-  })
-  document.addEventListener('mouseup', () => (state.dragging = false, state.resizing = false))
-  popup.querySelector('.pin-btn')!.addEventListener('click', (e: any) => (state.pinned = !state.pinned, e.currentTarget.querySelector('use').setAttribute('xlink:href', state.pinned ? '#iconUnpin' : '#iconPin')))
-  popup.querySelector('.close-btn')!.addEventListener('click', () => popup!.style.display = 'none')
-  document.addEventListener('click', (e) => !state.pinned && popup && !popup.contains(e.target as Node) && (popup.style.display = 'none'))
-  popup.addEventListener('click', (e) => e.stopPropagation())
-  document.addEventListener('keydown', (e) => e.key === 'Escape' && !state.pinned && popup?.style.display === 'flex' && (popup.style.display = 'none'))
-  
-  popup.querySelectorAll('.dict-tab').forEach(tab => tab.addEventListener('click', () => switchDict(tab.getAttribute('data-id')!)))
-  
-  injectStyles()
-  document.body.appendChild(popup)
-}
-
-const setBody = (html: string) => (popup!.querySelector('.dict-body') as HTMLElement).innerHTML = html
+const setBody = (html: string) => dialog && ((dialog.element.querySelector('.dict-body') as HTMLElement).innerHTML = html)
 
 async function queryYoudao(word: string) {
   try {
@@ -161,47 +138,18 @@ async function queryZdic(word: string) {
 }
 
 function renderCommon(data: any) {
-  const audioBtn = data.audio ? `<button class="audio-btn" onclick="new Audio('${data.audio}').play().catch(()=>{})"><svg class="audio-icon" width="16" height="16" viewBox="0 0 28 28" fill="none"><path d="M10.7 18.2H8c-.6 0-1-.5-1-1.1v-6.2c0-.6.4-1.1 1-1.1h2.7l3.6-2.5c.6-.6 1.7-.2 1.7.8v11.9c0 .9-1 1.4-1.7.8l-3.6-2.5Z" stroke-width="1.5"/><path d="M19 18c.6-.5 1.1-1.1 1.5-1.8.3-.7.5-1.4.5-2.2s-.2-1.5-.5-2.2c-.4-.7-.9-1.3-1.5-1.8" stroke-width="1.5" stroke-linecap="round"/></svg></button>` : ''
-  const phoneticHTML = data.phonetic ? `<div class="dict-phonetics"><div class="phonetic-item"><span>${data.phonetic}</span>${audioBtn}</div></div>` : ''
-  const metaHTML = data.meta ? `<div class="dict-meta">${data.meta}</div>` : ''
-  const meansHTML = data.defs.map((d: string) => `<div class="dict-part"><span class="part-means">${d}</span></div>`).join('')
-  setBody(`<div class="dict-content"><div class="dict-word">${data.word}</div>${phoneticHTML}${metaHTML}${meansHTML}</div>`)
+  const audio = data.audio ? `<button class="b3-button b3-button--text" onclick="new Audio('${data.audio}').play().catch(()=>{})">🔊</button>` : ''
+  const phonetic = data.phonetic ? `<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span style="color:var(--b3-theme-on-surface-light)">${data.phonetic}</span>${audio}</div>` : ''
+  const meta = data.meta ? `<div style="font-size:12px;color:var(--b3-theme-on-surface-light);margin-bottom:8px">${data.meta}</div>` : ''
+  const defs = data.defs.map((d: string) => `<div style="margin:6px 0;padding:6px;background:var(--b3-theme-background);border-radius:4px">${d}</div>`).join('')
+  setBody(`<div style="font-size:20px;font-weight:600;margin-bottom:8px">${data.word}</div>${phonetic}${meta}${defs}`)
 }
 
 function renderCambridge(r: DictResult) {
-  const phoneticsHTML = r.phonetics.map(p => `
-    <div class="phonetic-item">
-      <span>${p.region === 'us' ? '美' : '英'}</span>
-      <span>[${p.ipa}]</span>
-      <button class="audio-btn" onclick="new Audio('${BASE_URL}${p.audio}').play()">
-        <svg class="audio-icon" width="20" height="20" viewBox="0 0 28 28" fill="none">
-          <path d="M10.7 18.2H8c-.6 0-1-.5-1-1.1v-6.2c0-.6.4-1.1 1-1.1h2.7l3.6-2.5c.6-.6 1.7-.2 1.7.8v11.9c0 .9-1 1.4-1.7.8l-3.6-2.5Z" stroke-width="1.5"/>
-          <path d="M19 18c.6-.5 1.1-1.1 1.5-1.8.3-.7.5-1.4.5-2.2s-.2-1.5-.5-2.2c-.4-.7-.9-1.3-1.5-1.8" stroke-width="1.5" stroke-linecap="round"/>
-        </svg>
-      </button>
-    </div>
-  `).join('')
-  
-  const partsHTML = r.parts.map(p => `
-    <div class="dict-part">
-      <span class="part-label">${p.part}</span>
-      <span class="part-means">${p.means.join('; ')}</span>
-    </div>
-  `).join('')
-  
-  const examplesHTML = r.examples.length ? `
-    <div class="dict-examples">
-      <div class="example-title">例句</div>
-      ${r.examples.map(ex => `
-        <div class="example-item">
-          <div class="example-en">${ex.en}</div>
-          <div class="example-zh">${ex.zh}</div>
-        </div>
-      `).join('')}
-    </div>
-  ` : ''
-  
-  setBody(`<div class="dict-content"><div class="dict-word">${r.word}</div>${r.phonetics.length ? `<div class="dict-phonetics">${phoneticsHTML}</div>` : ''}${partsHTML}${examplesHTML}</div>`)
+  const phonetics = r.phonetics.map(p => `<div style="display:flex;align-items:center;gap:8px"><span>${p.region === 'us' ? '美' : '英'}</span><span>[${p.ipa}]</span><button class="b3-button b3-button--text" onclick="new Audio('${BASE_URL}${p.audio}').play()">🔊</button></div>`).join('')
+  const parts = r.parts.map(p => `<div style="margin:8px 0;padding:8px;background:var(--b3-theme-background);border-radius:4px;border-left:3px solid var(--b3-theme-primary)"><span style="font-weight:600;color:var(--b3-theme-primary);margin-right:8px">${p.part}</span><span>${p.means.join('; ')}</span></div>`).join('')
+  const examples = r.examples.length ? `<div style="margin-top:12px"><div style="font-weight:600;margin-bottom:6px">例句</div>${r.examples.map(ex => `<div style="margin:6px 0;padding:6px;background:var(--b3-theme-background);border-radius:4px"><div style="font-style:italic;margin-bottom:2px">${ex.en}</div><div style="color:var(--b3-theme-on-surface-light);font-size:13px">${ex.zh}</div></div>`).join('')}</div>` : ''
+  setBody(`<div style="font-size:20px;font-weight:600;margin-bottom:8px">${r.word}</div>${phonetics ? `<div style="display:flex;gap:16px;margin-bottom:12px;flex-wrap:wrap">${phonetics}</div>` : ''}${parts}${examples}`)
   r.phonetics.length && new Audio(BASE_URL + r.phonetics[0].audio).play().catch(() => {})
 }
 
@@ -251,20 +199,3 @@ function makePhonetic(block: Element | null, region: 'us' | 'uk') {
   }
 }
 
-function injectStyles() {
-  if (document.getElementById('mreader-dict-styles')) return
-  const css = `.mreader-dict-popup{position:fixed;width:520px;height:600px;background:var(--b3-theme-surface);border:1px solid var(--b3-border-color);
-  border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.18);z-index:9999;display:none;flex-direction:column;overflow:hidden;
-  min-width:320px;min-height:400px}.dict-header,.dict-tabs{display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--b3-theme-background);border-bottom:1px solid var(--b3-border-color)}.dict-header{cursor:move;user-select:none}.dict-tabs{flex-wrap:wrap;gap:6px}.dict-title{flex:1;margin:0;font-size:16px;font-weight:600}.dict-btn{width:24px;height:24px;border:none;border-radius:4px;
-  background:0 0;color:var(--b3-theme-on-surface);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:18px;transition:background .15s}.dict-btn:hover{background:var(--b3-theme-surface)}.dict-btn svg{width:14px;height:14px}.dict-tab{min-width:64px;padding:6px 10px;border-radius:4px;cursor:pointer;display:flex;align-items:center;
-  justify-content:center;gap:5px;font-size:12px;transition:all .15s;color:var(--b3-theme-on-surface);opacity:.7;
-  white-space:nowrap}.dict-tab:hover{opacity:1;background:var(--b3-theme-surface)}.dict-tab.active{opacity:1;background:var(--b3-theme-primary);
-  color:#fff;font-weight:500}.dict-body{flex:1;padding:12px;overflow-y:auto}.resize-handle{position:absolute;right:0;bottom:0;width:20px;height:20px;cursor:nwse-resize}.resize-handle::after{content:'';position:absolute;right:2px;bottom:2px;width:10px;height:10px;border-right:2px solid var(--b3-border-color);
-  border-bottom:2px solid var(--b3-border-color)}.dict-loading,.phonetic-item{display:flex;align-items:center;gap:8px}.dict-loading{justify-content:center;padding:20px;color:var(--b3-theme-on-surface-light)}.dict-error{padding:20px;text-align:center;color:var(--b3-theme-error)}.dict-word{font-size:22px;
-  font-weight:700;margin-bottom:8px}.dict-phonetics{display:flex;gap:16px;margin-bottom:12px;flex-wrap:wrap}.phonetic-item{gap:6px;font-size:14px}.dict-meta{font-size:12px;color:var(--b3-theme-on-surface-light);margin-bottom:12px;padding:4px 8px;background:var(--b3-theme-background);border-radius:4px;
-  display:inline-block}.audio-btn{border:none;background:0 0;cursor:pointer;
-  padding:2px;display:flex;align-items:center}.audio-icon{stroke:var(--b3-theme-on-surface);fill:none;transition:stroke .15s}.audio-btn:hover .audio-icon{stroke:var(--b3-theme-primary)}.dict-part,.example-item{margin:8px 0;padding:8px;
-  background:var(--b3-theme-background);border-radius:4px}.dict-part{margin:10px 0;border-left:3px solid var(--b3-theme-primary)}.part-label{font-weight:600;color:var(--b3-theme-primary);
-  margin-right:8px}.dict-examples{margin-top:16px}.example-title{font-weight:600;margin-bottom:8px}.example-item{font-size:14px}.example-en{font-style:italic;margin-bottom:4px}.example-zh{color:var(--b3-theme-on-surface-light)}`
-  document.head.appendChild(Object.assign(document.createElement('style'), { id: 'mreader-dict-styles', textContent: css }))
-}

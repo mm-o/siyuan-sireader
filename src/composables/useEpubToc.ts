@@ -1,6 +1,5 @@
 import { ref, h, render, computed, watch, nextTick } from 'vue'
 import type { Ref, ComputedRef } from 'vue'
-import { Dialog } from 'siyuan'
 import * as API from '@/api'
 import type { HighlightColor, Bookmark } from '@/core/epubDoc'
 import { loadBookmarks, addBookmark, removeBookmark } from '@/core/epubDoc'
@@ -18,11 +17,6 @@ export interface TocItemData {
   subitems?: TocItemData[]
 }
 
-export interface TocDialogConfig {
-  width: number
-  height: number
-}
-
 export interface MarkData {
   cfi: string
   color: HighlightColor
@@ -36,12 +30,6 @@ export interface TocState {
   bookmarks: Bookmark[]
   marks: MarkData[]
   loading: boolean
-}
-
-// ===== 常量配置 =====
-export const TOC_DIALOG_CONFIG: TocDialogConfig = {
-  width: 420,
-  height: 600
 }
 
 // ===== 目录数据转换 =====
@@ -70,7 +58,7 @@ export function useEpubToc(docId?: string, i18n?) {
   const loadToc = async (navigation: any) => {
     state.value.loading = true
     try { state.value.data = navigation.toc.map(mapTocItem) } 
-    catch (e) { console.error(`[MReader] ${i18n?.tocLoadError || '加载目录失败'}`, e) } 
+    catch (e) { console.error(`[SiReader] ${i18n?.tocLoadError || '加载目录失败'}`, e) } 
     finally { state.value.loading = false }
   }
 
@@ -95,71 +83,53 @@ export function useEpubToc(docId?: string, i18n?) {
 }
 
 // ===== 对话框工具 =====
-const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(v, max))
 const getBtns = (i18n?) => [['reverse', i18n?.tocReverse || '反序', '#iconSort'], ['top', i18n?.tocTop || '跳到顶部', '#iconUp'], ['bottom', i18n?.tocBottom || '跳到底部', '#iconDown'], ['bookmark', i18n?.tocBookmarkMode || '书签模式', '#iconBookmark'], ['marks', i18n?.tocMarkMode || '标记模式', '#iconMark']]
 const BTN_ACTIONS: Record<string, (r: any) => void> = { reverse: r => r.toggleReverse(), top: r => r.scrollTo(0), bottom: r => r.scrollTo(-1), bookmark: r => r.toggleBookmarkMode(), marks: r => r.toggleMarkMode() }
 const ACTIVE_PROPS: Record<string, string> = { reverse: 'reverseOrder', bookmark: 'bookmarkMode', marks: 'markMode' }
 
-// 定位对话框
-const positionDialog = (el: HTMLElement, btn: HTMLElement, { width: w, height: h }: typeof TOC_DIALOG_CONFIG) => {
-  const { left, top } = btn.getBoundingClientRect()
-  const dc = el.querySelector('.b3-dialog__container') as HTMLElement
-  dc.style.left = `${clamp(left, 10, innerWidth - w - 10)}px`
-  dc.style.top = `${clamp(top - h - 20, 10, innerHeight - h - 10)}px`
-  el.querySelector('.b3-dialog')?.setAttribute('style', 'display:block')
-}
+export function createTocDialog(component: any, getProps: () => any, _btnEl?: HTMLElement, mode: 'left' | 'right' = 'left', parentEl?: HTMLElement, i18n?) {
+  let panel: HTMLElement | null = null, overlay: HTMLElement | null = null, container: Element | null = null, vnode: any = null
 
-export function createTocDialog(component: any, getProps: () => any, btnEl?: HTMLElement, mode: 'dialog' | 'left' | 'right' = 'dialog', parentEl?: HTMLElement, i18n?) {
-  let dialog: Dialog | null = null, panel: HTMLElement | null = null, overlay: HTMLElement | null = null, container: Element | null = null, vnode: any = null
-
-  const isOpen = () => mode === 'dialog' ? !!dialog : !!panel
-  const close = () => (overlay?.remove(), panel?.remove(), dialog = panel = overlay = container = vnode = null)
-  const renderToolbar = (hdr: Element, ref: any) => {
-    (hdr as HTMLElement).style.cssText = 'position:relative;z-index:2;display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--b3-border-color)'
-    hdr.innerHTML = `<span style="flex:1;font-weight:500">${i18n?.tocTitle || '目录'}</span><div style="display:flex;gap:4px">${getBtns(i18n).map(([a, l, i]) => `<button class="toc-btn b3-tooltips b3-tooltips__s" data-action="${a}" aria-label="${l}"><svg style="width:14px;height:14px"><use xlink:href="${i}"></use></svg></button>`).join('')}</div>`
-    hdr.querySelectorAll('.toc-btn').forEach(btn => btn.addEventListener('click', () => {
-      const action = (btn as HTMLElement).dataset.action
-      if (!action) return
-      BTN_ACTIONS[action]?.(ref)
-      const prop = ACTIVE_PROPS[action]
-      prop && (btn as HTMLElement).classList.toggle('active', ref[prop].value)
-    }))
-  }
-
-  const renderToc = (hdr: Element, cnt: Element, scroll: (el: Element) => void) => {
+  const renderToc = () => {
+    if (!container) return
     vnode = h(component, getProps())
-    render(vnode, cnt as any)
+    render(vnode, container as any)
     setTimeout(() => {
-      const ref = vnode.component?.exposed, focus = cnt?.querySelector('.b3-list-item--focus')
-      ref && renderToolbar(hdr, ref)
-      focus && scroll(focus)
+      const ref = vnode.component?.exposed
+      if (!ref || !panel) return
+      const hdr = panel.querySelector('.toc-panel-header')!
+      const btns = getBtns(i18n).map(([a, l, i]) => `<button class="toc-btn b3-tooltips b3-tooltips__s" data-action="${a}" aria-label="${l}"><svg style="width:14px;height:14px"><use xlink:href="${i}"></use></svg></button>`).join('')
+      hdr.innerHTML = `<div style="padding:8px 12px;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--b3-border-color)"><span style="flex:1;font-weight:500">${i18n?.tocTitle || '目录'}</span><div style="display:flex;gap:4px">${btns}</div></div>`
+      hdr.querySelectorAll('[data-action]').forEach(btn => btn.addEventListener('click', () => {
+        const action = (btn as HTMLElement).dataset.action
+        if (!action) return
+        BTN_ACTIONS[action]?.(ref)
+        const prop = ACTIVE_PROPS[action]
+        prop && btn.classList.toggle('active', ref[prop].value)
+      }))
+      const focus = container!.querySelector('.b3-list-item--focus')
+      if (focus) { const r = focus.getBoundingClientRect(), p = focus.parentElement?.getBoundingClientRect(); p && (r.top < p.top || r.bottom > p.bottom) && focus.scrollIntoView({ block: 'nearest' }) }
     }, 0)
   }
 
-  const smartScroll = (el: Element) => { const r = el.getBoundingClientRect(), p = el.parentElement?.getBoundingClientRect(); p && (r.top < p.top || r.bottom > p.bottom) && el.scrollIntoView({ block: 'nearest' }) }
-  const update = () => isOpen() && container && renderToc(mode === 'dialog' ? dialog!.element.querySelector('.b3-dialog__header')! : panel!.querySelector('.toc-panel-header')!, container, smartScroll)
-  
-  const toggle = () => {
-    if (isOpen()) return close()
-    if (mode === 'dialog') {
-      dialog = new Dialog({ title: i18n?.tocTitle || '目录', content: '<div class="fn__flex-1"></div>', width: `${TOC_DIALOG_CONFIG.width}px`, height: `${TOC_DIALOG_CONFIG.height}px`, destroyCallback: close })
-      const { element } = dialog
-      const hdr = element.querySelector('.b3-dialog__header')!
-      container = element.querySelector('.b3-dialog__body .fn__flex-1')!
-      btnEl && positionDialog(element, btnEl, TOC_DIALOG_CONFIG)
-      ;(hdr as HTMLElement).style.cssText = 'position:relative;z-index:2;display:flex;align-items:center;gap:8px'
-      hdr.insertAdjacentHTML('beforeend', `<div style="display:flex;gap:4px;margin-left:auto">${getBtns(i18n).map(([a, l, i]) => `<button class="toc-btn b3-tooltips b3-tooltips__s" data-action="${a}" aria-label="${l}"><svg><use xlink:href="${i}"></use></svg></button>`).join('')}</div>`)
-      renderToc(hdr, container, el => el.scrollIntoView({ block: 'nearest' }))
-    } else {
-      overlay = Object.assign(document.createElement('div'), { className: 'epub-toc-overlay', onclick: close })
-      panel = Object.assign(document.createElement('div'), { className: `epub-toc-panel epub-toc-panel--${mode}`, innerHTML: '<div class="toc-panel-header"></div><div class="toc-panel-body fn__flex-1"></div>', onclick: (e: Event) => e.stopPropagation() })
-      parentEl?.append(overlay, panel)
-      container = panel.querySelector('.toc-panel-body')!
-      renderToc(panel.querySelector('.toc-panel-header')!, container, el => el.scrollIntoView({ block: 'nearest' }))
-    }
+  const close = () => {
+    overlay?.remove()
+    panel?.remove()
+    overlay = panel = container = vnode = null
   }
 
-  return { toggle, update, isOpen, destroy: () => (dialog?.destroy(), close()), get instance() { return dialog } }
+  const update = () => renderToc()
+  
+  const toggle = () => {
+    if (panel) return close()
+    overlay = Object.assign(document.createElement('div'), { className: 'epub-toc-overlay', onclick: close })
+    panel = Object.assign(document.createElement('div'), { className: `epub-toc-panel epub-toc-panel--${mode}`, innerHTML: '<div class="toc-panel-header"></div><div class="toc-panel-body fn__flex-1"></div>' })
+    parentEl?.append(overlay, panel)
+    container = panel.querySelector('.toc-panel-body')!
+    renderToc()
+  }
+
+  return { toggle, update, isOpen: () => !!panel, destroy: close }
 }
 
 // ===== 目录工具函数 =====

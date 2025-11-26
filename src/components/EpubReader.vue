@@ -65,8 +65,7 @@ import * as API from '@/api'
 import { openDict } from '@/core/dictionary'
 import { getOrCreateDoc, addHighlight as saveHighlight, restoreHighlights, clearCache, addSingleHighlight, verifyDoc } from '@/core/epubDoc'
 import { HL_STYLES } from '@/core/epub'
-import { useEpubToc, createTocDialog, mapTocItem } from '@/composables/useEpubToc'
-import EpubToc from './EpubToc.vue'
+import { EpubToc } from '@/lib/toc'
 
 // ===== 类型定义 =====
 export type HighlightColor = 'red' | 'orange' | 'yellow' | 'green' | 'pink' | 'blue' | 'purple'
@@ -115,11 +114,10 @@ const containerRef = ref<HTMLElement>()
 const readerWrapRef = ref<HTMLElement>()
 // ===== 响应式状态 =====
 const ui = reactive({ loading: true, error: '', loadingNext: false, menuShow: false, menuX: 0, menuY: 0, menuText: '', menuCfi: '', colorShow: false })
-const toc = useEpubToc(undefined, i18n)
 const timers = { progress: 0, menu: 0 }
 
-let rendition: Rendition | null = null, book: Book | null = null, annotationDocId = '', progress = 0
-let tocDialog: ReturnType<typeof createTocDialog> | null = null
+let rendition: Rendition | null = null, book: Book | null = null, annotationDocId = '', progress = 0, currentHref = ''
+let tocPanel: EpubToc | null = null
 
 const closeMenu = () => (ui.menuShow = ui.colorShow = false)
 
@@ -153,9 +151,6 @@ const openBook = async () => {
       containerRef.value?.querySelectorAll('iframe').forEach(iframe => iframe.contentDocument?.body && apply(iframe.contentDocument.body, settings))
     }
     
-    // 加载目录
-    book.loaded.navigation.then((nav: any) => toc.loadToc(nav)).catch(() => {})
-    
     props.onRenditionReady?.(rendition)
     
     // 恢复阅读状态
@@ -163,11 +158,17 @@ const openBook = async () => {
     if (props.blockId) {
       const attrs = await API.getBlockAttrs(props.blockId)
       const id = attrs['memo'] || attrs['custom-epub-doc-id']
-      if (id && await verifyDoc(id)) annotationDocId = id, toc.setDocId(id), await Promise.all([toc.refreshBookmarks(), toc.loadMarks(id)])
+      if (id && await verifyDoc(id)) annotationDocId = id
       else if (id) await API.setBlockAttrs(props.blockId, { 'memo': '' }).catch(() => {})
       await rendition.display(props.cfi || attrs['custom-epub-cfi'])
       annotationDocId && setTimeout(() => restoreHighlights(annotationDocId, rendition, HL_STYLES), TIMERS.HIGHLIGHT_DELAY)
     } else await rendition.display(props.cfi)
+    
+    // 加载目录（在获取 annotationDocId 之后）
+    book.loaded.navigation.then(async (nav: any) => {
+      tocPanel = new EpubToc(readerWrapRef.value!, props.settings?.tocPosition || 'left', rendition, annotationDocId, i18n)
+      await tocPanel.load(nav)
+    }).catch(() => {})
     await applyTheme(props.settings)
     book.locations.generate(1024).catch(() => {})
     setTimeout(() => isInit = false, TIMERS.INIT_DELAY)
@@ -176,8 +177,7 @@ const openBook = async () => {
     rendition.on('relocated', (loc: any) => {
       closeMenu()
       if (!loc?.start) return
-      toc.updateProgress(loc.start.href || '', loc.start.percentage || 0)
-      tocDialog?.update()
+      currentHref = loc.start.href || ''
       annotationDocId && restoreHighlights(annotationDocId, rendition, HL_STYLES)
       if (!props.blockId || isInit || !loc.start.cfi) return
       const prog = (loc.start.percentage || (loc.start.index + 1) / (book?.spine.length || 1)) * 100
@@ -216,26 +216,20 @@ const openBook = async () => {
     rendition.on('rendered', () => { const iframe = containerRef.value?.querySelector('iframe'); iframe?.contentDocument && regEvents(iframe.contentDocument, iframe) })
     rendition.on('selected', (cfiRange: string) => ui.menuCfi = cfiRange)
     const onSettings = ((e: CustomEvent) => e.detail && applyTheme(e.detail)) as EventListener
-    window.addEventListener('mreaderSettingsUpdated', onSettings)
-    onUnmounted(() => window.removeEventListener('mreaderSettingsUpdated', onSettings))
+    window.addEventListener('sireaderSettingsUpdated', onSettings)
+    onUnmounted(() => window.removeEventListener('sireaderSettingsUpdated', onSettings))
   } catch (e) {
     ui.error = e instanceof Error ? e.message : i18n?.loadFailed || '加载失败'
-    console.error('[MReader]', e)
+    console.error('[SiReader]', e)
   } finally {
     ui.loading = false
   }
 }
 
 // ===== 目录操作 =====
-const handleTocNavigate = (href: string) => (toc.navigate(rendition, href), tocDialog?.update())
-const handleMarkNavigate = (cfi: string) => rendition?.display(cfi).catch(() => {})
-const handleToggleBookmark = async (href: string, label: string, url?: string) => (await toc.toggleBookmark(href, label, url), tocDialog?.update())
-const handleRemoveMark = async (cfi: string) => {
-  if (!annotationDocId) return
-  const blocks = await API.sql(`SELECT id FROM blocks WHERE root_id='${annotationDocId}' AND markdown LIKE '%${cfi}%'`).catch(() => [])
-  await Promise.all(blocks.map(b => API.deleteBlock(b.id).catch(() => {})))
-  toc.state.value.marks = toc.state.value.marks.filter(m => m.cfi !== cfi)
-  tocDialog?.update()
+const getCurrentChapter = () => {
+  // 简化版本：从当前 href 匹配标题
+  return currentHref ? ` (${currentHref.split('/').pop()})` : ''
 }
 
 // ===== 文本操作 =====
@@ -257,9 +251,9 @@ const addHighlight = async (color: HighlightColor = 'yellow', note = '', tags: s
     annotationDocId = await getOrCreateDoc(props.blockId, book?.packaging?.metadata?.title || props.file.name.replace('.epub', ''), cfg) || ''
     if (!annotationDocId) return
   }
-  const textWithChapter = `${text}${toc.getCurrentChapter()}`
+  const textWithChapter = `${text}${getCurrentChapter()}`
   addSingleHighlight(rendition, cfi, color, HL_STYLES), await saveHighlight(annotationDocId, textWithChapter, props.url, cfi, color, note, tags)
-  toc.setDocId(annotationDocId), toc.addMark(cfi, color, textWithChapter), tocDialog?.update(), showMessage(i18n?.annotationSaved || '标注已保存')
+  await tocPanel?.setDocId(annotationDocId), tocPanel?.addMark(cfi, color, textWithChapter), showMessage(i18n?.annotationSaved || '标注已保存')
 }
 const addHighlightWithNote = async () => {
   const note = prompt(i18n?.inputNote || '输入笔记（可选）：')
@@ -268,28 +262,8 @@ const addHighlightWithNote = async () => {
   await addHighlight('yellow', note, tags)
 }
 
-// ===== 目录对话框 =====
-const showTocDialog = () => {
-  const mode = props.settings?.tocPosition || 'dialog'
-  if (!tocDialog || (tocDialog as any)._mode !== mode) {
-    tocDialog?.destroy()
-    tocDialog = createTocDialog(EpubToc, () => ({
-      toc: toc.state.value.data,
-      currentHref: toc.state.value.currentHref,
-      progress: toc.state.value.progress,
-      bookmarks: toc.state.value.bookmarks,
-      marks: toc.state.value.marks,
-      loading: toc.state.value.loading,
-      baseUrl: props.url,i18n,
-      onNavigate: handleTocNavigate,
-      onNavigateToMark: handleMarkNavigate,
-      onToggleBookmark: handleToggleBookmark,
-      onRemoveMark: handleRemoveMark
-    }), containerRef.value?.parentElement?.querySelector('[aria-label="目录"]') as HTMLElement, mode, readerWrapRef.value, i18n)
-    ;(tocDialog as any)._mode = mode
-  }
-  tocDialog.toggle()
-}
+// ===== 目录面板 =====
+const showTocDialog = () => tocPanel?.toggle()
 
 // ===== 事件处理 =====
 const handleClick = (e: MouseEvent) => {

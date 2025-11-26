@@ -30,7 +30,7 @@ export async function parseEpubMetadata(file: File) {
     const title = metadata.title || file.name.replace('.epub', '')
     return { book, metadata: { title, author: metadata.creator || '', publisher: metadata.publisher || '', language: metadata.language || '', description: metadata.description || '', pubdate: metadata.pubdate || '', identifier: metadata.identifier || '', cover: '' } }
   } catch (e) {
-    return console.error('[MReader]', e), null
+    return console.error('[SiReader]', e), null
   }
 }
 

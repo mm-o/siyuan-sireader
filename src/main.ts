@@ -1,26 +1,20 @@
-import {
-  Plugin,
-} from "siyuan";
+import { Plugin } from 'siyuan'
 import { createApp } from 'vue'
 import App from './App.vue'
 
-let plugin = null
+let plugin: Plugin | null = null
 export function usePlugin(pluginProps?: Plugin): Plugin {
-  if (pluginProps) {
-    plugin = pluginProps
-  }
-  if (!plugin && !pluginProps) {
-    console.error('need bind plugin')
-  }
-  return plugin;
+  if (pluginProps) plugin = pluginProps
+  return plugin!
 }
 
 
 let app = null
 let pluginInstance: Plugin | null = null
+let cleanupCallbacks: (() => void)[] = []
+
 export function init(plugin: Plugin) {
-  // bind plugin hook
-  usePlugin(plugin);
+  usePlugin(plugin)
   pluginInstance = plugin
 
   const div = document.createElement('div')
@@ -31,9 +25,21 @@ export function init(plugin: Plugin) {
   document.body.appendChild(div)
 }
 
+export function setOpenSettingHandler(handler: () => void) {
+  window._sy_plugin_sample = window._sy_plugin_sample || {}
+  window._sy_plugin_sample.openSetting = handler
+}
+
+export function registerCleanup(callback: () => void) {
+  cleanupCallbacks.push(callback)
+}
+
 export function destroy() {
   if (!pluginInstance) return
+  cleanupCallbacks.forEach(cb => cb())
+  cleanupCallbacks = []
   app?.unmount()
   const div = document.getElementById(pluginInstance.name)
   div && document.body.removeChild(div)
+  pluginInstance = null
 }
