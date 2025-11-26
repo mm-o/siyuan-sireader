@@ -41,53 +41,41 @@ export const saveAllProgress = () => Promise.all(
 // 文档管理功能移至 epubDoc.ts
 
 export function registerEpubTab(plugin: Plugin) {
-  const { settings, open: openSetting } = useSetting(plugin)
-  
-  const createReaderApp = (file: File, config: any, url?: string, blockId?: string, tabId?: string, cfi?: string) => createApp(EpubReader, {
-    file,
-    plugin,
-    settings: config,
-    url,
-    blockId,
-    cfi,
-    onRenditionReady: (rendition: any) => tabId && blockId && activeTabs.set(tabId, { rendition, blockId, url: url || '' }),
-    onSettings: openSetting,
-  })
+  const { open: openSetting } = useSetting(plugin)
+  const center = (content: string, color = '#999') => `<div style="display:flex;align-items:center;justify-content:center;height:100%;color:${color}">${content}</div>`
   
   plugin.addTab({
     type: TAB_TYPE,
     async init() {
       const container = document.createElement('div')
-      container.style.cssText = 'width: 100%; height: 100%;'
+      container.style.cssText = 'width:100%;height:100%'
       this.element.appendChild(container)
       
       const tabId = (this.element as HTMLElement).dataset.id || Date.now().toString()
-      const { url, blockId, cfi } = this.data
-      let file = this.data.file?.arrayBuffer ? this.data.file : null
+      const { url, blockId, cfi, file: dataFile } = this.data
+      let file = dataFile?.arrayBuffer ? dataFile : null
       
       if (!file && url) {
-        container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#999;flex-direction:column;gap:10px;"><div class="fn__loading"><img width="48px" src="/stage/loading-pure.svg"></div><div>正在加载...</div></div>'
+        container.innerHTML = center('<div class="fn__loading"><img width="48px" src="/stage/loading-pure.svg"></div><div style="margin-top:10px">正在加载...</div>')
         file = await fetchEpubFile(url)
-        if (!file) {
-          container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#f00;">加载失败</div>'
-          return
-        }
+        if (!file) return container.innerHTML = center('加载失败', '#f00')
       }
       
-      if (!file) {
-        container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#999;">无法加载</div>'
-        return
-      }
+      if (!file) return container.innerHTML = center('无法加载')
       
-      container.innerHTML = ''
-      
-      let app = createReaderApp(file, settings.value, url, blockId, tabId, cfi)
-      app.mount(container)
+      const cfg = (await plugin.loadData('config.json') || {}).settings || {}
+      const settings = { enabled: true, openMode: 'newTab', tocPosition: 'left', pageTurnMode: 'click', pageAnimation: 'slide', columnMode: 'single', theme: 'default', customTheme: { name: 'custom', color: '#202124', bg: '#ffffff' }, annotationMode: 'notebook', ...cfg }
+      createApp(EpubReader, {
+        file, plugin, settings, url, blockId, cfi,
+        onRenditionReady: (rendition: any) => tabId && blockId && activeTabs.set(tabId, { rendition, blockId, url: url?.split('#')[0] || '' }),
+        onSettings: openSetting,
+      }).mount(container)
     },
     destroy() {
-      const tabId = (this.element as HTMLElement).dataset.id
-      if (tabId && activeTabs.has(tabId)) {
-        const { rendition, blockId } = activeTabs.get(tabId)!
+      const tabId = (this.element as HTMLElement).dataset.id!
+      const tab = activeTabs.get(tabId)
+      if (tab) {
+        const { rendition, blockId } = tab
         rendition && blockId && saveProgress(blockId, rendition.currentLocation()).catch(() => {})
         rendition && clearCache.highlight(rendition)
         activeTabs.delete(tabId)
@@ -106,18 +94,20 @@ export function createEpubLinkHandler(plugin: Plugin, getSettings: () => { openM
     e.preventDefault()
     e.stopPropagation()
     
-    // 解析URL和CFI
-    const hashIndex = url!.indexOf('#')
-    const epubUrl = hashIndex > -1 ? url!.substring(0, hashIndex) : url!
-    let cfi = hashIndex > -1 ? url!.substring(hashIndex + 1) : ''
+    // 解析URL、CFI和文档ID（格式：url#cfi#docId）
+    const parts = url!.split('#')
+    const epubUrl = parts[0]
+    let cfi = parts[1] || ''
+    const docId = parts[2] || ''
     if (cfi.includes('%')) try { cfi = decodeURIComponent(cfi) } catch {}
     
-    // 如果书已打开，直接跳转（relocated事件会自动恢复高亮）
+    // 如果书已打开，直接跳转
     const openedTab = Array.from(activeTabs.entries()).find(([_, tab]) => tab.url === epubUrl)
     if (openedTab && cfi) {
-      const [tabId, { rendition }] = openedTab
+      const [tabId, tab] = openedTab
+      if (docId && tab.blockId !== docId) tab.blockId = docId
       document.querySelector(`[data-id="${tabId}"]`)?.parentElement?.click()
-      rendition?.display(cfi).catch(() => {})
+      tab.rendition?.display(cfi).catch(() => {})
       return
     }
     
@@ -125,15 +115,16 @@ export function createEpubLinkHandler(plugin: Plugin, getSettings: () => { openM
     if (!file) return
     
     const { openMode } = getSettings()
-    const blockId = target.closest('[data-node-id]')?.getAttribute('data-node-id') || ''
-    if (cfi && blockId) await API.setBlockAttrs(blockId, { 'custom-epub-cfi': cfi }).catch(() => {})
+    const nodeBlockId = target.closest('[data-node-id]')?.getAttribute('data-node-id')
+    const blockId = nodeBlockId || docId
+    if (cfi && nodeBlockId) await API.setBlockAttrs(nodeBlockId, { 'custom-epub-cfi': cfi }).catch(() => {})
     
     openTab({
       app: (plugin as any).app,
       custom: {
         icon: 'iconBook',
         title: file.name.replace('.epub', ''),
-        data: { file, url: epubUrl, blockId, cfi },
+        data: { file, url: cfi && docId ? `${epubUrl}#${cfi}#${docId}` : epubUrl, blockId, cfi },
         id: `${plugin.name}${TAB_TYPE}`,
       } as any,
       position: openMode === 'rightTab' ? 'right' : openMode === 'bottomTab' ? 'bottom' : undefined,

@@ -153,20 +153,25 @@ const openBook = async () => {
     
     props.onRenditionReady?.(rendition)
     
-    // 恢复阅读状态
+    // 恢复阅读状态（解析文档ID优先级：URL > blockId > 块属性）
     let isInit = true
-    if (props.blockId) {
+    const urlDocId = props.url?.split('#')[2]
+    let cfi = props.cfi
+    if (urlDocId && await verifyDoc(urlDocId)) annotationDocId = urlDocId
+    else if (props.blockId && await verifyDoc(props.blockId)) annotationDocId = props.blockId
+    else if (props.blockId) {
       const attrs = await API.getBlockAttrs(props.blockId)
       const id = attrs['memo'] || attrs['custom-epub-doc-id']
       if (id && await verifyDoc(id)) annotationDocId = id
       else if (id) await API.setBlockAttrs(props.blockId, { 'memo': '' }).catch(() => {})
-      await rendition.display(props.cfi || attrs['custom-epub-cfi'])
-      annotationDocId && setTimeout(() => restoreHighlights(annotationDocId, rendition, HL_STYLES), TIMERS.HIGHLIGHT_DELAY)
-    } else await rendition.display(props.cfi)
+      cfi = props.cfi || attrs['custom-epub-cfi']
+    }
+    await rendition.display(cfi)
+    annotationDocId && setTimeout(() => restoreHighlights(annotationDocId, rendition, HL_STYLES), TIMERS.HIGHLIGHT_DELAY)
     
     // 加载目录（在获取 annotationDocId 之后）
     book.loaded.navigation.then(async (nav: any) => {
-      tocPanel = new EpubToc(readerWrapRef.value!, props.settings?.tocPosition || 'left', rendition, annotationDocId, i18n)
+      tocPanel = new EpubToc(readerWrapRef.value!, props.settings?.tocPosition || 'left', rendition, annotationDocId, getBaseUrl())
       await tocPanel.load(nav)
     }).catch(() => {})
     await applyTheme(props.settings)
@@ -226,20 +231,27 @@ const openBook = async () => {
   }
 }
 
-// ===== 目录操作 =====
+// ===== 工具函数 =====
+const cleanText = (text: string) => text.replace(/[\r\n]+/g, ' ').trim()
+const getBaseUrl = () => props.url?.split('#')[0] || ''
+const buildUrl = (cfi: string, docId?: string) => {
+  const base = getBaseUrl()
+  return base && cfi ? `${base}#${cfi}${docId ? '#' + docId : ''}` : ''
+}
 const getCurrentChapter = (): string => {
   if (!currentHref || !book?.navigation?.toc) return ''
   const h = currentHref.split('#')[0]
   const find = (items: any[]): string => items.reduce((r, i) => r || (i.href.split('#')[0] === h ? i.label : find(i.subitems || [])), '')
   const ch = find(book.navigation.toc)
-  return ch ? `（${ch}）` : ''
+  return ch ? `（${cleanText(ch)}）` : ''
 }
 
 // ===== 文本操作 =====
 const copySelection = () => {
   const { menuText: text, menuCfi: cfi } = ui
   if (!text) return
-  const link = props.url ? `[${text}](${props.url}${cfi ? '#' + cfi : ''})` : text
+  const url = buildUrl(cfi, annotationDocId)
+  const link = url ? `${cleanText(text)} [◎](${url})` : cleanText(text)
   navigator.clipboard.writeText(link).catch(() => {})
 }
 
@@ -251,12 +263,14 @@ const addHighlight = async (color: HighlightColor = 'yellow', note = '', tags: s
     const cfg = { mode: props.settings?.annotationMode || 'notebook', notebookId: props.settings?.notebookId, parentDoc: props.settings?.parentDoc } as any
     if (cfg.mode === 'notebook' && !cfg.notebookId) return showMessage(i18n?.selectNotebook || '请先在设置中选择笔记本')
     if (cfg.mode === 'document' && !cfg.parentDoc?.id) return showMessage(i18n?.selectDocument || '请先在设置中选择文档')
-    annotationDocId = await getOrCreateDoc(props.blockId, book?.packaging?.metadata?.title || props.file.name.replace('.epub', ''), cfg) || ''
+    const metadata = book ? await book.loaded.metadata.catch(() => ({ title: '' })) : { title: '' }
+    annotationDocId = await getOrCreateDoc(props.blockId, metadata?.title || props.file.name.replace('.epub', ''), cfg) || ''
     if (!annotationDocId) return
   }
-  const textWithChapter = `${text}${getCurrentChapter()}`
-  addSingleHighlight(rendition, cfi, color, HL_STYLES), await saveHighlight(annotationDocId, textWithChapter, props.url, cfi, color, note, tags)
-  await tocPanel?.setDocId(annotationDocId), tocPanel?.addMark(cfi, color, textWithChapter), showMessage(i18n?.annotationSaved || '标注已保存')
+  const textWithChapter = `${cleanText(text)}${getCurrentChapter()}`
+  addSingleHighlight(rendition, cfi, color, HL_STYLES), await saveHighlight(annotationDocId, textWithChapter, buildUrl(cfi, annotationDocId), cfi, color, note, tags)
+  tocPanel?.addMark(cfi, color, textWithChapter, annotationDocId)
+  showMessage(i18n?.annotationSaved || '标注已保存')
 }
 const addHighlightWithNote = async () => {
   const note = prompt(i18n?.inputNote || '输入笔记（可选）：')

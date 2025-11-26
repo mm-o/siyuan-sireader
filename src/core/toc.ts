@@ -22,12 +22,14 @@ export class EpubToc {
   private search = ''
   private expanded = new Map<string, boolean>()
   private body?: HTMLElement
+  private boundHandler?: (e: MouseEvent) => void
   
   constructor(
     private parentEl: HTMLElement,
     private position: 'left' | 'right',
     private rendition: any,
-    private docId: string
+    private docId: string,
+    private url = ''
   ) {
     this.rendition?.on('relocated', (l: any) => l?.start?.href && (this.currentHref = l.start.href, this.panel && this.mode === 'toc' && this.updateHighlight()))
   }
@@ -38,22 +40,23 @@ export class EpubToc {
   }
   
   setDocId = async (docId: string) => {
+    if (this.docId === docId) return
     this.docId = docId
-    await this.reloadData()
-    this.panel && this.render()
+    this.panel && (await this.reloadData(), this.render())
   }
   
   private reloadData = async () => {
     if (!this.docId) return
     const [bms, blocks] = await Promise.all([
-      loadBookmarks(this.docId), 
+      loadBookmarks(this.docId).catch(() => []), 
       API.sql(`SELECT markdown FROM blocks WHERE root_id='${this.docId}' AND markdown LIKE '%epubcfi%'`).catch(() => [])
     ])
     this.bookmarks = bms
     this.marks = [...new Map(
-      blocks.map((b: any) => b.markdown?.match(/^-\s*([ROYGPLV])\s\[([^\]]+)\].*#(epubcfi\([^)]+\))/))
-        .filter(Boolean)
-        .map((m: any) => [m[3], { cfi: m[3], color: COLOR_MAP[m[1] as keyof typeof COLOR_MAP] || 'yellow' as HighlightColor, text: m[2] }])
+      blocks.map((b: any) => {
+        const m = b.markdown?.match(/^-\s*([ROYGPLV])\s+(.+?)\s*\[◎\].*#(epubcfi\([^)]+\))/) || b.markdown?.match(/^-\s*([ROYGPLV])\s.*#(epubcfi\([^)]+\))/)
+        return m ? [m[3] || m[2], { cfi: m[3] || m[2], color: COLOR_MAP[m[1] as keyof typeof COLOR_MAP] || 'yellow' as HighlightColor, text: m[2] }] : null
+      }).filter(x => x) as [string, Mark][]
     ).values()]
   }
 
@@ -70,25 +73,28 @@ export class EpubToc {
   private open = () => {
     this.overlay = Object.assign(document.createElement('div'), { className: 'epub-toc-overlay', onclick: this.close })
     this.panel = Object.assign(document.createElement('div'), { className: `epub-toc-panel epub-toc-panel--${this.position}` })
-    this.render()
+    this.bindEvents()
+    this.render(true)
     this.parentEl.append(this.overlay, this.panel)
-    this.mode === 'toc' && this.currentHref && this.updateHighlight(true)
   }
 
   private close = () => {
+    this.boundHandler && this.panel?.removeEventListener('click', this.boundHandler)
     this.overlay?.remove()
     this.panel?.remove()
-    this.overlay = this.panel = null
+    this.overlay = this.panel = this.boundHandler = undefined
   }
 
-  private render = () => {
+  private render = (scroll = false) => {
     if (!this.panel) return
+    const scrollTop = this.body?.scrollTop || 0
     const modes = MODES.map(m => `<button class="toc-mode-btn${this.mode === m.k ? ' active' : ''} b3-tooltips b3-tooltips__s" data-mode="${m.k}" aria-label="${m.k === 'toc' ? '目录' : m.k === 'bookmark' ? '书签' : m.k === 'mark' ? '标注' : '笔记'}"><svg><use xlink:href="${m.i}"/></svg></button>`).join('')
     const tools = `<button class="toc-btn${this.reverse ? ' active' : ''} b3-tooltips b3-tooltips__sw" data-action="reverse" aria-label="${this.reverse ? '正序' : '反序'}"><svg><use xlink:href="#iconSort"/></svg></button><button class="toc-btn b3-tooltips b3-tooltips__sw" data-action="scroll" aria-label="到底部"><svg><use xlink:href="#iconDown"/></svg></button>`
     this.panel.innerHTML = `<div class="toc-header"><div class="toc-modes">${modes}</div><div class="toc-tools">${tools}</div></div>${this.mode !== 'note' ? `<div class="toc-search"><input type="text" class="b3-text-field" placeholder="搜索..." value="${this.search}"></div>` : ''}<div class="toc-body${this.reverse ? ' toc-body--reverse' : ''}" data-body>${this.renderContent()}</div>`
     this.body = this.panel.querySelector('[data-body]') as HTMLElement
-    this.bindEvents()
-    this.mode === 'toc' && this.currentHref && requestAnimationFrame(() => this.updateHighlight(true))
+    this.body.scrollTop = scrollTop
+    this.panel.querySelector('input')?.addEventListener('input', (e) => (this.search = (e.target as HTMLInputElement).value, this.render()))
+    this.mode === 'toc' && this.currentHref && requestAnimationFrame(() => this.updateHighlight(scroll))
   }
 
   private filterItems = (items: TocItem[], q?: string): TocItem[] => {
@@ -131,12 +137,12 @@ export class EpubToc {
   }
 
   private bindEvents = () => {
-    this.panel?.addEventListener('click', async (e) => {
+    this.boundHandler = async (e) => {
       const p = (e.target as HTMLElement).closest('[data-mode], [data-action], [data-expand], [data-bookmark], [data-href], [data-cfi]') as HTMLElement
       if (!p) return
       e.stopPropagation()
       const d = p.dataset
-      if (d.mode) return (this.mode = d.mode as Mode, this.search = '', this.render())
+      if (d.mode) return (this.mode = d.mode as Mode, this.search = '', this.render(d.mode === 'toc'))
       if (d.action === 'reverse') return this.toggleReverse()
       if (d.action === 'scroll') return this.toggleScroll()
       if (d.action === 'remove-bookmark') return this.toggleBookmark(d.href!)
@@ -145,8 +151,8 @@ export class EpubToc {
       if (d.bookmark) return this.toggleBookmark(d.bookmark, d.label)
       if (d.href && !p.closest('button')) return this.navigate(d.href)
       if (d.cfi && !p.closest('button')) return this.rendition?.display(d.cfi)
-    })
-    this.panel?.querySelector('input')?.addEventListener('input', (e) => (this.search = (e.target as HTMLInputElement).value, this.render()))
+    }
+    this.panel?.addEventListener('click', this.boundHandler)
   }
 
   private navigate = (href: string) => {
@@ -158,25 +164,22 @@ export class EpubToc {
   private toggleReverse = () => {
     this.reverse = !this.reverse
     this.body?.classList.toggle('toc-body--reverse', this.reverse)
-    const btn = this.panel?.querySelector('[data-action="reverse"]')
-    btn?.classList.toggle('active', this.reverse)
+    this.panel?.querySelector('[data-action="reverse"]')?.classList.toggle('active', this.reverse)
   }
   
   private toggleScroll = () => {
     if (!this.body) return
     const isAtTop = this.body.scrollTop < this.body.scrollHeight / 2
     this.body.scrollTo({ top: isAtTop ? this.body.scrollHeight : 0, behavior: 'smooth' })
-    const use = this.panel?.querySelector('[data-action="scroll"] use')
-    use?.setAttribute('xlink:href', isAtTop ? '#iconUp' : '#iconDown')
+    this.panel?.querySelector('[data-action="scroll"] use')?.setAttribute('xlink:href', isAtTop ? '#iconUp' : '#iconDown')
   }
   
   private toggleExpand = (id: string) => {
     const isExpanded = this.expanded.get(id) ?? true
     this.expanded.set(id, !isExpanded)
     const wrap = this.panel?.querySelector(`[data-wrap="${id}"]`)
-    if (!wrap) return
-    const sub = wrap.querySelector(`[data-sub="${id}"]`) as HTMLElement
-    const svg = wrap.querySelector('.toc-expand-btn svg') as HTMLElement
+    const sub = wrap?.querySelector(`[data-sub="${id}"]`) as HTMLElement
+    const svg = wrap?.querySelector('.toc-expand-btn svg') as HTMLElement
     if (sub) sub.style.display = isExpanded ? 'none' : 'block'
     if (svg) svg.style.transform = isExpanded ? '' : 'rotate(90deg)'
   }
@@ -184,14 +187,21 @@ export class EpubToc {
   private toggleBookmark = async (href: string, label?: string) => {
     if (!this.docId) return
     const exists = this.bookmarks.some(x => x.href === href)
-    await (exists ? removeBookmark(this.docId, href) : addBookmark(this.docId, label || href, href))
-    this.bookmarks = exists ? this.bookmarks.filter(x => x.href !== href) : this.bookmarks.concat({ label: label || href, href, url: href })
+    if (exists) {
+      await removeBookmark(this.docId, href)
+      this.bookmarks = this.bookmarks.filter(x => x.href !== href)
+    } else {
+      const url = this.url ? `${this.url}#${href}#${this.docId}` : href
+      await addBookmark(this.docId, label || href, href, url)
+      this.bookmarks.push({ label: label || href, href, url })
+    }
     this.render()
   }
   
   addBookmark = (href: string, label: string) => this.toggleBookmark(href, label)
 
-  addMark = (cfi: string, color: HighlightColor, text?: string) => {
+  addMark = (cfi: string, color: HighlightColor, text?: string, docId?: string) => {
+    if (docId && this.docId !== docId) this.docId = docId
     this.marks = this.marks.filter(m => m.cfi !== cfi).concat({ cfi, color, text })
     this.panel && this.mode === 'mark' && this.render()
   }
@@ -201,7 +211,7 @@ export class EpubToc {
     const blocks = await API.sql(`SELECT id FROM blocks WHERE root_id='${this.docId}' AND markdown LIKE '%${cfi}%'`).catch(() => [])
     await Promise.all(blocks.map((b: any) => API.deleteBlock(b.id).catch(() => {})))
     this.marks = this.marks.filter(m => m.cfi !== cfi)
-    this.mode === 'mark' && this.render()
+    this.render()
   }
 
   private updateHighlight = (scroll = false) => {

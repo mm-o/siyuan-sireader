@@ -62,26 +62,26 @@ const saveMetadata = async (blockId: string, url: string) => {
 const batchUpdate = async (docId: string, attrs: Record<string, string>, msg: string, i18n?) => {
   const t = performance.now()
   try {
-    const existingIds = (await API.sql(`SELECT block_id FROM attributes WHERE name='custom-epub' AND block_id IN (SELECT id FROM blocks WHERE root_id='${docId}')`))?.map((r: any) => r.block_id) || []
-    const existingSet = new Set(existingIds)
-    let newBlocks: { id: string; url: string }[] = []
-    if (attrs['custom-epub-view']) {
-      const blocks = Array.from(document.querySelectorAll(`[data-node-id][data-node-index][data-type="NodeParagraph"]`))
-      newBlocks = blocks.filter(b => {
-        const id = b.getAttribute('data-node-id')
-        return id && !existingSet.has(id) && getEpubUrl(b)
-      }).map(b => ({ id: b.getAttribute('data-node-id')!, url: getEpubUrl(b)! }))
-      if (newBlocks.length) {
-        showMessage(`⏳ ${i18n?.extractingMetadata || '提取元数据...'} ${newBlocks.length}`, 2000, 'info')
-        for (let i = 0; i < newBlocks.length; i += 3) await Promise.allSettled(newBlocks.slice(i, i + 3).map(({ id, url }) => saveMetadata(id, url))), await new Promise(ok => setTimeout(ok, 200))
-      }
+    const rows = await API.sql(`SELECT block_id FROM attributes WHERE name='custom-epub' AND block_id IN (SELECT id FROM blocks WHERE root_id='${docId}')`)
+    const ids = (rows || []).map((r: any) => r.block_id)
+    if (!ids.length) return showMessage(i18n?.noEpubBlocks || '未找到EPUB块', 3000, 'info')
+    // 清理所有阅读器（批量100个/次）
+    for (let i = 0; i < ids.length; i += 100)
+      document.querySelectorAll(ids.slice(i, i + 100).map(id => `[data-node-id="${id}"]`).join(',')).forEach(b =>
+        (b.querySelector('.epub-embedded-reader')?.remove(), destroyReader(b.getAttribute('data-node-id')!)))
+    // 分批设置属性（每批10个，带容错）
+    for (let i = 0; i < ids.length; i += 10) {
+      await Promise.allSettled(ids.slice(i, i + 10).map(id => API.setBlockAttrs(id, attrs)))
+      const progress = Math.min(100, Math.round(((i + 10) / ids.length) * 100))
+      progress < 100 && showMessage(`⏳ ${i18n?.converting || '转换中'}... ${progress}%`, 1000, 'info')
+      await new Promise(r => setTimeout(r, 50))
     }
-    const blockIds = attrs['custom-epub-width'] ? (await API.sql(`SELECT block_id FROM attributes WHERE name='custom-epub-view' AND value='card' AND block_id IN (SELECT id FROM blocks WHERE root_id='${docId}')`))?.map((r: any) => r.block_id) || [] : [...existingIds, ...newBlocks.map(b => b.id)]
-    if (!blockIds.length) return showMessage(i18n?.noEpubBlocks || '当前文档未找到EPUB块', 3000, 'info')
-    for (let i = 0; i < blockIds.length; i += 100) document.querySelectorAll(blockIds.slice(i, i + 100).map(id => `[data-node-id="${id}"]`).join(',')).forEach(b => (b.querySelector('.epub-embedded-reader')?.remove(), destroyReader(b.getAttribute('data-node-id')!)))
-    for (let i = 0; i < blockIds.length; i += 10) await Promise.allSettled(blockIds.slice(i, i + 10).map(id => API.setBlockAttrs(id, attrs))), await new Promise(ok => setTimeout(ok, 50))
-    setTimeout(renderAllEpubBlocks, 100), showMessage(`✅ ${msg} ${blockIds.length} (${((performance.now() - t) / 1000).toFixed(2)}s)`, 3000, 'info')
-  } catch (e) { showMessage(`❌ ${i18n?.batchOperationFailed || '批量操作失败'}`, 3000, 'error') }
+    setTimeout(renderAllEpubBlocks, 100)
+    showMessage(`✅ ${msg} ${ids.length} (${((performance.now() - t) / 1000).toFixed(2)}s)`, 3000, 'info')
+  } catch (e) {
+    console.error('[SiReader]', e)
+    showMessage(`❌ ${i18n?.batchOperationFailed || '批量操作失败'}`, 3000, 'error')
+  }
 }
 
 // ==================== 菜单集成 ====================

@@ -3,7 +3,7 @@
 // 职责：配置持久化、UI交互、主题应用
 // ========================================
 
-import { ref, watchEffect, nextTick } from 'vue'
+import { ref } from 'vue'
 import { Dialog, showMessage } from 'siyuan'
 import type { Plugin } from 'siyuan'
 import type { DocInfo } from '@/core/epubDoc'
@@ -72,9 +72,8 @@ const DEFAULT_SETTINGS: ReaderSettings = {
   parentDoc: undefined,
 }
 
-// ===== 常量配置 =====
-const DEBOUNCE_DELAY = 300
-const SAVE_DELAY = 100
+// ===== 工具函数 =====
+const msg = { success: (m: string) => showMessage(m, 2000, 'info'), error: (m: string) => showMessage(m, 3000, 'error') }
 
 // ===== HTML 模板构建 =====
 const item = (title: string, desc: string, control: string) => `
@@ -100,50 +99,28 @@ export function useSetting(plugin: Plugin) {
   const settings = ref<ReaderSettings>({ ...DEFAULT_SETTINGS })
   let dialog: Dialog | null = null
   const i18n = plugin.i18n as any
-  let saveTimer: number | null = null
-  let isLoading = false
 
-  // 加载配置
+  // 工具函数
+  const getConfig = async () => await plugin.loadData('config.json') || {}
   const load = async () => {
-    isLoading = true
-    try {
-      const data = await plugin.loadData('config.json')
-      if (data?.settings) {settings.value = { ...DEFAULT_SETTINGS, ...data.settings }}
-    } catch (e) {
-      console.error(`[SiReader] ${i18n?.loadError || '加载设置失败'}:`, e)
-    } finally {
-      await nextTick()
-      isLoading = false
-    }
+    const cfg = await getConfig()
+    if (cfg.settings) settings.value = { ...DEFAULT_SETTINGS, ...cfg.settings }
   }
-
-  // 保存配置（静默保存，不显示提示）
-  const save = async (silent = true) => {
-    if (isLoading) return
+  const save = async () => {
     try {
-      await plugin.saveData('config.json', { settings: settings.value })
+      const cfg = await getConfig()
+      cfg.settings = settings.value
+      await plugin.saveData('config.json', cfg)
       window.dispatchEvent(new CustomEvent('sireaderSettingsUpdated', { detail: settings.value }))
-      if (!silent) {showMessage(i18n?.saved || '设置已保存', 2000, 'info')}
     } catch (e) {
-      console.error(`[SiReader] ${i18n?.saveError || '保存设置失败'}:`, e)
-      showMessage(i18n?.saveError || '保存设置失败', 3000, 'error')
+      msg.error(i18n?.saveError || '保存失败')
+      console.error('[SiReader]', e)
     }
   }
-
-  // 防抖保存
-  const debouncedSave = () => {
-    if (saveTimer) {clearTimeout(saveTimer)}
-    saveTimer = window.setTimeout(() => save(true), SAVE_DELAY)
-  }
-
-  // 响应式自动保存
-  watchEffect(() => {
-    if (!isLoading && settings.value) { debouncedSave() }
-  })
-
   // 打开设置对话框
-  const open = () => {
+  const open = async () => {
     if (dialog) dialog.destroy()
+    await load()
     dialog = new Dialog({
       title: i18n?.settingsTitle || '设置',
       content: `
@@ -256,7 +233,7 @@ export function useSetting(plugin: Plugin) {
       const el = $<HTMLSelectElement>(`#setting-${key}`)
       if (el) {
         el.value = settings.value[key] as string
-        el.addEventListener('change', () => {(settings.value[key] as string) = el.value})
+        el.addEventListener('change', () => {(settings.value[key] as string) = el.value, save()})
       }
     })
     
@@ -273,6 +250,7 @@ export function useSetting(plugin: Plugin) {
     modeSelect.addEventListener('change', () => {
       settings.value.annotationMode = modeSelect.value as 'notebook' | 'document'
       updateMode()
+      save()
     })
     
     // ===== 笔记本选择器（委托至epubDoc） =====
@@ -280,6 +258,7 @@ export function useSetting(plugin: Plugin) {
     notebookSelect && import('../core/epubDoc').then(({ notebook }) => 
       notebook.initSelect(notebookSelect, settings.value.notebookId || '', id => {
         settings.value.notebookId = id
+        save()
       }, i18n)
     ).catch(() => {})
     
@@ -290,6 +269,7 @@ export function useSetting(plugin: Plugin) {
     docSearch && docResults && parentDocSelect && docHint && import('../core/epubDoc').then(({ document }) =>
       document.initSearchSelect(docSearch, parentDocSelect, docResults, docHint, settings.value.parentDoc, doc => {
         settings.value.parentDoc = doc
+        save()
       }, i18n)
     ).catch(() => {})
     
@@ -312,6 +292,7 @@ export function useSetting(plugin: Plugin) {
       settings.value.theme = theme.value
       custom.style.display = theme.value === 'custom' ? 'block' : 'none'
       refresh()
+      save()
     })
     
     // 初始化自定义主题
@@ -319,26 +300,18 @@ export function useSetting(plugin: Plugin) {
     bg.value = settings.value.customTheme.bg
     bgImg.value = settings.value.customTheme.bgImg || ''
     
-    // 自定义主题更新（防抖）
-    let themeTimer: number
-    const updateCustom = (immediate = false) => {
-      const update = () => {
-        settings.value.customTheme = { name: '自定义', color: color.value, bg: bg.value, bgImg: bgImg.value || undefined }
-        refresh()
-      }
-      immediate ? update() : (clearTimeout(themeTimer), themeTimer = window.setTimeout(update, DEBOUNCE_DELAY))
+    // 自定义主题更新
+    const updateCustom = () => {
+      settings.value.customTheme = { name: '自定义', color: color.value, bg: bg.value, bgImg: bgImg.value || undefined }
+      refresh()
     }
     
-    // 绑定事件
-    ;[color, bg, bgImg].forEach((el, i) => {
-      el.addEventListener('input', () => updateCustom())
-      el.addEventListener(['change', 'change', 'blur'][i], () => updateCustom(true))
-    })
+    ;[color, bg].forEach(el => el.addEventListener('change', () => (updateCustom(), save())))
+    bgImg.addEventListener('blur', () => (updateCustom(), save()))
     
     refresh()
   }
 
   load()
-
-  return { settings, open, save, load }
+  return { settings, open }
 }

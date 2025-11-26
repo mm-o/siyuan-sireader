@@ -28,9 +28,10 @@ const cache = {
 // ===== 工具函数 =====
 const genId = () => `${new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14)}-${Math.random().toString(36).slice(2, 9)}`
 
-// 解析器
+// 解析器（兼容新旧格式）
 const parse = (md: string): Highlight | null => {
-  const m = md?.match(/^-\s*([ROYGPLV])\s.*#(epubcfi\([^)]+\))/)
+  // 最新格式：- R 文字（章节） [◎](链接#cfi)
+  const m = md?.match(/^-\s*([ROYGPLV])\s.*\[◎\]\([^#]+#(epubcfi\([^)]+\))\)/) || md?.match(/^-\s*([ROYGPLV])\s.*#(epubcfi\([^)]+\))/)
   return m ? { cfi: m[2], color: COLOR_MAP[m[1] as keyof typeof COLOR_MAP] || 'yellow' } : null
 }
 
@@ -43,7 +44,11 @@ const parseBookmark = (md: string): Bookmark | null => {
 }
 
 // ===== 文档管理 =====
-export const verifyDoc = async (docId: string) => (await API.sql(`SELECT id FROM blocks WHERE id='${docId}' AND type='d'`).catch(() => [])).length > 0
+export const verifyDoc = async (docId: string) => {
+  if (!docId || !/^\d{14}-[a-z0-9]{7}$/.test(docId)) return false
+  const block = await API.getBlockByID(docId).catch(() => null)
+  return block?.type === 'd'
+}
 export const getOrCreateDoc = async (blockId: string, title: string, cfg: DocConfig): Promise<string | null> => {
   // 缓存验证
   const cached = cache.docs.get(blockId)
@@ -69,7 +74,7 @@ export const getOrCreateDoc = async (blockId: string, title: string, cfg: DocCon
 
 // ===== 标注管理 =====
 export const addHighlight = async (docId: string, text: string, url: string, cfi: string, color: HighlightColor = 'yellow', note = '', tags: string[] = []): Promise<Highlight> => {
-  const content = `- ${MARK_MAP[color]} [${text}](${url}#${cfi})${tags.length ? ` ${tags.map(t => `#${t}#`).join(' ')}` : ''}${note ? `\n  - ${note}` : ''}`
+  const content = `- ${MARK_MAP[color]} ${text} [◎](${url})${tags.length ? ` ${tags.map(t => `#${t}#`).join(' ')}` : ''}${note ? `\n  - ${note}` : ''}`
   await API.appendBlock('markdown', content, docId).catch(() => {})
   const hl = { cfi, color }
   ;(cache.highlights.get(docId) || cache.highlights.set(docId, []).get(docId)!).push(hl)
