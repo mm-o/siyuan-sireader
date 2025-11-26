@@ -65,7 +65,7 @@ import * as API from '@/api'
 import { openDict } from '@/core/dictionary'
 import { getOrCreateDoc, addHighlight as saveHighlight, restoreHighlights, clearCache, addSingleHighlight, verifyDoc } from '@/core/epubDoc'
 import { HL_STYLES } from '@/core/epub'
-import { EpubToc } from '@/lib/toc'
+import { EpubToc } from '@/core/toc'
 
 // ===== 类型定义 =====
 export type HighlightColor = 'red' | 'orange' | 'yellow' | 'green' | 'pink' | 'blue' | 'purple'
@@ -227,9 +227,12 @@ const openBook = async () => {
 }
 
 // ===== 目录操作 =====
-const getCurrentChapter = () => {
-  // 简化版本：从当前 href 匹配标题
-  return currentHref ? ` (${currentHref.split('/').pop()})` : ''
+const getCurrentChapter = (): string => {
+  if (!currentHref || !book?.navigation?.toc) return ''
+  const h = currentHref.split('#')[0]
+  const find = (items: any[]): string => items.reduce((r, i) => r || (i.href.split('#')[0] === h ? i.label : find(i.subitems || [])), '')
+  const ch = find(book.navigation.toc)
+  return ch ? `（${ch}）` : ''
 }
 
 // ===== 文本操作 =====
