@@ -156,5 +156,10 @@
   "batchConvertStyle": "Batch Convert EPUB Style",
   "batchWidth": "Batch Width",
   "epubStyle": "EPUB Style",
-  "width": "Width"
+  "width": "Width",
+  "addBlockNote": "Inline Memo",
+  "inputInlineMemo": "Enter memo:",
+  "inlineMemoSaved": "Memo saved",
+  "inlineMemoFailed": "Failed to save memo",
+  "converting": "Converting"
 }

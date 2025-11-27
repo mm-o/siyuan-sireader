@@ -3,7 +3,7 @@
 // 职责：配置持久化、UI交互、主题应用
 // ========================================
 
-import { ref } from 'vue'
+import { ref, toRaw } from 'vue'
 import { Dialog, showMessage } from 'siyuan'
 import type { Plugin } from 'siyuan'
 import type { DocInfo } from '@/core/epubDoc'
@@ -100,18 +100,17 @@ export function useSetting(plugin: Plugin) {
   let dialog: Dialog | null = null
   const i18n = plugin.i18n as any
 
-  // 工具函数
-  const getConfig = async () => await plugin.loadData('config.json') || {}
   const load = async () => {
-    const cfg = await getConfig()
+    const cfg = await plugin.loadData('config.json') || {}
     if (cfg.settings) settings.value = { ...DEFAULT_SETTINGS, ...cfg.settings }
   }
   const save = async () => {
     try {
-      const cfg = await getConfig()
-      cfg.settings = settings.value
+      const cfg = await plugin.loadData('config.json') || {}
+      const raw = JSON.parse(JSON.stringify(toRaw(settings.value)))
+      cfg.settings = raw
       await plugin.saveData('config.json', cfg)
-      window.dispatchEvent(new CustomEvent('sireaderSettingsUpdated', { detail: settings.value }))
+      window.dispatchEvent(new CustomEvent('sireaderSettingsUpdated', { detail: raw }))
     } catch (e) {
       msg.error(i18n?.saveError || '保存失败')
       console.error('[SiReader]', e)
@@ -228,87 +227,39 @@ export function useSetting(plugin: Plugin) {
       contents.forEach(c => ((c as HTMLElement).style.display = c.getAttribute('data-group') === name ? 'block' : 'none'))
     }))
     
-    // ===== 通用选择器绑定 =====
-    ;(['openMode', 'tocPosition', 'pageTurnMode', 'pageAnimation', 'columnMode'] as const).forEach(key => {
+    // 通用选择器绑定
+    const bindSelect = (key: keyof ReaderSettings) => {
       const el = $<HTMLSelectElement>(`#setting-${key}`)
-      if (el) {
-        el.value = settings.value[key] as string
-        el.addEventListener('change', () => {(settings.value[key] as string) = el.value, save()})
-      }
-    })
+      if (el) el.value = settings.value[key] as string, el.onchange = () => ((settings.value[key] as any) = el.value, save())
+    }
+    ;(['openMode', 'tocPosition', 'pageTurnMode', 'pageAnimation', 'columnMode'] as const).forEach(bindSelect)
     
-    // ===== 标注模式切换 =====
+    // 标注模式
     const modeSelect = $<HTMLSelectElement>('#setting-annotationMode')
     const [notebookMode, documentMode] = ['#notebook-mode', '#document-mode'].map(s => $<HTMLElement>(s))
-    const updateMode = () => {
-      const mode = modeSelect.value as 'notebook' | 'document'
-      notebookMode.style.display = mode === 'notebook' ? 'block' : 'none'
-      documentMode.style.display = mode === 'document' ? 'block' : 'none'
-    }
-    modeSelect.value = settings.value.annotationMode
-    updateMode()
-    modeSelect.addEventListener('change', () => {
-      settings.value.annotationMode = modeSelect.value as 'notebook' | 'document'
-      updateMode()
-      save()
-    })
+    const updateMode = () => ((m => (notebookMode.style.display = m === 'notebook' ? 'block' : 'none', documentMode.style.display = m === 'document' ? 'block' : 'none'))(modeSelect.value))
+    modeSelect.value = settings.value.annotationMode, updateMode()
+    modeSelect.onchange = () => (settings.value.annotationMode = modeSelect.value as any, updateMode(), save())
     
-    // ===== 笔记本选择器（委托至epubDoc） =====
+    // 笔记本与文档选择
     const notebookSelect = $<HTMLSelectElement>('#setting-notebookId')
-    notebookSelect && import('../core/epubDoc').then(({ notebook }) => 
-      notebook.initSelect(notebookSelect, settings.value.notebookId || '', id => {
-        settings.value.notebookId = id
-        save()
-      }, i18n)
-    ).catch(() => {})
+    const [docSearch, docResults, parentDocSelect, docHint] = ['#setting-docSearch', '#doc-results', '#setting-parentDoc', '#selected-doc-hint'].map(s => $(s)) as [HTMLInputElement, HTMLElement, HTMLSelectElement, HTMLElement]
+    import('../core/epubDoc').then(({ notebook, document }) => (
+      notebookSelect && notebook.initSelect(notebookSelect, settings.value.notebookId || '', id => (settings.value.notebookId = id, save()), i18n),
+      docSearch && document.initSearchSelect(docSearch, parentDocSelect, docResults, docHint, settings.value.parentDoc, doc => (settings.value.parentDoc = doc, save()), i18n)
+    )).catch(() => {})
     
-    // ===== 文档搜索（委托至epubDoc） =====
-    const [docSearch, docResults, parentDocSelect, docHint] = ['#setting-docSearch', '#doc-results', '#setting-parentDoc', '#selected-doc-hint']
-      .map(s => $(s)) as [HTMLInputElement, HTMLElement, HTMLSelectElement, HTMLElement]
-    
-    docSearch && docResults && parentDocSelect && docHint && import('../core/epubDoc').then(({ document }) =>
-      document.initSearchSelect(docSearch, parentDocSelect, docResults, docHint, settings.value.parentDoc, doc => {
-        settings.value.parentDoc = doc
-        save()
-      }, i18n)
-    ).catch(() => {})
-    
-    // ===== 主题配置 =====
-    const theme = $<HTMLSelectElement>('#setting-theme')
-    const custom = $('#custom-theme')
+    // 主题配置
+    const theme = $<HTMLSelectElement>('#setting-theme'), custom = $('#custom-theme')
     const [color, bg, bgImg] = ['#setting-color', '#setting-bg', '#setting-bgImg'].map(s => $<HTMLInputElement>(s))
     const preview = $('#theme-preview')
+    const refresh = () => (applyTheme(preview, settings.value), preview.style.cssText += 'padding:16px;border-radius:4px;font-size:14px;line-height:1.8')
+    const updateCustom = () => (settings.value.customTheme = { name: '自定义', color: color.value, bg: bg.value, bgImg: bgImg.value || undefined }, refresh(), save())
     
-    // 刷新预览
-    const refresh = () => {
-      applyTheme(preview, settings.value)
-      preview.style.cssText += 'padding:16px;border-radius:4px;font-size:14px;line-height:1.8'
-    }
-    
-    // 初始化主题选择
-    theme.value = settings.value.theme
-    custom.style.display = settings.value.theme === 'custom' ? 'block' : 'none'
-    theme.addEventListener('change', () => {
-      settings.value.theme = theme.value
-      custom.style.display = theme.value === 'custom' ? 'block' : 'none'
-      refresh()
-      save()
-    })
-    
-    // 初始化自定义主题
-    color.value = settings.value.customTheme.color
-    bg.value = settings.value.customTheme.bg
-    bgImg.value = settings.value.customTheme.bgImg || ''
-    
-    // 自定义主题更新
-    const updateCustom = () => {
-      settings.value.customTheme = { name: '自定义', color: color.value, bg: bg.value, bgImg: bgImg.value || undefined }
-      refresh()
-    }
-    
-    ;[color, bg].forEach(el => el.addEventListener('change', () => (updateCustom(), save())))
-    bgImg.addEventListener('blur', () => (updateCustom(), save()))
-    
+    theme.value = settings.value.theme, custom.style.display = settings.value.theme === 'custom' ? 'block' : 'none'
+    theme.onchange = () => (settings.value.theme = theme.value, custom.style.display = theme.value === 'custom' ? 'block' : 'none', refresh(), save())
+    color.value = settings.value.customTheme.color, bg.value = settings.value.customTheme.bg, bgImg.value = settings.value.customTheme.bgImg || ''
+    color.onchange = bg.onchange = updateCustom, bgImg.onblur = updateCustom
     refresh()
   }
 

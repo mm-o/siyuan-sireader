@@ -17,6 +17,8 @@
 // ==================== Animations ====================
 @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: none; } }
 @keyframes spin { to { transform: rotate(360deg); } }
+@keyframes noteInputIn { from { opacity: 0; transform: scale(0.9) translateY(-10px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+@keyframes noteInputOut { from { opacity: 1; transform: scale(1) translateY(0); } to { opacity: 0; transform: scale(0.9) translateY(-10px); } }
 
 // ==================== 核心容器 ====================
 .epub-reader, .epub-container { width: 100%; height: 100%; }
@@ -39,20 +41,52 @@
 .menu-btn { @include btn-base(32px, 32px); svg { width: 16px; height: 16px; } }
 .toc-btn { @include btn-base(28px, 28px); svg { width: 14px; height: 14px; } &.active { color: var(--b3-theme-primary); background: var(--b3-theme-primary-lighter); } }
 
-// ==================== 颜色选择器 ====================
-.menu-btn-wrapper { position: relative; display: inline-block; }
+// ==================== 颜色选择器（统一样式）====================
+.menu-btn-wrapper { 
+  position: relative; display: inline-block;
+  // 扩大触发区域：在按钮和选择器之间添加桥接区
+  &::before {
+    content: ''; position: absolute; 
+    left: 50%; transform: translateX(-50%); 
+    top: 100%; width: 100%; height: 8px;
+    pointer-events: auto; z-index: 9;
+  }
+}
 .color-picker {
-  position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%);
+  position: absolute; top: calc(100% + 2px); left: 50%; transform: translateX(-50%);
   display: flex; gap: 6px; padding: 8px 10px; background: var(--b3-theme-surface);
-  border-radius: 8px; box-shadow: var(--b3-dialog-shadow); z-index: 10;
-  animation: fadeIn 0.15s ease;
-  &::before { content: ''; position: absolute; top: 100%; left: 0; right: 0; height: 8px; }
+  border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.15); z-index: 10;
+  animation: fadeInDown 0.15s ease;
+}
+.b3-list-item .color-picker { 
+  position: absolute; top: 36px; right: 0; left: auto; transform: none;
+  animation: fadeInRight 0.15s ease;
 }
 .color-btn {
-  width: 26px; height: 26px; border: 2px solid #fffc; border-radius: 6px;
-  cursor: pointer; transition: all 0.2s;
-  box-shadow: 0 1px 3px #00000026, inset 0 1px 1px #ffffff4d;
-  &:hover { transform: scale(1.15); box-shadow: 0 3px 8px #00000040, inset 0 1px 1px #ffffff4d; border-color: #fff; }
+  width: 28px; height: 28px; border: 2px solid transparent; border-radius: 50%; cursor: pointer;
+  transition: all 0.2s; 
+  &:hover { transform: scale(1.15); }
+  &.active { border-color: var(--b3-theme-on-surface); box-shadow: 0 0 0 2px var(--b3-theme-surface); }
+}
+
+@keyframes fadeInDown {
+  from { opacity: 0; transform: translateX(-50%) translateY(-8px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+@keyframes fadeInRight {
+  from { opacity: 0; transform: scale(0.9) translateX(8px); }
+  to { opacity: 1; transform: scale(1) translateX(0); }
+}
+
+// ==================== 阅读界面编辑按钮 ====================
+.epub-edit-btn {
+  position: absolute; top: -2px; right: -2px; width: 18px; height: 18px;
+  border: none; border-radius: 50%; cursor: pointer; font-size: 11px;
+  background: var(--b3-theme-primary); color: white; display: flex;
+  align-items: center; justify-content: center; padding: 0; line-height: 1;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.15); transition: all 0.2s;
+  z-index: 100; opacity: 0.9;
+  &:hover { transform: scale(1.15); opacity: 1; }
 }
 
 // ==================== 加载状态 ====================
@@ -209,4 +243,32 @@
     &--focus { background: var(--b3-theme-primary-lighter); font-weight: 500; }
   }
   .toc-subitems { transition: none; }
+}
+
+// ==================== 笔记输入框 ====================
+.epub-note-input {
+  position: fixed; width: 320px; min-height: 80px; max-height: 200px; z-index: 9999;
+  border: 2px solid var(--b3-theme-primary-lighter); border-radius: 12px; padding: 16px;
+  background: var(--b3-theme-background); color: var(--b3-theme-text);
+  font: 14px/1.5 var(--b3-font-family); resize: vertical; outline: none;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.12); 
+  animation: noteInputIn 0.2s ease;
+  &--out { animation: noteInputOut 0.2s ease forwards; }
+}
+
+
+// ==================== 操作按钮（统一样式）====================
+.toc-actions {
+  position: absolute; top: 8px; right: 8px; display: flex; gap: 4px; opacity: 0;
+  transition: opacity 0.2s ease;
+}
+.b3-list-item:hover .toc-actions { opacity: 1; }
+.toc-action-btn {
+  width: 28px; height: 28px; border: none; border-radius: 6px; cursor: pointer;
+  background: transparent; color: var(--b3-theme-on-surface); display: flex; align-items: center;
+  justify-content: center; transition: all 0.2s ease; opacity: 0.7;
+  svg { width: 14px; height: 14px; }
+  &:hover { opacity: 1; }
+  &[data-action*="edit"]:hover { color: var(--b3-theme-primary); background: rgba(33,150,243,0.08); }
+  &[data-action*="remove"]:hover { color: var(--b3-theme-error); background: rgba(244,67,54,0.08); }
 }

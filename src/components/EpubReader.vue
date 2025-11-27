@@ -29,20 +29,20 @@
         </button>
     </div>
     
-    <div v-show="ui.menuShow" class="epub-selection-menu" :style="{ left: ui.menuX + 'px', top: ui.menuY + 'px' }" @mousedown.stop @mouseleave="ui.colorShow = false">
-      <div class="menu-btn-wrapper">
+    <div v-show="ui.menuShow" class="epub-selection-menu" :style="{ left: ui.menuX + 'px', top: ui.menuY + 'px' }" @mousedown.stop>
+      <div class="menu-btn-wrapper" @mouseenter="ui.colorShow = true" @mouseleave="handleColorHide">
         <div v-show="ui.colorShow" class="color-picker" @mousedown.stop>
           <button 
             v-for="c in COLORS" :key="c.color"
             class="color-btn" 
             :style="{ background: c.bg }" 
             :title="c.title"
-            @click.stop="addHighlight(c.color), closeMenu()"
+            @click.stop="addMark(c.color), closeMenu()"
           ></button>
         </div>
-        <button class="menu-btn b3-tooltips b3-tooltips__n" @mouseenter="ui.colorShow = true" @click.stop="addHighlight('yellow'), closeMenu()" :aria-label="i18n?.highlight || '标注'"><svg><use xlink:href="#iconMark"></use></svg></button>
+        <button class="menu-btn b3-tooltips b3-tooltips__n" @click.stop="addMark('yellow'), closeMenu()" :aria-label="i18n?.highlight || '标注'"><svg><use xlink:href="#iconMark"></use></svg></button>
       </div>
-      <button class="menu-btn b3-tooltips b3-tooltips__n" @click.stop="addHighlightWithNote(), closeMenu()" :aria-label="i18n?.addNote || '添加笔记'"><svg><use xlink:href="#iconEdit"></use></svg></button>
+      <button class="menu-btn b3-tooltips b3-tooltips__n" @click.stop="addMark('blue', true), closeMenu()" :aria-label="i18n?.addNote || '添加笔记'"><svg><use xlink:href="#iconEdit"></use></svg></button>
       <button class="menu-btn b3-tooltips b3-tooltips__n" @click.stop="copySelection(), closeMenu()" :aria-label="i18n?.copyBtn || '复制'"><svg><use xlink:href="#iconCopy"></use></svg></button>
       <button class="menu-btn b3-tooltips b3-tooltips__n" @click.stop="openDict(ui.menuText, ui.menuX, ui.menuY + 50), closeMenu()" :aria-label="i18n?.dictBtn || '词典'"><svg><use xlink:href="#iconLanguage"></use></svg></button>
     </div>
@@ -55,7 +55,7 @@
 // ========================================
 
 <script setup lang="ts">
-import { reactive, ref, watch, onMounted, onUnmounted } from 'vue'
+import { reactive, ref, onMounted, onUnmounted } from 'vue'
 import type { Book, Rendition } from 'epubjs'
 import ePub from 'epubjs'
 import { showMessage } from 'siyuan'
@@ -63,8 +63,8 @@ import type { Plugin } from 'siyuan'
 import type { ReaderSettings } from '@/composables/useSetting'
 import * as API from '@/api'
 import { openDict } from '@/core/dictionary'
-import { getOrCreateDoc, addHighlight as saveHighlight, restoreHighlights, clearCache, addSingleHighlight, verifyDoc } from '@/core/epubDoc'
-import { HL_STYLES } from '@/core/epub'
+import { getOrCreateDoc, addHighlight as saveHighlight, restoreHighlights, clearCache, addSingleHighlight, verifyDoc, addInlineMemo, COLORS as EPUB_COLORS, COLOR_CODE, COLOR_RGB, COLOR_MAP, RGB_MAP, updateMark, parseNoteContent, queryAndFind, createNoteInput, createColorPicker } from '@/core/epubDoc'
+import { HL_STYLES, MARK_STYLES } from '@/core/epub'
 import { EpubToc } from '@/core/toc'
 
 // ===== 类型定义 =====
@@ -93,33 +93,26 @@ const props = withDefaults(defineProps<Props>(), {
   })
 })
 
-const i18n = props.plugin.i18n as any
-// ===== 常量配置 =====
-const COLORS: { color: HighlightColor; bg: string; title: string }[] = [
-  { color: 'red', bg: '#f44336', title: i18n?.colorRed || '红色' },
-  { color: 'orange', bg: '#ff9800', title: i18n?.colorOrange || '橙色' },
-  { color: 'yellow', bg: '#ffeb3b', title: i18n?.colorYellow || '黄色' },
-  { color: 'green', bg: '#4caf50', title: i18n?.colorGreen || '绿色' },
-  { color: 'pink', bg: '#e91e63', title: i18n?.colorPink || '粉色' },
-  { color: 'blue', bg: '#2196f3', title: i18n?.colorBlue || '蓝色' },
-  { color: 'purple', bg: '#9c27b0', title: i18n?.colorPurple || '紫色' },
-]
-
-const emit = defineEmits<{
-  toc: []
-  settings: []
-}>()
-
-const containerRef = ref<HTMLElement>()
-const readerWrapRef = ref<HTMLElement>()
-// ===== 响应式状态 =====
+// ===== 状态 =====
+const emit = defineEmits<{ toc: [], settings: [] }>()
+const [containerRef, readerWrapRef] = [ref<HTMLElement>(), ref<HTMLElement>()]
 const ui = reactive({ loading: true, error: '', loadingNext: false, menuShow: false, menuX: 0, menuY: 0, menuText: '', menuCfi: '', colorShow: false })
-const timers = { progress: 0, menu: 0 }
-
-let rendition: Rendition | null = null, book: Book | null = null, annotationDocId = '', progress = 0, currentHref = ''
-let tocPanel: EpubToc | null = null
+const timers = { progress: 0, menu: 0, colorHide: 0 }
+const i18n = props.plugin.i18n as any
+const COLORS = Object.entries(EPUB_COLORS).map(([color, bg]) => ({ color, bg, title: i18n?.[`color${color[0].toUpperCase()}${color.slice(1)}`] || color })) as { color: HighlightColor; bg: string; title: string }[]
+let [rendition, book, tocPanel]: [Rendition | null, Book | null, EpubToc | null] = [null, null, null]
+let [annotationDocId, progress, currentHref] = ['', 0, '']
 
 const closeMenu = () => (ui.menuShow = ui.colorShow = false)
+const handleColorHide = () => (clearTimeout(timers.colorHide), timers.colorHide = window.setTimeout(() => ui.colorShow = false, 300))
+const clean = (t: string) => t.replace(/[\r\n]+/g, ' ').trim()
+const url = (cfi: string, docId = annotationDocId) => props.url && cfi ? `${props.url.split('#')[0]}#${cfi}${docId ? '#' + docId : ''}` : ''
+const chapter = () => {
+  if (!currentHref || !book?.navigation?.toc) return ''
+  const find = (items: any[], h = currentHref.split('#')[0]): string => items.reduce((r, i) => r || (i.href.split('#')[0] === h ? i.label : find(i.subitems || [], h)), '')
+  return (ch => ch ? `（${clean(ch)}）` : '')(find(book.navigation.toc))
+}
+const copySelection = () => ui.menuText && navigator.clipboard.writeText(url(ui.menuCfi) ? `${clean(ui.menuText)} [◎](${url(ui.menuCfi)})` : clean(ui.menuText)).catch(() => {})
 
 // ===== 滚动加载 =====
 const handleScroll = () => {
@@ -153,25 +146,25 @@ const openBook = async () => {
     
     props.onRenditionReady?.(rendition)
     
-    // 恢复阅读状态（解析文档ID优先级：URL > blockId > 块属性）
-    let isInit = true
+    // 恢复阅读状态
+    let isInit = true, cfi = props.cfi
     const urlDocId = props.url?.split('#')[2]
-    let cfi = props.cfi
     if (urlDocId && await verifyDoc(urlDocId)) annotationDocId = urlDocId
-    else if (props.blockId && await verifyDoc(props.blockId)) annotationDocId = props.blockId
     else if (props.blockId) {
-      const attrs = await API.getBlockAttrs(props.blockId)
-      const id = attrs['memo'] || attrs['custom-epub-doc-id']
-      if (id && await verifyDoc(id)) annotationDocId = id
-      else if (id) await API.setBlockAttrs(props.blockId, { 'memo': '' }).catch(() => {})
-      cfi = props.cfi || attrs['custom-epub-cfi']
+      if (await verifyDoc(props.blockId)) annotationDocId = props.blockId
+      else {
+        const attrs = await API.getBlockAttrs(props.blockId)
+        const id = attrs['memo'] || attrs['custom-epub-doc-id']
+        id && await verifyDoc(id) ? annotationDocId = id : id && await API.setBlockAttrs(props.blockId, { 'memo': '' }).catch(() => {})
+        cfi ||= attrs['custom-epub-cfi']
+      }
     }
     await rendition.display(cfi)
-    annotationDocId && setTimeout(() => restoreHighlights(annotationDocId, rendition, HL_STYLES), TIMERS.HIGHLIGHT_DELAY)
+    annotationDocId && setTimeout(() => restoreHighlights(annotationDocId, rendition, HL_STYLES, MARK_STYLES), TIMERS.HIGHLIGHT_DELAY)
     
-    // 加载目录（在获取 annotationDocId 之后）
+    // 加载目录
     book.loaded.navigation.then(async (nav: any) => {
-      tocPanel = new EpubToc(readerWrapRef.value!, props.settings?.tocPosition || 'left', rendition, annotationDocId, getBaseUrl())
+      tocPanel = new EpubToc(readerWrapRef.value!, props.settings?.tocPosition || 'left', rendition, annotationDocId, props.url?.split('#')[0] || '')
       await tocPanel.load(nav)
     }).catch(() => {})
     await applyTheme(props.settings)
@@ -180,49 +173,97 @@ const openBook = async () => {
     
     // 监听翻页
     rendition.on('relocated', (loc: any) => {
-      closeMenu()
-      if (!loc?.start) return
-      currentHref = loc.start.href || ''
-      annotationDocId && restoreHighlights(annotationDocId, rendition, HL_STYLES)
+      if (closeMenu(), !loc?.start) return
+      currentHref = loc.start.href || '', annotationDocId && restoreHighlights(annotationDocId, rendition, HL_STYLES, MARK_STYLES)
       if (!props.blockId || isInit || !loc.start.cfi) return
       const prog = (loc.start.percentage || (loc.start.index + 1) / (book?.spine.length || 1)) * 100
-      if (Math.abs(prog - progress) < 0.1) return
-      clearTimeout(timers.progress)
-      timers.progress = window.setTimeout(() => API.setBlockAttrs(props.blockId!, { 'custom-epub-cfi': loc.start.cfi, 'custom-epub-progress': prog.toFixed(3), 'custom-epub-last-read': new Date().toISOString() }).then(() => progress = prog).catch(() => {}), TIMERS.PROGRESS_SAVE)
+      Math.abs(prog - progress) >= 0.1 && (clearTimeout(timers.progress), timers.progress = window.setTimeout(() => API.setBlockAttrs(props.blockId!, { 'custom-epub-cfi': loc.start.cfi, 'custom-epub-progress': prog.toFixed(3), 'custom-epub-last-read': new Date().toISOString() }).then(() => progress = prog).catch(() => {}), TIMERS.PROGRESS_SAVE))
     })
     
-    // 文本选择
-    const handleSel = (iframe: HTMLIFrameElement) => {
-      clearTimeout(timers.menu)
-      timers.menu = window.setTimeout(() => {
-        try {
-          const sel = iframe.contentWindow?.getSelection()
-          const text = sel?.toString().trim()
-          if (!text || !sel?.rangeCount || sel.isCollapsed) return closeMenu()
-          const rect = sel.getRangeAt(0).getBoundingClientRect(), iRect = iframe.getBoundingClientRect()
-          ui.menuText = text, ui.menuX = iRect.left + rect.left + rect.width / 2 - 70, ui.menuY = iRect.top + rect.top - 50, ui.menuShow = true
-        } catch { closeMenu() }
-      }, TIMERS.MENU_DEBOUNCE)
-    }
-    const regEvents = (doc: Document, iframe: HTMLIFrameElement) => {
-      const h = () => handleSel(iframe)
-      doc.addEventListener('selectionchange', h)
-      doc.addEventListener('mouseup', h)
+    // 文本选择和内容注册
+    const handleSel = (iframe: HTMLIFrameElement) => (clearTimeout(timers.menu), timers.menu = window.setTimeout(() => {
+      try {
+        const sel = iframe.contentWindow?.getSelection(), text = sel?.toString().trim()
+        if (!text || !sel?.rangeCount || sel.isCollapsed) return closeMenu()
+        const rect = sel.getRangeAt(0).getBoundingClientRect(), iRect = iframe.getBoundingClientRect()
+        ui.menuText = text, ui.menuX = iRect.left + rect.left + rect.width / 2 - 70, ui.menuY = iRect.top + rect.top - 50, ui.menuShow = true
+      } catch { closeMenu() }
+    }, TIMERS.MENU_DEBOUNCE))
+    
+    const showColorPicker = (x: number, y: number, w: number, currentColor: HighlightColor, onSelect: (color: HighlightColor) => void) => 
+      createColorPicker(x + w/2, y, currentColor, EPUB_COLORS, onSelect as (c: string) => void)
+    
+    // 检查点击的标注
+    const findClickedAnnotation = (doc: Document, e: MouseEvent) => {
+      try {
+        const clickRange = doc.caretRangeFromPoint?.(e.clientX, e.clientY)
+        if (!clickRange || !rendition?.annotations) return null
+        const allAnnotations = [...Object.entries(rendition.annotations._annotations), ...Object.entries(rendition.annotations._underlines || {})]
+        for (const [, anno] of allAnnotations) {
+          try {
+            const annoRange = rendition.getRange((anno as any).cfiRange)
+            if (annoRange && clickRange.compareBoundaryPoints(Range.START_TO_START, annoRange) >= 0 && clickRange.compareBoundaryPoints(Range.END_TO_END, annoRange) <= 0) {
+              return { ...anno, isUnderline: !!rendition.annotations._underlines?.[(anno as any).cfiRange] } as any
+            }
+          } catch {}
+        }
+      } catch {}
+      return null
     }
     
-    // 内容注册
+    // 点击编辑标注/笔记
+    const regEvents = (doc: Document, iframe: HTMLIFrameElement) => {
+      ['selectionchange', 'mouseup'].forEach(e => doc.addEventListener(e, () => handleSel(iframe)))
+      
+      doc.onclick = async (e) => {
+        if (!annotationDocId) return
+        const target = e.target as HTMLElement
+        const r = target.getBoundingClientRect(), ir = iframe.getBoundingClientRect()
+        const [x, y, w] = [ir.left + r.left, ir.top + r.bottom, r.width]
+        
+        // 检测点击的标注类型
+        const anno = findClickedAnnotation(doc, e)
+        if (anno) {
+          e.stopPropagation()
+          const cfi = anno.cfiRange
+          const isNote = anno.isUnderline || ['underline', 'note'].includes(anno.type) || (anno.styles && ['stroke', 'border', 'borderColor'].some(k => anno.styles[k]?.includes('#2196f3') || anno.styles[k]?.includes('blue')))
+          if (isNote) {
+            const match = await queryAndFind(annotationDocId, '- N %', cfi)
+            return createNoteInput(x, y, parseNoteContent(match?.markdown), i18n?.editNote || '编辑笔记...', async (note) => 
+              await updateMark(annotationDocId, cfi, 'note', note) && (tocPanel?.addNote(cfi, note, target.textContent || '', annotationDocId), showMessage(i18n?.noteSaved || '笔记已保存')))
+          } else {
+            const match = await queryAndFind(annotationDocId, '- [ROYGPBV] %', cfi)
+            const bg = anno.styles?.background || 'rgba(255, 235, 59, 0.4)'
+            const currentColor = match ? COLOR_MAP[match.markdown.match(/^-\s*([ROYGPBV])\s/)?.[1] as keyof typeof COLOR_MAP] || 'yellow' 
+              : RGB_MAP.find(([rgb]) => bg.includes(rgb.replace(/,/g, ', ')) || bg.includes(rgb))?.[1] || Object.entries(COLOR_RGB).find(([rgb]) => bg.includes(rgb))?.[1] || 'yellow'
+            
+            return showColorPicker(x, y, w, currentColor, async (newColor) => {
+              if (!await updateMark(annotationDocId, cfi, 'color', COLOR_CODE[newColor])) return
+              const { clearRenderedCache, addSingleHighlight } = await import('@/core/epubDoc')
+              rendition?.annotations._annotations[cfi] && rendition.annotations.remove(cfi, 'highlight')
+              rendition?.annotations._underlines?.[cfi] && rendition.annotations.remove(cfi, 'underline')
+              clearRenderedCache(rendition, cfi)
+              addSingleHighlight(rendition, cfi, newColor, undefined, HL_STYLES, MARK_STYLES)
+              tocPanel?.addMark(cfi, newColor, target.textContent || '', annotationDocId)
+              showMessage(i18n?.markUpdated || '标注已更新')
+            })
+          }
+        }
+      }
+    }
+    
+    // 事件注册
     rendition.hooks.content.register((contents: any) => {
       const iframe = contents.document.defaultView.frameElement as HTMLIFrameElement
       iframe.hasAttribute('sandbox') && iframe.setAttribute('sandbox', 'allow-same-origin allow-scripts')
       isScroll && iframe.contentWindow?.addEventListener('scroll', handleScroll, { passive: true })
-      regEvents(contents.document, iframe)
-      applyTheme(props.settings)
+      regEvents(contents.document, iframe), applyTheme(props.settings)
     })
-    rendition.on('rendered', () => { const iframe = containerRef.value?.querySelector('iframe'); iframe?.contentDocument && regEvents(iframe.contentDocument, iframe) })
+    rendition.on('rendered', () => containerRef.value?.querySelector('iframe')?.contentDocument && regEvents(containerRef.value.querySelector('iframe')!.contentDocument!, containerRef.value.querySelector('iframe')!))
     rendition.on('selected', (cfiRange: string) => ui.menuCfi = cfiRange)
-    const onSettings = ((e: CustomEvent) => e.detail && applyTheme(e.detail)) as EventListener
-    window.addEventListener('sireaderSettingsUpdated', onSettings)
-    onUnmounted(() => window.removeEventListener('sireaderSettingsUpdated', onSettings))
+    const onSettings = (e: CustomEvent) => e.detail && applyTheme(e.detail)
+    window.addEventListener('sireaderSettingsUpdated', onSettings as EventListener)
+    onUnmounted(() => window.removeEventListener('sireaderSettingsUpdated', onSettings as EventListener))
   } catch (e) {
     ui.error = e instanceof Error ? e.message : i18n?.loadFailed || '加载失败'
     console.error('[SiReader]', e)
@@ -231,82 +272,63 @@ const openBook = async () => {
   }
 }
 
-// ===== 工具函数 =====
-const cleanText = (text: string) => text.replace(/[\r\n]+/g, ' ').trim()
-const getBaseUrl = () => props.url?.split('#')[0] || ''
-const buildUrl = (cfi: string, docId?: string) => {
-  const base = getBaseUrl()
-  return base && cfi ? `${base}#${cfi}${docId ? '#' + docId : ''}` : ''
-}
-const getCurrentChapter = (): string => {
-  if (!currentHref || !book?.navigation?.toc) return ''
-  const h = currentHref.split('#')[0]
-  const find = (items: any[]): string => items.reduce((r, i) => r || (i.href.split('#')[0] === h ? i.label : find(i.subitems || [])), '')
-  const ch = find(book.navigation.toc)
-  return ch ? `（${cleanText(ch)}）` : ''
-}
-
-// ===== 文本操作 =====
-const copySelection = () => {
-  const { menuText: text, menuCfi: cfi } = ui
-  if (!text) return
-  const url = buildUrl(cfi, annotationDocId)
-  const link = url ? `${cleanText(text)} [◎](${url})` : cleanText(text)
-  navigator.clipboard.writeText(link).catch(() => {})
-}
 
 // ===== 标注操作 =====
-const addHighlight = async (color: HighlightColor = 'yellow', note = '', tags: string[] = []) => {
-  const { menuText: text, menuCfi: cfi } = ui
-  if (!text || !cfi || !props.blockId || !props.url) return
-  if (!annotationDocId) {
-    const cfg = { mode: props.settings?.annotationMode || 'notebook', notebookId: props.settings?.notebookId, parentDoc: props.settings?.parentDoc } as any
-    if (cfg.mode === 'notebook' && !cfg.notebookId) return showMessage(i18n?.selectNotebook || '请先在设置中选择笔记本')
-    if (cfg.mode === 'document' && !cfg.parentDoc?.id) return showMessage(i18n?.selectDocument || '请先在设置中选择文档')
-    const metadata = book ? await book.loaded.metadata.catch(() => ({ title: '' })) : { title: '' }
-    annotationDocId = await getOrCreateDoc(props.blockId, metadata?.title || props.file.name.replace('.epub', ''), cfg) || ''
-    if (!annotationDocId) return
+const ensureAnnotationDoc = async () => {
+  if (annotationDocId) return true
+  const cfg = { mode: props.settings?.annotationMode || 'notebook', notebookId: props.settings?.notebookId, parentDoc: props.settings?.parentDoc } as any
+  if (cfg.mode === 'notebook' && !cfg.notebookId) return showMessage(i18n?.selectNotebook || '请先在设置中选择笔记本'), false
+  if (cfg.mode === 'document' && !cfg.parentDoc?.id) return showMessage(i18n?.selectDocument || '请先在设置中选择文档'), false
+  const metadata = book ? await book.loaded.metadata.catch(() => ({ title: '' })) : { title: '' }
+  annotationDocId = await getOrCreateDoc(props.blockId, metadata?.title || props.file.name.replace('.epub', ''), cfg) || ''
+  return !!annotationDocId
+}
+
+const addMark = async (color: HighlightColor, isNote = false) => {
+  const { menuText, menuCfi } = ui
+  if (!menuText || !menuCfi || !props.blockId || !props.url || !await ensureAnnotationDoc()) return
+  const text = clean(menuText), link = url(menuCfi)
+  if (isNote) {
+    createNoteInput(ui.menuX, ui.menuY + 20, '', i18n?.inputNote || '输入备注...', (note) => {
+      addSingleHighlight(rendition, menuCfi, 'blue', 'border', HL_STYLES, MARK_STYLES)
+      addInlineMemo(annotationDocId, text, note, link)
+      tocPanel?.addNote(menuCfi, note, text, annotationDocId)
+      showMessage(i18n?.inlineMemoSaved || '备注已保存')
+    })
+  } else {
+    addSingleHighlight(rendition, menuCfi, color, undefined, HL_STYLES, MARK_STYLES)
+    await saveHighlight(annotationDocId, text + chapter(), link, menuCfi, color)
+    tocPanel?.addMark(menuCfi, color, text + chapter(), annotationDocId)
+    showMessage(i18n?.annotationSaved || '标注已保存')
   }
-  const textWithChapter = `${cleanText(text)}${getCurrentChapter()}`
-  addSingleHighlight(rendition, cfi, color, HL_STYLES), await saveHighlight(annotationDocId, textWithChapter, buildUrl(cfi, annotationDocId), cfi, color, note, tags)
-  tocPanel?.addMark(cfi, color, textWithChapter, annotationDocId)
-  showMessage(i18n?.annotationSaved || '标注已保存')
-}
-const addHighlightWithNote = async () => {
-  const note = prompt(i18n?.inputNote || '输入笔记（可选）：')
-  if (note === null) return
-  const tags = prompt(i18n?.inputTags || '输入标签（空格分隔，可选）：')?.split(' ').filter(Boolean) || []
-  await addHighlight('yellow', note, tags)
 }
 
-// ===== 目录面板 =====
 const showTocDialog = () => tocPanel?.toggle()
-
-// ===== 事件处理 =====
-const handleClick = (e: MouseEvent) => {
-  if ((e.target as HTMLElement).closest('.epub-toolbar, .epub-selection-menu')) return
-  closeMenu()
-}
-
+const handleClick = (e: MouseEvent) => (e.target as HTMLElement).closest('.epub-toolbar, .epub-selection-menu') || closeMenu()
 const handleKey = (e: KeyboardEvent) => {
   if (!containerRef.value?.contains(document.activeElement)) return
   const actions = { ArrowLeft: () => rendition?.prev(), ArrowRight: () => rendition?.next(), Escape: closeMenu }
   actions[e.key as keyof typeof actions]?.() && e.preventDefault()
 }
 
-// ===== 生命周期 =====
 onMounted(() => (containerRef.value?.focus(), window.addEventListener('keydown', handleKey), openBook()))
-
 onUnmounted(async () => {
+  // 保存阅读位置
   if (props.blockId && rendition) {
     const loc = (rendition as any).currentLocation()
-    loc && await API.setBlockAttrs(props.blockId, { 'custom-epub-cfi': loc.start.cfi, 'custom-epub-progress': ((loc.start.percentage || 0) * 100).toFixed(3), 'custom-epub-last-read': new Date().toISOString() }).catch(() => {})
+    if (loc) {
+      await API.setBlockAttrs(props.blockId, {
+        'custom-epub-cfi': loc.start.cfi,
+        'custom-epub-progress': ((loc.start.percentage || 0) * 100).toFixed(3),
+        'custom-epub-last-read': new Date().toISOString()
+      }).catch(() => {})
+    }
   }
+  // 清理资源
   Object.values(timers).forEach(clearTimeout)
   window.removeEventListener('keydown', handleKey)
   rendition && clearCache.highlight(rendition)
-  rendition?.destroy()
-  book?.destroy()
+  rendition?.destroy(), book?.destroy()
   rendition = book = null
 })
 </script>

@@ -9,4 +9,4 @@ dist
 build
 tmp
 .env
-docs\mplayer
+docs

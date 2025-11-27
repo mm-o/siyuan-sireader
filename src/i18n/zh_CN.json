@@ -156,5 +156,10 @@
   "batchConvertStyle": "批量转换EPUB样式",
   "batchWidth": "批量宽度",
   "epubStyle": "EPUB样式",
-  "width": "宽度"
+  "width": "宽度",
+  "addBlockNote": "行级备注",
+  "inputInlineMemo": "输入备注：",
+  "inlineMemoSaved": "备注已保存",
+  "inlineMemoFailed": "备注保存失败",
+  "converting": "转换中"
 }

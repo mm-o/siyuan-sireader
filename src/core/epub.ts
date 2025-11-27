@@ -10,7 +10,7 @@ import { clearCache } from './epubDoc'
 const TAB_TYPE = 'epub_reader'
 const activeTabs = new Map<string, { rendition: any; blockId: string; url: string }>()
 
-// 标注样式配置（7色，极简高效）
+// 标注样式配置（7色高亮）
 export const HL_STYLES = {
   red: { background: 'rgba(244,67,54,0.4)', fill: '#f44336', 'fill-opacity': '0.4', 'mix-blend-mode': 'multiply' },
   orange: { background: 'rgba(255,152,0,0.4)', fill: '#ff9800', 'fill-opacity': '0.4', 'mix-blend-mode': 'multiply' },
@@ -21,16 +21,20 @@ export const HL_STYLES = {
   purple: { background: 'rgba(156,39,176,0.4)', fill: '#9c27b0', 'fill-opacity': '0.4', 'mix-blend-mode': 'multiply' },
 } as const
 
+// 标注类型样式（边框、下划线、波浪线）
+export const MARK_STYLES = {
+  border: { stroke: '#2196f3', 'stroke-width': '2px', fill: 'none' },
+  underline: { stroke: '#2196f3', 'stroke-width': '2px' },
+  wavy: { stroke: '#2196f3', 'stroke-width': '2px', 'stroke-dasharray': '3,3' },
+} as const
+
 export const isEpub = (url?: string | null) => !!url && url.toLowerCase().split('?')[0].split('#')[0].endsWith('.epub')
 
-const saveProgress = async (blockId: string, loc: any) => {
-  if (!loc?.start?.cfi) return
-  await API.setBlockAttrs(blockId, {
-    'custom-epub-cfi': loc.start.cfi,
-    'custom-epub-progress': Math.round((loc.start.percentage || 0) * 100).toString(),
-    'custom-epub-last-read': new Date().toISOString(),
-  })
-}
+const saveProgress = async (blockId: string, loc: any) => loc?.start?.cfi && await API.setBlockAttrs(blockId, {
+  'custom-epub-cfi': loc.start.cfi,
+  'custom-epub-progress': Math.round((loc.start.percentage || 0) * 100).toString(),
+  'custom-epub-last-read': new Date().toISOString(),
+})
 
 export const saveAllProgress = () => Promise.all(
   Array.from(activeTabs.values())
@@ -40,9 +44,10 @@ export const saveAllProgress = () => Promise.all(
 
 // 文档管理功能移至 epubDoc.ts
 
+const center = (content: string, color = '#999') => `<div style="display:flex;align-items:center;justify-content:center;height:100%;color:${color}">${content}</div>`
+
 export function registerEpubTab(plugin: Plugin) {
   const { open: openSetting } = useSetting(plugin)
-  const center = (content: string, color = '#999') => `<div style="display:flex;align-items:center;justify-content:center;height:100%;color:${color}">${content}</div>`
   
   plugin.addTab({
     type: TAB_TYPE,
@@ -57,8 +62,7 @@ export function registerEpubTab(plugin: Plugin) {
       
       if (!file && url) {
         container.innerHTML = center('<div class="fn__loading"><img width="48px" src="/stage/loading-pure.svg"></div><div style="margin-top:10px">正在加载...</div>')
-        file = await fetchEpubFile(url)
-        if (!file) return container.innerHTML = center('加载失败', '#f00')
+        if (!(file = await fetchEpubFile(url))) return container.innerHTML = center('加载失败', '#f00')
       }
       
       if (!file) return container.innerHTML = center('无法加载')
@@ -91,24 +95,19 @@ export function createEpubLinkHandler(plugin: Plugin, getSettings: () => { openM
     const url = linkEl?.getAttribute('data-href') || linkEl?.getAttribute('href')
     if (!isEpub(url)) return
     
-    e.preventDefault()
-    e.stopPropagation()
+    e.preventDefault(), e.stopPropagation()
     
-    // 解析URL、CFI和文档ID（格式：url#cfi#docId）
-    const parts = url!.split('#')
-    const epubUrl = parts[0]
-    let cfi = parts[1] || ''
-    const docId = parts[2] || ''
+    // 解析URL（url#cfi#docId）
+    let [epubUrl, cfi = '', docId = ''] = url!.split('#')
     if (cfi.includes('%')) try { cfi = decodeURIComponent(cfi) } catch {}
     
     // 如果书已打开，直接跳转
     const openedTab = Array.from(activeTabs.entries()).find(([_, tab]) => tab.url === epubUrl)
     if (openedTab && cfi) {
       const [tabId, tab] = openedTab
-      if (docId && tab.blockId !== docId) tab.blockId = docId
+      docId && tab.blockId !== docId && (tab.blockId = docId)
       document.querySelector(`[data-id="${tabId}"]`)?.parentElement?.click()
-      tab.rendition?.display(cfi).catch(() => {})
-      return
+      return tab.rendition?.display(cfi).catch(() => {})
     }
     
     const file = await fetchEpubFile(epubUrl).catch(() => null)

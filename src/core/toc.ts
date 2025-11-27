@@ -1,13 +1,11 @@
-import * as API from '@/api'
-import type { HighlightColor, Bookmark } from '@/core/epubDoc'
-import { loadBookmarks, addBookmark, removeBookmark } from '@/core/epubDoc'
+import * as API from '../api'
+import { COLORS, COLOR_CODE, COLOR_MAP, updateMark, loadBookmarks, addBookmark, removeBookmark, parseNoteContent, createNoteInput, createColorPicker, type HighlightColor, type Bookmark } from './epubDoc'
 
 interface TocItem { id: string; href: string; label: string; subitems?: TocItem[] }
 interface Mark { cfi: string; color: HighlightColor; text?: string }
+interface Note { cfi: string; note: string; text: string }
 type Mode = 'toc' | 'bookmark' | 'mark' | 'note'
 
-const COLORS: Record<HighlightColor, string> = { red: '#f44336', orange: '#ff9800', yellow: '#ffeb3b', green: '#4caf50', pink: '#e91e63', blue: '#2196f3', purple: '#9c27b0' }
-const COLOR_MAP = { R: 'red', O: 'orange', Y: 'yellow', G: 'green', P: 'pink', L: 'blue', V: 'purple' } as const
 const MODES = [{ k: 'toc', i: '#iconList' }, { k: 'bookmark', i: '#iconBookmark' }, { k: 'mark', i: '#iconMark' }, { k: 'note', i: '#iconFile' }] as const
 
 export class EpubToc {
@@ -16,6 +14,7 @@ export class EpubToc {
   private toc: TocItem[] = []
   private bookmarks: Bookmark[] = []
   private marks: Mark[] = []
+  private notes: Note[] = []
   private currentHref = ''
   private mode: Mode = 'toc'
   private reverse = false
@@ -52,12 +51,20 @@ export class EpubToc {
       API.sql(`SELECT markdown FROM blocks WHERE root_id='${this.docId}' AND markdown LIKE '%epubcfi%'`).catch(() => [])
     ])
     this.bookmarks = bms
-    this.marks = [...new Map(
-      blocks.map((b: any) => {
-        const m = b.markdown?.match(/^-\s*([ROYGPLV])\s+(.+?)\s*\[◎\].*#(epubcfi\([^)]+\))/) || b.markdown?.match(/^-\s*([ROYGPLV])\s.*#(epubcfi\([^)]+\))/)
-        return m ? [m[3] || m[2], { cfi: m[3] || m[2], color: COLOR_MAP[m[1] as keyof typeof COLOR_MAP] || 'yellow' as HighlightColor, text: m[2] }] : null
-      }).filter(x => x) as [string, Mark][]
-    ).values()]
+    this.marks = []
+    this.notes = []
+    const seen = new Set<string>()
+    blocks.forEach((b: any) => {
+      const md = b.markdown?.trim()
+      if (!md?.startsWith('- ')) return
+      if (md.startsWith('- N ')) {
+        const m = md.match(/^-\s*N\s+([^<#]+).*#(epubcfi\([^)]+\))/)
+        m && !seen.has(m[2]) && (this.notes.push({ cfi: m[2], note: parseNoteContent(md), text: m[1].trim() }), seen.add(m[2]))
+      } else if (/^-\s*[ROYGPBV]\s/.test(md)) {
+        const m = md.match(/^-\s*([ROYGPBV])\s+(.+?)\s*\[◎\].*#(epubcfi\([^)]+\))/)
+        m && !seen.has(m[3]) && (this.marks.push({ cfi: m[3], color: COLOR_MAP[m[1] as keyof typeof COLOR_MAP] || 'yellow', text: m[2] }), seen.add(m[3]))
+      }
+    })
   }
 
   private mapItem = (item: any): TocItem => ({
@@ -109,7 +116,7 @@ export class EpubToc {
   }
 
   private renderContent = (): string => {
-    if (this.mode === 'note') return '<div class="toc-state">即将推出...</div>'
+    if (this.mode === 'note') return this.renderList(this.notes as any, 'note')
     if (this.mode === 'bookmark') return this.renderList(this.bookmarks, 'bookmark')
     if (this.mode === 'mark') return this.renderList(this.marks, 'mark')
     const items = this.filterItems(this.toc, this.search)
@@ -125,15 +132,16 @@ export class EpubToc {
       return `<div class="toc-item-wrap" data-wrap="${i.id}"><div class="b3-list-item${isCurrent ? ' b3-list-item--focus' : ''}" data-href="${i.href}" style="padding-left:${8 + lv * 16}px">${hasSub ? `<button class="toc-expand-btn" data-expand="${i.id}" style="opacity:1"><svg style="width:12px;height:12px;transition:transform .2s${isExpanded ? ';transform:rotate(90deg)' : ''}"><use xlink:href="#iconRight"/></svg></button>` : '<span style="width:20px;display:inline-block"></span>'}<span class="b3-list-item__text fn__flex-1">${i.label}</span><button class="toc-bookmark-btn b3-tooltips b3-tooltips__w" aria-label="${isBookmarked ? '移除书签' : '添加书签'}" data-bookmark="${i.href}" data-label="${i.label}"${isBookmarked ? ' style="opacity:1"' : ''}><svg style="width:14px;height:14px;color:${isBookmarked ? 'var(--b3-theme-error)' : 'var(--b3-theme-on-surface)'}"><use xlink:href="#iconBookmark"/></svg></button></div>${hasSub && isExpanded ? `<div class="toc-subitems" data-sub="${i.id}">${this.renderTocItems(i.subitems!, lv + 1)}</div>` : ''}</div>`
     }).join('')
 
-  private renderList = (data: Bookmark[] | Mark[], type: 'bookmark' | 'mark'): string => {
-    if (!data.length) return `<div class="toc-state">暂无${type === 'bookmark' ? '书签' : '标记'}</div>`
-    return type === 'bookmark' 
-      ? (data as Bookmark[]).map(b => `<div class="b3-list-item" data-href="${b.href}" style="padding:8px 12px;position:relative"><span class="b3-list-item__text fn__flex-1">${b.label}</span><button class="toc-delete-btn b3-tooltips b3-tooltips__w" aria-label="删除书签" data-action="remove-bookmark" data-href="${b.href}"><svg style="width:14px;height:14px;color:var(--b3-theme-error)"><use xlink:href="#iconTrashcan"/></svg></button></div>`).join('')
-      : (data as Mark[]).map(m => {
-          const match = m.text?.match(/（([^）]+)）$/)
-          const [text, chapter] = match ? [m.text!.substring(0, match.index), match[1]] : [m.text, '']
-          return `<div class="b3-list-item" data-cfi="${m.cfi}" style="padding:8px 12px;border-left:3px solid ${COLORS[m.color]};margin:6px 8px;position:relative;display:block"><div style="word-break:break-word;line-height:1.6;padding-right:32px"><div>${text || m.cfi.slice(0, 50)}</div>${chapter ? `<div style="font-size:11px;opacity:0.6;margin-top:4px;color:var(--b3-theme-on-surface-light)">${chapter}</div>` : ''}</div><button class="toc-delete-btn b3-tooltips b3-tooltips__w" aria-label="删除标记" data-action="remove-mark" data-cfi="${m.cfi}" style="position:absolute;top:8px;right:8px"><svg style="width:14px;height:14px;color:var(--b3-theme-error)"><use xlink:href="#iconTrashcan"/></svg></button></div>`
-        }).join('')
+  private renderList = (data: Bookmark[] | Mark[] | Note[], type: 'bookmark' | 'mark' | 'note'): string => {
+    if (!data.length) return `<div class="toc-state">暂无${type === 'bookmark' ? '书签' : type === 'mark' ? '标记' : '笔记'}</div>`
+    const btn = (action: string, icon: string, key: string, val: string) => `<button class="toc-action-btn" data-action="${action}" ${key}="${val}" title="${action.includes('edit') ? '编辑' : '删除'}"><svg><use xlink:href="#${icon}"/></svg></button>`
+    if (type === 'bookmark') return (data as Bookmark[]).map(b => `<div class="b3-list-item" data-href="${b.href}" style="padding:8px 12px;position:relative"><span class="b3-list-item__text fn__flex-1">${b.label}</span><div class="toc-actions">${btn('remove-bookmark', 'iconTrashcan', 'data-href', b.href)}</div></div>`).join('')
+    if (type === 'note') return (data as Note[]).map(n => `<div class="b3-list-item" data-cfi="${n.cfi}" style="padding:8px 12px;border-left:3px solid ${COLORS.blue};margin:6px 8px;position:relative;display:block"><div style="word-break:break-word;line-height:1.6;padding-right:64px"><div style="font-weight:600;margin-bottom:4px">${n.note}</div><div style="font-size:12px;opacity:0.65">${n.text}</div></div><div class="toc-actions">${btn('edit-note', 'iconEdit', 'data-cfi', n.cfi)}${btn('remove-note', 'iconTrashcan', 'data-cfi', n.cfi)}</div></div>`).join('')
+    return (data as Mark[]).map(m => {
+      const match = m.text?.match(/（([^）]+)）$/)
+      const [text, chapter] = match ? [m.text!.substring(0, match.index), match[1]] : [m.text, '']
+      return `<div class="b3-list-item" data-cfi="${m.cfi}" style="padding:8px 12px;border-left:3px solid ${COLORS[m.color]};margin:6px 8px;position:relative;display:block"><div style="word-break:break-word;line-height:1.6;padding-right:64px"><div>${text || m.cfi.slice(0, 50)}</div>${chapter ? `<div style="font-size:11px;opacity:0.6;margin-top:4px;color:var(--b3-theme-on-surface-light)">${chapter}</div>` : ''}</div><div class="toc-actions">${btn('edit-mark', 'iconEdit', 'data-cfi', m.cfi)}${btn('remove-mark', 'iconTrashcan', 'data-cfi', m.cfi)}</div></div>`
+    }).join('')
   }
 
   private bindEvents = () => {
@@ -147,6 +155,9 @@ export class EpubToc {
       if (d.action === 'scroll') return this.toggleScroll()
       if (d.action === 'remove-bookmark') return this.toggleBookmark(d.href!)
       if (d.action === 'remove-mark') return this.removeMark(d.cfi!)
+      if (d.action === 'remove-note') return this.removeNote(d.cfi!)
+      if (d.action === 'edit-mark') return this.editMark(p)
+      if (d.action === 'edit-note') return this.editNote(p)
       if (d.expand) return this.toggleExpand(d.expand)
       if (d.bookmark) return this.toggleBookmark(d.bookmark, d.label)
       if (d.href && !p.closest('button')) return this.navigate(d.href)
@@ -206,12 +217,46 @@ export class EpubToc {
     this.panel && this.mode === 'mark' && this.render()
   }
   
-  private removeMark = async (cfi: string) => {
+  addNote = (cfi: string, note: string, text: string, docId?: string) => {
+    if (docId && this.docId !== docId) this.docId = docId
+    this.notes = this.notes.filter(n => n.cfi !== cfi).concat({ cfi, note, text })
+    this.panel && this.mode === 'note' && this.render()
+  }
+  
+  private removeItem = async (cfi: string, type: 'mark' | 'note') => {
     if (!this.docId) return
     const blocks = await API.sql(`SELECT id FROM blocks WHERE root_id='${this.docId}' AND markdown LIKE '%${cfi}%'`).catch(() => [])
     await Promise.all(blocks.map((b: any) => API.deleteBlock(b.id).catch(() => {})))
-    this.marks = this.marks.filter(m => m.cfi !== cfi)
+    type === 'mark' ? this.marks = this.marks.filter(m => m.cfi !== cfi) : this.notes = this.notes.filter(n => n.cfi !== cfi)
     this.render()
+  }
+
+  private removeMark = (cfi: string) => this.removeItem(cfi, 'mark')
+  private removeNote = (cfi: string) => this.removeItem(cfi, 'note')
+
+  private editMark = async (el: HTMLElement) => {
+    const cfi = el.dataset.cfi!, mark = this.marks.find(m => m.cfi === cfi)
+    if (!mark || !this.docId) return
+    const r = el.getBoundingClientRect()
+    createColorPicker(r.left + r.width/2, r.bottom, mark.color, COLORS, async (color) => {
+      const c = color as HighlightColor
+      if (await updateMark(this.docId, cfi, 'color', COLOR_CODE[c])) {
+        mark.color = c
+        this.render()
+      }
+    })
+  }
+
+  private editNote = async (el: HTMLElement) => {
+    const cfi = el.dataset.cfi!, note = this.notes.find(n => n.cfi === cfi)
+    if (!note || !this.docId) return
+    const r = el.getBoundingClientRect()
+    createNoteInput(r.left, r.bottom, note.note, '编辑笔记...', async (newNote) => {
+      if (await updateMark(this.docId, cfi, 'note', newNote)) {
+        note.note = newNote
+        this.render()
+      }
+    })
   }
 
   private updateHighlight = (scroll = false) => {
