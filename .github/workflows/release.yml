@@ -54,7 +54,41 @@ jobs:
       - name: Build for production
         run: pnpm build
 
-      - name: Release
+      # 验证构建输出并创建备用zip
+      - name: Verify build output
+        run: |
+          echo "📋 Current directory contents:"
+          ls -la
+          echo "📁 Dist directory contents:"
+          ls -la dist/
+          
+          # 检查package.zip是否存在
+          if [ ! -f "package.zip" ]; then
+            echo "❌ package.zip not found!"
+            echo "🔧 Creating backup zip from dist directory..."
+            
+            # 手动创建zip文件
+            cd dist
+            zip -r ../package.zip .
+            cd ..
+            
+            if [ ! -f "package.zip" ]; then
+              echo "❌ Failed to create package.zip!"
+              exit 1
+            fi
+            echo "✅ Backup package.zip created successfully"
+          fi
+          
+          echo "✅ package.zip found:"
+          ls -lh package.zip
+          echo "📦 File size: $(du -h package.zip | cut -f1)"
+          
+          # 检查zip内容
+          echo "📋 Package contents:"
+          unzip -l package.zip | head -20
+
+      # 创建发布
+      - name: Create Release
         uses: ncipollo/release-action@v1
         with:
           allowUpdates: true
@@ -62,3 +96,18 @@ jobs:
           artifacts: "package.zip"
           token: ${{ secrets.GITHUB_TOKEN }}
           prerelease: false
+          generateReleaseNotes: true
+          name: "v${{ github.ref_name }}"
+          body: |
+            ## 🚀 版本 ${{ github.ref_name }}
+            
+            📦 **安装包**: [package.zip](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/package.zip)
+            
+            ### ✨ 更新内容
+            请查看 [更新日志](https://github.com/${{ github.repository }}/blob/main/更新日志.md) 获取详细信息。
+            
+            ### 📥 安装方式
+            1. 下载 `package.zip` 文件
+            2. 在思源笔记中打开 `设置` → `集市` → `已下载` → `插件`
+            3. 点击右上角 `+` 图标，选择下载的zip文件
+            4. 启用插件即可使用
