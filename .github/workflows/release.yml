@@ -50,45 +50,50 @@ jobs:
       - name: Install dependencies
         run: pnpm install
 
-      # Build for production, 这一步会生成一个 package.zip
+      # Build for production
       - name: Build for production
         run: pnpm build
 
-      # 验证构建输出并创建备用zip
-      - name: Verify build output
+      # 创建发布包（使用显式 zip 命令确保可靠性）
+      - name: Create release package
         run: |
-          echo "📋 Current directory contents:"
+          echo "📦 Checking for package.zip..."
           ls -la
-          echo "📁 Dist directory contents:"
-          ls -la dist/
           
-          # 检查package.zip是否存在
-          if [ ! -f "package.zip" ]; then
-            echo "❌ package.zip not found!"
-            echo "🔧 Creating backup zip from dist directory..."
+          # 等待可能的异步操作完成
+          sleep 3
+          
+          # 如果 vite-plugin-zip-pack 已生成 package.zip，使用它
+          if [ -f "package.zip" ]; then
+            echo "✅ Found package.zip from vite-plugin-zip-pack"
+            ls -lh package.zip
+          else
+            # 否则手动创建 package.zip
+            echo "⚠️ package.zip not found, creating manually from dist folder..."
             
-            # 手动创建zip文件
+            # 检查 dist 目录
+            if [ ! -d "dist" ]; then
+              echo "❌ Error: dist directory not found!"
+              exit 1
+            fi
+            
+            echo "📁 Contents of dist directory:"
+            ls -la dist/
+            
+            # 创建 zip 包
             cd dist
             zip -r ../package.zip .
             cd ..
             
-            if [ ! -f "package.zip" ]; then
-              echo "❌ Failed to create package.zip!"
-              exit 1
-            fi
-            echo "✅ Backup package.zip created successfully"
+            echo "✅ package.zip created successfully"
+            ls -lh package.zip
           fi
           
-          echo "✅ package.zip found:"
+          echo "📊 Final package.zip info:"
           ls -lh package.zip
-          echo "📦 File size: $(du -h package.zip | cut -f1)"
-          
-          # 检查zip内容
-          echo "📋 Package contents:"
           unzip -l package.zip | head -20
 
-      # 创建发布
-      - name: Create Release
+      - name: Release
         uses: ncipollo/release-action@v1
         with:
           allowUpdates: true
@@ -96,18 +101,3 @@ jobs:
           artifacts: "package.zip"
           token: ${{ secrets.GITHUB_TOKEN }}
           prerelease: false
-          generateReleaseNotes: true
-          name: "v${{ github.ref_name }}"
-          body: |
-            ## 🚀 版本 ${{ github.ref_name }}
-            
-            📦 **安装包**: [package.zip](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/package.zip)
-            
-            ### ✨ 更新内容
-            请查看 [更新日志](https://github.com/${{ github.repository }}/blob/main/更新日志.md) 获取详细信息。
-            
-            ### 📥 安装方式
-            1. 下载 `package.zip` 文件
-            2. 在思源笔记中打开 `设置` → `集市` → `已下载` → `插件`
-            3. 点击右上角 `+` 图标，选择下载的zip文件
-            4. 启用插件即可使用
