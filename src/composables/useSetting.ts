@@ -15,6 +15,25 @@ export type ColumnMode = 'single' | 'double'
 export type TocPosition = 'left' | 'right'
 export interface ReadTheme { name: string; color: string; bg: string; bgImg?: string }
 
+// 页面排版设置
+export interface TextSettings {
+  fontFamily: string
+  fontSize: number
+  letterSpacing: number
+}
+
+export interface ParagraphSettings {
+  lineHeight: number
+  paragraphSpacing: number
+  textIndent: number
+}
+
+export interface PageSettings {
+  marginHorizontal: number
+  marginVertical: number
+  continuousScroll: boolean
+}
+
 export interface ReaderSettings {
   enabled: boolean
   openMode: 'newTab' | 'rightTab' | 'bottomTab' | 'newWindow'
@@ -27,6 +46,9 @@ export interface ReaderSettings {
   annotationMode: 'notebook' | 'document'
   notebookId?: string
   parentDoc?: DocInfo
+  textSettings: TextSettings
+  paragraphSettings: ParagraphSettings
+  pageSettings: PageSettings
 }
 
 // ===== 主题配置 =====
@@ -57,6 +79,41 @@ export const applyTheme = (el: HTMLElement, settings: ReaderSettings) => {
   s.backgroundRepeat = img ? 'no-repeat' : ''
 }
 
+// 应用页面排版样式
+export const applyPageStyles = (iframe: HTMLIFrameElement, settings: ReaderSettings) => {
+  const doc = iframe.contentDocument
+  if (!doc?.body) return
+  
+  const { textSettings: t, paragraphSettings: p, pageSettings: pg } = settings
+  
+  // 移除旧样式
+  doc.querySelectorAll('style[data-sireader-page]').forEach(s => s.remove())
+  
+  // 注入新样式
+  const style = doc.createElement('style')
+  style.setAttribute('data-sireader-page', 'true')
+  style.textContent = `
+    body {
+      font-family: ${t.fontFamily} !important;
+      font-size: ${t.fontSize}px !important;
+      letter-spacing: ${t.letterSpacing}em !important;
+      padding-left: ${pg.marginHorizontal}px !important;
+      padding-right: ${pg.marginHorizontal}px !important;
+      padding-top: ${pg.marginVertical}px !important;
+      padding-bottom: ${pg.marginVertical}px !important;
+    }
+    p, div {
+      line-height: ${p.lineHeight} !important;
+      margin-top: ${p.paragraphSpacing}em !important;
+      margin-bottom: ${p.paragraphSpacing}em !important;
+    }
+    p {
+      text-indent: ${p.textIndent}em !important;
+    }
+  `
+  doc.head.appendChild(style)
+}
+
 // ===== 默认配置 =====
 const DEFAULT_SETTINGS: ReaderSettings = {
   enabled: true,
@@ -70,6 +127,21 @@ const DEFAULT_SETTINGS: ReaderSettings = {
   annotationMode: 'notebook',
   notebookId: '',
   parentDoc: undefined,
+  textSettings: {
+    fontFamily: 'inherit',
+    fontSize: 16,
+    letterSpacing: 0,
+  },
+  paragraphSettings: {
+    lineHeight: 1.6,
+    paragraphSpacing: 0.8,
+    textIndent: 0,
+  },
+  pageSettings: {
+    marginHorizontal: 40,
+    marginVertical: 20,
+    continuousScroll: false,
+  },
 }
 
 // ===== 工具函数 =====
@@ -90,6 +162,14 @@ const item = (title: string, desc: string, control: string) => `
 `
 
 const select = (id: string, opts: string) => `<select id="setting-${id}" class="b3-select" style="width:160px">${opts}</select>`
+
+// 滑块控件
+const slider = (id: string, min: number, max: number, step: number, unit: string = '') => `
+  <div class="fn__flex" style="align-items:center;gap:8px">
+    <input type="range" id="setting-${id}" min="${min}" max="${max}" step="${step}" class="b3-slider" style="width:120px">
+    <span id="${id}-value" style="min-width:50px;text-align:right;font-size:13px;color:var(--b3-theme-on-surface)">--${unit}</span>
+  </div>
+`
 
 // 选项生成器
 const options = (items: Record<string, string>) => Object.entries(items).map(([v, t]) => `<option value="${v}">${t}</option>`).join('')
@@ -136,6 +216,9 @@ export function useSetting(plugin: Plugin) {
             </li>
             <li class="b3-list-item" data-group="annotation" style="cursor:pointer">
               <span class="b3-list-item__text">📝 ${i18n?.tabAnnotation || '标注'}</span>
+            </li>
+            <li class="b3-list-item" data-group="page" style="cursor:pointer">
+              <span class="b3-list-item__text">📄 ${i18n?.tabPage || '页面'}</span>
             </li>
           </ul>
           
@@ -205,6 +288,53 @@ export function useSetting(plugin: Plugin) {
                 <div id="theme-preview">${i18n?.previewText || '春江潮水连海平，海上明月共潮生。<br>滟滟随波千万里，何处春江无月明。'}</div>
               </div>
             </div>
+            
+            <div class="setting-group" data-group="page" style="display:none">
+              <div style="margin-bottom:24px">
+                <div style="font-weight:600;margin-bottom:12px;color:var(--b3-theme-primary)">📝 ${i18n?.textSettings || '文本设置'}</div>
+                ${item(i18n?.fontFamily || '字体', '', `
+                  <select id="setting-fontFamily" class="b3-select" style="width:160px">
+                    <option value="inherit">${i18n?.fontDefault || '默认'}</option>
+                    <option value="serif">${i18n?.fontSerif || '衬线体'}</option>
+                    <option value="sans-serif">${i18n?.fontSans || '无衬线体'}</option>
+                    <option value="'Microsoft YaHei', sans-serif">${i18n?.fontYahei || '微软雅黑'}</option>
+                    <option value="'SimSun', serif">${i18n?.fontSong || '宋体'}</option>
+                    <option value="'KaiTi', serif">${i18n?.fontKai || '楷体'}</option>
+                  </select>
+                `)}
+                ${item(i18n?.fontSize || '字号', '', slider('fontSize', 12, 32, 1, 'px'))}
+                ${item(i18n?.letterSpacing || '字距', '', slider('letterSpacing', 0, 0.2, 0.01, 'em'))}
+              </div>
+              
+              <div style="margin-bottom:24px">
+                <div style="font-weight:600;margin-bottom:12px;color:var(--b3-theme-primary)">📐 ${i18n?.paragraphSettings || '段落设置'}</div>
+                ${item(i18n?.lineHeight || '行距', '', slider('lineHeight', 1.0, 3.0, 0.1, ''))}
+                ${item(i18n?.paragraphSpacing || '段距', '', slider('paragraphSpacing', 0, 2, 0.1, 'em'))}
+                ${item(i18n?.textIndent || '首行缩进', '', slider('textIndent', 0, 4, 0.5, 'em'))}
+              </div>
+              
+              <div style="margin-bottom:20px">
+                <div style="font-weight:600;margin-bottom:12px;color:var(--b3-theme-primary)">📏 ${i18n?.pageSettings || '页面设置'}</div>
+                ${item(i18n?.marginHorizontal || '左右边距', '', slider('marginHorizontal', 0, 100, 5, 'px'))}
+                ${item(i18n?.marginVertical || '上下边距', '', slider('marginVertical', 0, 80, 5, 'px'))}
+                <div class="b3-label">
+                  <div class="fn__flex" style="align-items:center;justify-content:space-between">
+                    <div class="fn__flex-1">
+                      <div class="b3-label__text" style="font-weight:500">${i18n?.continuousScroll || '连续滚动'}</div>
+                      <div class="b3-label__text" style="font-size:12px;opacity:0.7">${i18n?.continuousScrollDesc || '启用后页面连续滚动，禁用后分页显示'}</div>
+                    </div>
+                    <span class="fn__space" style="width:16px"></span>
+                    <input type="checkbox" id="setting-continuousScroll" class="b3-switch">
+                  </div>
+                </div>
+              </div>
+              
+              <div style="padding-top:16px;border-top:1px solid var(--b3-border-color)">
+                <button id="reset-page-settings" class="b3-button b3-button--outline" style="width:100%">
+                  🔄 ${i18n?.resetToDefault || '恢复默认设置'}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       `,
@@ -261,6 +391,72 @@ export function useSetting(plugin: Plugin) {
     color.value = settings.value.customTheme.color, bg.value = settings.value.customTheme.bg, bgImg.value = settings.value.customTheme.bgImg || ''
     color.onchange = bg.onchange = updateCustom, bgImg.onblur = updateCustom
     refresh()
+    
+    // 页面设置绑定
+    const bindSlider = (key: string, category: 'textSettings' | 'paragraphSettings' | 'pageSettings', unit = '') => {
+      const slider = $<HTMLInputElement>(`#setting-${key}`)
+      const display = $<HTMLSpanElement>(`#${key}-value`)
+      if (!slider || !display) return
+      
+      const cfg = settings.value[category] as Record<string, number>
+      slider.value = String(cfg[key])
+      display.textContent = `${cfg[key]}${unit}`
+      
+      slider.oninput = () => {
+        const newVal = key === 'fontSize' || key === 'marginHorizontal' || key === 'marginVertical' 
+          ? Number.parseInt(slider.value) 
+          : Number.parseFloat(slider.value)
+        cfg[key] = newVal
+        display.textContent = `${slider.value}${unit}`
+        window.dispatchEvent(new CustomEvent('sireaderSettingsUpdated', { detail: settings.value }))
+        save()
+      }
+    }
+    
+    // 绑定文本设置
+    const fontFamily = $<HTMLSelectElement>('#setting-fontFamily')
+    if (fontFamily) {
+      fontFamily.value = settings.value.textSettings.fontFamily
+      fontFamily.onchange = () => {
+        settings.value.textSettings.fontFamily = fontFamily.value
+        window.dispatchEvent(new CustomEvent('sireaderSettingsUpdated', { detail: settings.value }))
+        save()
+      }
+    }
+    bindSlider('fontSize', 'textSettings', 'px')
+    bindSlider('letterSpacing', 'textSettings', 'em')
+    
+    // 绑定段落设置
+    bindSlider('lineHeight', 'paragraphSettings')
+    bindSlider('paragraphSpacing', 'paragraphSettings', 'em')
+    bindSlider('textIndent', 'paragraphSettings', 'em')
+    
+    // 绑定页面设置
+    bindSlider('marginHorizontal', 'pageSettings', 'px')
+    bindSlider('marginVertical', 'pageSettings', 'px')
+    
+    const scrollCheck = $<HTMLInputElement>('#setting-continuousScroll')
+    if (scrollCheck) {
+      scrollCheck.checked = settings.value.pageSettings.continuousScroll
+      scrollCheck.onchange = () => {
+        settings.value.pageSettings.continuousScroll = scrollCheck.checked
+        msg.success(i18n?.reloadRequired || '设置已保存，重新打开书籍后生效')
+        save()
+      }
+    }
+    
+    // 重置按钮
+    const resetBtn = $('#reset-page-settings')
+    if (resetBtn) {
+      resetBtn.onclick = () => {
+        settings.value.textSettings = { ...DEFAULT_SETTINGS.textSettings }
+        settings.value.paragraphSettings = { ...DEFAULT_SETTINGS.paragraphSettings }
+        settings.value.pageSettings = { ...DEFAULT_SETTINGS.pageSettings }
+        save()
+        dialog?.destroy()
+        setTimeout(open, 100)
+      }
+    }
   }
 
   load()

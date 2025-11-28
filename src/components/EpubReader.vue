@@ -132,16 +132,21 @@ const openBook = async () => {
   try {
     book = ePub(await props.file.arrayBuffer())
     await book.ready
-    const isScroll = props.settings?.pageAnimation === 'scroll'
+    const isScroll = props.settings?.pageAnimation === 'scroll' || props.settings?.pageSettings?.continuousScroll
     const config: any = { width: '100%', height: '100%', allowScriptedContent: true, ...(isScroll ? { manager: 'continuous', flow: 'scrolled', snap: false } : { flow: 'paginated', spread: props.settings?.columnMode === 'double' ? 'auto' : 'none' }) }
     
     rendition = book.renderTo(containerRef.value, config)
     
-    // 主题应用
+    // 主题与样式应用
     const applyTheme = async (settings?: typeof props.settings) => {
       if (!settings) return
-      const { applyTheme: apply } = await import('../composables/useSetting')
-      containerRef.value?.querySelectorAll('iframe').forEach(iframe => iframe.contentDocument?.body && apply(iframe.contentDocument.body, settings))
+      const { applyTheme: apply, applyPageStyles } = await import('../composables/useSetting')
+      containerRef.value?.querySelectorAll('iframe').forEach(iframe => {
+        if (iframe.contentDocument?.body) {
+          apply(iframe.contentDocument.body, settings)
+          applyPageStyles(iframe, settings)
+        }
+      })
     }
     
     props.onRenditionReady?.(rendition)
