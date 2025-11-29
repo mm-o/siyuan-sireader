@@ -139,3 +139,9 @@ enum SyFrontendTypes {
   // 浏览器 - 移动端
   'browser-mobile' = 'browser-mobile',
 }
+
+declare module '*.vue' {
+  import type { DefineComponent } from 'vue'
+  const component: DefineComponent<{}, {}, any>
+  export default component
+}

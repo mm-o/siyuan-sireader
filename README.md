@@ -36,6 +36,31 @@ Drag EPUB files into SiYuan documents to create links, click links to open books
 
 ---
 
+## 📦 What's New in v0.3.0 (2025.11.29)
+#### ✨ New Features
+- **🎯 TOC Pinning** - Pin TOC panel to automatically adjust reading area width, avoiding content overlap
+- **📍 TOC Position Switch** - Real-time left/right TOC position switching, takes effect immediately without refresh
+- **📄 Single/Double Page Display** - Enhanced display mode supporting single/double page view switching for flexible reading
+- **⚙️ Document Binding Settings** - New settings in TOC panel for rebinding current book to SiYuan documents
+- **🔍 Smart Document Search** - Document search in settings interface, quickly locate target documents with keywords
+- **🔤 Text Customization** - Font selection (default/serif/sans-serif/Microsoft YaHei/SimSun/KaiTi)*, font size (12-32px), letter spacing control  
+  *Note: Font effects may not work on all systems
+- **📏 Paragraph Layout** - Line height adjustment (1.0-3.0x), paragraph spacing (0-2em), text indent control (0-2em)
+- **📋 Page Layout Settings** - Adjustable horizontal margin (0-100px), vertical margin (0-80px), continuous scroll toggle, one-click reset
+
+#### 🛠️ Architecture Refactoring
+- **📋 Settings Panel Redesign** - Redesigned settings interface divided into Interface, Appearance, and Annotation modules
+- **⚡ Reactive Update System** - Unified reactive update logic for all settings, changes take effect immediately
+- **🎨 Style Application Optimization** - Fixed theme style regression after page turning, ensuring persistent styling
+
+#### 🐛 Bug Fixes
+- **✅ Fixed** - Theme reverting to old styles after page turning due to caching issues
+- **✅ Fixed** - Settings updates not responding promptly
+- **✅ Fixed** - Content area layout misalignment when TOC is pinned
+- **✅ Removed** - Deprecated page turning method settings to simplify UI
+
+---
+
 ## 🎨 Main Features
 
 ### 📚 Reading Experience

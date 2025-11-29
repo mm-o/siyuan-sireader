@@ -87,7 +87,6 @@ const props = withDefaults(defineProps<Props>(), {
   settings: () => ({
     enabled: true,
     openMode: 'newTab',
-    pageTurnMode: 'click',
     pageAnimation: 'slide',
     columnMode: 'single',
   })
@@ -100,6 +99,7 @@ const ui = reactive({ loading: true, error: '', loadingNext: false, menuShow: fa
 const timers = { progress: 0, menu: 0, colorHide: 0 }
 const i18n = props.plugin.i18n as any
 const COLORS = Object.entries(EPUB_COLORS).map(([color, bg]) => ({ color, bg, title: i18n?.[`color${color[0].toUpperCase()}${color.slice(1)}`] || color })) as { color: HighlightColor; bg: string; title: string }[]
+const currentSettings = ref(props.settings)
 let [rendition, book, tocPanel]: [Rendition | null, Book | null, EpubToc | null] = [null, null, null]
 let [annotationDocId, progress, currentHref] = ['', 0, '']
 
@@ -110,9 +110,28 @@ const url = (cfi: string, docId = annotationDocId) => props.url && cfi ? `${prop
 const chapter = () => {
   if (!currentHref || !book?.navigation?.toc) return ''
   const find = (items: any[], h = currentHref.split('#')[0]): string => items.reduce((r, i) => r || (i.href.split('#')[0] === h ? i.label : find(i.subitems || [], h)), '')
-  return (ch => ch ? `（${clean(ch)}）` : '')(find(book.navigation.toc))
+  return find(book.navigation.toc) ? `（${clean(find(book.navigation.toc))}）` : ''
 }
 const copySelection = () => ui.menuText && navigator.clipboard.writeText(url(ui.menuCfi) ? `${clean(ui.menuText)} [◎](${url(ui.menuCfi)})` : clean(ui.menuText)).catch(() => {})
+
+// ===== 设置响应式更新 =====
+const updateSettings = async (settings: typeof props.settings) => {
+  if (!settings || !containerRef.value) return
+  currentSettings.value = settings
+  const { applyTheme, applyPageStyles } = await import('../composables/useSetting')
+  containerRef.value.querySelectorAll('iframe').forEach(iframe => iframe.contentDocument?.body && (applyTheme(iframe.contentDocument.body, settings), applyPageStyles(iframe, settings)))
+  rendition && settings.columnMode && (rendition.spread(settings.columnMode === 'double' ? 'auto' : 'none'), rendition.resize())
+  tocPanel && settings.tocPosition && tocPanel.setPosition(settings.tocPosition)
+}
+
+// ===== 目录钉住处理 =====
+const handleTocPin = (e: CustomEvent) => {
+  const { pinned, position } = e.detail
+  if (!containerRef.value) return
+  const [margin, opposite] = position === 'left' ? ['marginLeft', 'marginRight'] : ['marginRight', 'marginLeft']
+  Object.assign(containerRef.value.style, { width: pinned ? 'calc(100% - 360px)' : '100%', [margin]: pinned ? '360px' : '0', [opposite]: '0' })
+  rendition?.resize()
+}
 
 // ===== 滚动加载 =====
 const handleScroll = () => {
@@ -120,8 +139,7 @@ const handleScroll = () => {
   const doc = containerRef.value?.querySelector('iframe')?.contentDocument
   if (!doc) return
   const { scrollHeight, scrollTop, clientHeight } = doc.documentElement
-  const isNearBottom = scrollHeight - (scrollTop || doc.body.scrollTop) - clientHeight < SCROLL_THRESHOLD
-  isNearBottom && (ui.loadingNext = true, rendition.next().finally(() => setTimeout(() => ui.loadingNext = false, 300)))
+  scrollHeight - (scrollTop || doc.body.scrollTop) - clientHeight < SCROLL_THRESHOLD && (ui.loadingNext = true, rendition.next().finally(() => setTimeout(() => ui.loadingNext = false, 300)))
 }
 
 // ===== 书籍加载 =====
@@ -132,42 +150,32 @@ const openBook = async () => {
   try {
     book = ePub(await props.file.arrayBuffer())
     await book.ready
-    const isScroll = props.settings?.pageAnimation === 'scroll'
-    const config: any = { width: '100%', height: '100%', allowScriptedContent: true, ...(isScroll ? { manager: 'continuous', flow: 'scrolled', snap: false } : { flow: 'paginated', spread: props.settings?.columnMode === 'double' ? 'auto' : 'none' }) }
+    const settings = currentSettings.value
+    const isScroll = settings?.pageAnimation === 'scroll' || settings?.pageSettings?.continuousScroll
+    const config: any = { width: '100%', height: '100%', allowScriptedContent: true, ...(isScroll ? { manager: 'continuous', flow: 'scrolled', snap: false } : { flow: 'paginated', spread: settings?.columnMode === 'double' ? 'auto' : 'none' }) }
     
     rendition = book.renderTo(containerRef.value, config)
-    
-    // 主题应用
-    const applyTheme = async (settings?: typeof props.settings) => {
-      if (!settings) return
-      const { applyTheme: apply } = await import('../composables/useSetting')
-      containerRef.value?.querySelectorAll('iframe').forEach(iframe => iframe.contentDocument?.body && apply(iframe.contentDocument.body, settings))
-    }
-    
     props.onRenditionReady?.(rendition)
     
     // 恢复阅读状态
     let isInit = true, cfi = props.cfi
     const urlDocId = props.url?.split('#')[2]
     if (urlDocId && await verifyDoc(urlDocId)) annotationDocId = urlDocId
+    else if (props.blockId && await verifyDoc(props.blockId)) annotationDocId = props.blockId
     else if (props.blockId) {
-      if (await verifyDoc(props.blockId)) annotationDocId = props.blockId
-      else {
-        const attrs = await API.getBlockAttrs(props.blockId)
-        const id = attrs['memo'] || attrs['custom-epub-doc-id']
-        id && await verifyDoc(id) ? annotationDocId = id : id && await API.setBlockAttrs(props.blockId, { 'memo': '' }).catch(() => {})
-        cfi ||= attrs['custom-epub-cfi']
-      }
+      const attrs = await API.getBlockAttrs(props.blockId)
+      const id = attrs['memo'] || attrs['custom-epub-doc-id']
+      id && await verifyDoc(id) ? annotationDocId = id : id && await API.setBlockAttrs(props.blockId, { 'memo': '' }).catch(() => {})
+      cfi ||= attrs['custom-epub-cfi']
     }
     await rendition.display(cfi)
     annotationDocId && setTimeout(() => restoreHighlights(annotationDocId, rendition, HL_STYLES, MARK_STYLES), TIMERS.HIGHLIGHT_DELAY)
     
     // 加载目录
     book.loaded.navigation.then(async (nav: any) => {
-      tocPanel = new EpubToc(readerWrapRef.value!, props.settings?.tocPosition || 'left', rendition, annotationDocId, props.url?.split('#')[0] || '')
+      tocPanel = new EpubToc(readerWrapRef.value!, currentSettings.value?.tocPosition || 'left', rendition, annotationDocId, props.url?.split('#')[0] || '')
       await tocPanel.load(nav)
     }).catch(() => {})
-    await applyTheme(props.settings)
     book.locations.generate(1024).catch(() => {})
     setTimeout(() => isInit = false, TIMERS.INIT_DELAY)
     
@@ -253,15 +261,20 @@ const openBook = async () => {
     }
     
     // 事件注册
-    rendition.hooks.content.register((contents: any) => {
+    rendition.hooks.content.register(async (contents: any) => {
       const iframe = contents.document.defaultView.frameElement as HTMLIFrameElement
       iframe.hasAttribute('sandbox') && iframe.setAttribute('sandbox', 'allow-same-origin allow-scripts')
       isScroll && iframe.contentWindow?.addEventListener('scroll', handleScroll, { passive: true })
-      regEvents(contents.document, iframe), applyTheme(props.settings)
+      regEvents(contents.document, iframe)
+      const body = iframe.contentDocument?.body
+      if (currentSettings.value && body) {
+        const { applyTheme, applyPageStyles } = await import('../composables/useSetting')
+        applyTheme(body, currentSettings.value), applyPageStyles(iframe, currentSettings.value)
+      }
     })
     rendition.on('rendered', () => containerRef.value?.querySelector('iframe')?.contentDocument && regEvents(containerRef.value.querySelector('iframe')!.contentDocument!, containerRef.value.querySelector('iframe')!))
     rendition.on('selected', (cfiRange: string) => ui.menuCfi = cfiRange)
-    const onSettings = (e: CustomEvent) => e.detail && applyTheme(e.detail)
+    const onSettings = (e: CustomEvent) => e.detail && updateSettings(e.detail)
     window.addEventListener('sireaderSettingsUpdated', onSettings as EventListener)
     onUnmounted(() => window.removeEventListener('sireaderSettingsUpdated', onSettings as EventListener))
   } catch (e) {
@@ -311,7 +324,12 @@ const handleKey = (e: KeyboardEvent) => {
   actions[e.key as keyof typeof actions]?.() && e.preventDefault()
 }
 
-onMounted(() => (containerRef.value?.focus(), window.addEventListener('keydown', handleKey), openBook()))
+onMounted(() => {
+  window.addEventListener('epubTocPinned', handleTocPin as EventListener)
+  window.addEventListener('keydown', handleKey)
+  containerRef.value?.focus()
+  openBook()
+})
 onUnmounted(async () => {
   // 保存阅读位置
   if (props.blockId && rendition) {
@@ -326,6 +344,7 @@ onUnmounted(async () => {
   }
   // 清理资源
   Object.values(timers).forEach(clearTimeout)
+  window.removeEventListener('epubTocPinned', handleTocPin as EventListener)
   window.removeEventListener('keydown', handleKey)
   rendition && clearCache.highlight(rendition)
   rendition?.destroy(), book?.destroy()

@@ -68,7 +68,7 @@ export function registerEpubTab(plugin: Plugin) {
       if (!file) return container.innerHTML = center('无法加载')
       
       const cfg = (await plugin.loadData('config.json') || {}).settings || {}
-      const settings = { enabled: true, openMode: 'newTab', tocPosition: 'left', pageTurnMode: 'click', pageAnimation: 'slide', columnMode: 'single', theme: 'default', customTheme: { name: 'custom', color: '#202124', bg: '#ffffff' }, annotationMode: 'notebook', ...cfg }
+      const settings = { enabled: true, openMode: 'newTab', tocPosition: 'left', pageAnimation: 'slide', columnMode: 'single', theme: 'default', customTheme: { name: 'custom', color: '#202124', bg: '#ffffff' }, annotationMode: 'notebook', ...cfg }
       createApp(EpubReader, {
         file, plugin, settings, url, blockId, cfi,
         onRenditionReady: (rendition: any) => tabId && blockId && activeTabs.set(tabId, { rendition, blockId, url: url?.split('#')[0] || '' }),

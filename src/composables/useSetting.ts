@@ -3,23 +3,42 @@
 // 职责：配置持久化、UI交互、主题应用
 // ========================================
 
-import { ref, toRaw } from 'vue'
+import { createApp, ref, toRaw } from 'vue'
+import { MotionPlugin } from '@vueuse/motion'
 import { Dialog, showMessage } from 'siyuan'
 import type { Plugin } from 'siyuan'
 import type { DocInfo } from '@/core/epubDoc'
+import SettingsVue from '@/components/Settings.vue'
 
 // ===== 类型定义 =====
-export type PageTurnMode = 'click' | 'toolbar'
 export type PageAnimation = 'slide' | 'fade' | 'flip' | 'scroll' | 'vertical' | 'none'
 export type ColumnMode = 'single' | 'double'
 export type TocPosition = 'left' | 'right'
 export interface ReadTheme { name: string; color: string; bg: string; bgImg?: string }
 
+// 页面排版设置
+export interface TextSettings {
+  fontFamily: string
+  fontSize: number
+  letterSpacing: number
+}
+
+export interface ParagraphSettings {
+  lineHeight: number
+  paragraphSpacing: number
+  textIndent: number
+}
+
+export interface PageSettings {
+  marginHorizontal: number
+  marginVertical: number
+  continuousScroll: boolean
+}
+
 export interface ReaderSettings {
   enabled: boolean
   openMode: 'newTab' | 'rightTab' | 'bottomTab' | 'newWindow'
   tocPosition: TocPosition
-  pageTurnMode: PageTurnMode
   pageAnimation: PageAnimation
   columnMode: ColumnMode
   theme: string
@@ -27,6 +46,9 @@ export interface ReaderSettings {
   annotationMode: 'notebook' | 'document'
   notebookId?: string
   parentDoc?: DocInfo
+  textSettings: TextSettings
+  paragraphSettings: ParagraphSettings
+  pageSettings: PageSettings
 }
 
 // ===== 主题配置 =====
@@ -57,12 +79,46 @@ export const applyTheme = (el: HTMLElement, settings: ReaderSettings) => {
   s.backgroundRepeat = img ? 'no-repeat' : ''
 }
 
+// 应用页面排版样式
+export const applyPageStyles = (iframe: HTMLIFrameElement, settings: ReaderSettings) => {
+  const doc = iframe.contentDocument
+  if (!doc?.body) return
+  
+  const { textSettings: t, paragraphSettings: p, pageSettings: pg } = settings
+  
+  // 移除旧样式
+  doc.querySelectorAll('style[data-sireader-page]').forEach(s => s.remove())
+  
+  // 注入新样式
+  const style = doc.createElement('style')
+  style.setAttribute('data-sireader-page', 'true')
+  style.textContent = `
+    body {
+      font-family: ${t.fontFamily} !important;
+      font-size: ${t.fontSize}px !important;
+      letter-spacing: ${t.letterSpacing}em !important;
+      padding-left: ${pg.marginHorizontal}px !important;
+      padding-right: ${pg.marginHorizontal}px !important;
+      padding-top: ${pg.marginVertical}px !important;
+      padding-bottom: ${pg.marginVertical}px !important;
+    }
+    p, div {
+      line-height: ${p.lineHeight} !important;
+      margin-top: ${p.paragraphSpacing}em !important;
+      margin-bottom: ${p.paragraphSpacing}em !important;
+    }
+    p {
+      text-indent: ${p.textIndent}em !important;
+    }
+  `
+  doc.head.appendChild(style)
+}
+
 // ===== 默认配置 =====
 const DEFAULT_SETTINGS: ReaderSettings = {
   enabled: true,
   openMode: 'newTab',
   tocPosition: 'left',
-  pageTurnMode: 'click',
   pageAnimation: 'slide',
   columnMode: 'single',
   theme: 'default',
@@ -70,40 +126,38 @@ const DEFAULT_SETTINGS: ReaderSettings = {
   annotationMode: 'notebook',
   notebookId: '',
   parentDoc: undefined,
+  textSettings: {
+    fontFamily: 'inherit',
+    fontSize: 16,
+    letterSpacing: 0,
+  },
+  paragraphSettings: {
+    lineHeight: 1.6,
+    paragraphSpacing: 0.8,
+    textIndent: 0,
+  },
+  pageSettings: {
+    marginHorizontal: 40,
+    marginVertical: 20,
+    continuousScroll: false,
+  },
 }
 
 // ===== 工具函数 =====
 const msg = { success: (m: string) => showMessage(m, 2000, 'info'), error: (m: string) => showMessage(m, 3000, 'error') }
 
-// ===== HTML 模板构建 =====
-const item = (title: string, desc: string, control: string) => `
-  <div class="b3-label" style="margin-bottom:20px">
-    <div class="fn__flex" style="align-items:center;justify-content:space-between">
-      <div class="fn__flex-1">
-        <div class="b3-label__text" style="font-weight:500;margin-bottom:4px">${title}</div>
-        <div class="b3-label__text" style="font-size:12px;opacity:0.7">${desc}</div>
-      </div>
-      <span class="fn__space" style="width:16px"></span>
-      ${control}
-    </div>
-  </div>
-`
-
-const select = (id: string, opts: string) => `<select id="setting-${id}" class="b3-select" style="width:160px">${opts}</select>`
-
-// 选项生成器
-const options = (items: Record<string, string>) => Object.entries(items).map(([v, t]) => `<option value="${v}">${t}</option>`).join('')
-
 // ===== 设置管理 Composable =====
 export function useSetting(plugin: Plugin) {
   const settings = ref<ReaderSettings>({ ...DEFAULT_SETTINGS })
   let dialog: Dialog | null = null
+  let app: any = null
   const i18n = plugin.i18n as any
 
   const load = async () => {
     const cfg = await plugin.loadData('config.json') || {}
     if (cfg.settings) settings.value = { ...DEFAULT_SETTINGS, ...cfg.settings }
   }
+  
   const save = async () => {
     try {
       const cfg = await plugin.loadData('config.json') || {}
@@ -111,6 +165,7 @@ export function useSetting(plugin: Plugin) {
       cfg.settings = raw
       await plugin.saveData('config.json', cfg)
       window.dispatchEvent(new CustomEvent('sireaderSettingsUpdated', { detail: raw }))
+      msg.success(i18n?.saved || '设置已保存')
     } catch (e) {
       msg.error(i18n?.saveError || '保存失败')
       console.error('[SiReader]', e)
@@ -118,149 +173,38 @@ export function useSetting(plugin: Plugin) {
   }
   // 打开设置对话框
   const open = async () => {
-    if (dialog) dialog.destroy()
+    if (dialog) {
+      app?.unmount()
+      dialog.destroy()
+    }
+    
     await load()
+    
     dialog = new Dialog({
       title: i18n?.settingsTitle || '设置',
-      content: `
-        <div class="fn__flex" style="height:400px">
-          <ul class="b3-list b3-list--background" style="width:140px;padding:8px;border-right:1px solid var(--b3-border-color);flex-shrink:0">
-            <li class="b3-list-item b3-list-item--focus" data-group="general" style="cursor:pointer">
-              <span class="b3-list-item__text">⚙️ ${i18n?.tabGeneral || '通用'}</span>
-            </li>
-            <li class="b3-list-item" data-group="reader" style="cursor:pointer">
-              <span class="b3-list-item__text">📚 ${i18n?.tabReader || '阅读'}</span>
-            </li>
-            <li class="b3-list-item" data-group="theme" style="cursor:pointer">
-              <span class="b3-list-item__text">🎨 ${i18n?.tabTheme || '主题'}</span>
-            </li>
-            <li class="b3-list-item" data-group="annotation" style="cursor:pointer">
-              <span class="b3-list-item__text">📝 ${i18n?.tabAnnotation || '标注'}</span>
-            </li>
-          </ul>
-          
-          <div class="fn__flex-1" style="overflow-y:auto;padding:16px 20px">
-            <div class="setting-group" data-group="general">
-              ${item(i18n?.openMode || '打开方式', i18n?.openModeDesc || '选择打开书籍时的显示位置', select('openMode', options({ newTab: i18n?.newTab || '新标签', rightTab: i18n?.rightTab || '右侧标签', bottomTab: i18n?.bottomTab || '底部标签', newWindow: i18n?.newWindow || '新窗口' })))}
-              ${item(i18n?.tocPosition || '目录位置', i18n?.tocPositionDesc || '选择目录打开位置', select('tocPosition', options({ left: i18n?.left || '左侧', right: i18n?.right || '右侧' })))}
-            </div>
-            
-            <div class="setting-group" data-group="annotation" style="display:none">
-              <div class="b3-label" style="margin-bottom:16px">
-                <div class="b3-label__text" style="font-weight:500;margin-bottom:8px">${i18n?.annotationMode || '标注文档创建方式'}</div>
-                <select id="setting-annotationMode" class="b3-select fn__block">
-                  <option value="notebook">${i18n?.notebook || '笔记本下创建文档'}</option>
-                  <option value="document">${i18n?.document || '指定文档下创建子文档'}</option>
-                </select>
-              </div>
-              
-              <div id="notebook-mode" style="display:none">
-                <div class="b3-label" style="margin-bottom:16px">
-                  <div class="b3-label__text" style="font-weight:500;margin-bottom:4px">${i18n?.targetNotebook || '目标笔记本'}</div>
-                  <div class="b3-label__text" style="font-size:12px;opacity:0.7;margin-bottom:8px">${i18n?.targetNotebookDesc || '在此笔记本下为每本书创建标注文档'}</div>
-                  <select id="setting-notebookId" class="b3-select fn__block"><option value="">${i18n?.notSelected || '未选择'}</option></select>
-                </div>
-              </div>
-              
-              <div id="document-mode" style="display:none">
-                <div class="b3-label" style="margin-bottom:12px">
-                  <div class="b3-label__text" style="font-weight:500;margin-bottom:4px">${i18n?.searchDoc || '搜索文档'}</div>
-                  <div class="b3-label__text" style="font-size:12px;opacity:0.7;margin-bottom:8px" id="selected-doc-hint">${i18n?.searchDocDesc || '输入关键字搜索文档'}</div>
-                  <input id="setting-docSearch" type="text" class="b3-text-field fn__block" placeholder="${i18n?.searchPlaceholder || '按回车搜索'}">
-                </div>
-                <div class="b3-label" style="margin-bottom:16px" id="doc-results" style="display:none">
-                  <div class="b3-label__text" style="font-weight:500;margin-bottom:8px">${i18n?.selectDoc || '选择文档'}</div>
-                  <select id="setting-parentDoc" class="b3-select fn__block"></select>
-                </div>
-              </div>
-              
-              <div style="padding:12px;background:var(--b3-theme-background-light);border-radius:6px;font-size:12px;line-height:1.6">
-                💡 <b>${i18n?.usageTitle || '使用说明'}</b><br>
-                • ${i18n?.usageColors || '7种颜色：R🔴红 O🟠橙 Y🟡黄 G🟢绿 P🩷粉 B🔵蓝 V🟣紫'}<br>
-                • ${i18n?.usageFormat || '标注格式：<code>- R [文本](链接)</code>'}<br>
-                • ${i18n?.usageNotebook || '笔记本模式：为每本书自动创建独立文档'}<br>
-                • ${i18n?.usageDocument || '文档模式：在指定文档下创建子文档管理'}
-              </div>
-            </div>
-            
-            <div class="setting-group" data-group="reader" style="display:none">
-              ${item(i18n?.pageTurnMode || '翻页方式', i18n?.pageTurnModeDesc || '选择如何进行页面翻转', select('pageTurnMode', options({ click: i18n?.click || '点击翻页', toolbar: i18n?.toolbar || '仅工具栏' })))}
-              ${item(i18n?.pageAnimation || '翻页动画', i18n?.pageAnimationDesc || '选择翻页时的动画效果', select('pageAnimation', options({ slide: i18n?.slide || '平移', fade: i18n?.fade || '淡入淡出', flip: i18n?.flip || '仿真翻页', scroll: i18n?.scroll || '滚动', vertical: i18n?.vertical || '上下翻页', none: i18n?.none || '无动画' })))}
-              ${item(i18n?.displayMode || '显示模式', i18n?.displayModeDesc || '选择单页或双页显示', select('columnMode', options({ single: i18n?.single || '单页', double: i18n?.double || '双页' })))}
-            </div>
-            
-            <div class="setting-group" data-group="theme" style="display:none">
-              ${item(i18n?.presetTheme || '预设主题', i18n?.presetThemeDesc || '选择预设的配色方案', select('theme', `${Object.entries(PRESET_THEMES).map(([k, v]) => `<option value="${k}">${i18n?.[v.name] || v.name}</option>`).join('')}<option value="custom">${i18n?.custom || '自定义'}</option>`))}
-              <div id="custom-theme" style="display:none">
-                ${item(i18n?.textColor || '文字颜色', i18n?.textColorDesc || '自定义文字颜色', '<input id="setting-color" type="color" class="b3-text-field" style="width:60px;height:32px;padding:2px;cursor:pointer">')}
-                ${item(i18n?.bgColor || '背景颜色', i18n?.bgColorDesc || '自定义背景颜色', '<input id="setting-bg" type="color" class="b3-text-field" style="width:60px;height:32px;padding:2px;cursor:pointer">')}
-                <div class="b3-label" style="margin-bottom:20px">
-                  <div class="b3-label__text" style="font-weight:500;margin-bottom:4px">${i18n?.bgImage || '背景图片'}</div>
-                  <div class="b3-label__text" style="font-size:12px;opacity:0.7;margin-bottom:8px">${i18n?.bgImageDesc || '输入图片URL（留空使用纯色）'}</div>
-                  <input id="setting-bgImg" type="text" class="b3-text-field fn__block" placeholder="https://example.com/image.jpg">
-                </div>
-              </div>
-              <div style="margin-top:16px;padding:12px;background:var(--b3-theme-background-light);border-radius:6px">
-                <div style="font-size:12px;opacity:0.7;margin-bottom:8px">${i18n?.previewLabel || '预览效果：'}</div>
-                <div id="theme-preview">${i18n?.previewText || '春江潮水连海平，海上明月共潮生。<br>滟滟随波千万里，何处春江无月明。'}</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      `,
-      width: '560px',
-      height: '440px',
-      destroyCallback: () => dialog = null
+      content: '<div id="sireader-settings-mount"></div>',
+      width: '680px',
+      height: '580px',
+      destroyCallback: () => {
+        app?.unmount()
+        dialog = null
+        app = null
+      },
     })
-    
-    // 查询辅助函数
-    const $ = <T = HTMLElement>(sel: string) => dialog.element.querySelector(sel) as T
-    const $$ = (sel: string) => dialog.element.querySelectorAll(sel)
-    
-    // ===== 分组导航 =====
-    const groups = $$('.b3-list-item')
-    const contents = $$('.setting-group')
-    groups.forEach(g => g.addEventListener('click', () => {
-      groups.forEach(x => x.classList.remove('b3-list-item--focus'))
-      g.classList.add('b3-list-item--focus')
-      const name = g.getAttribute('data-group')
-      contents.forEach(c => ((c as HTMLElement).style.display = c.getAttribute('data-group') === name ? 'block' : 'none'))
-    }))
-    
-    // 通用选择器绑定
-    const bindSelect = (key: keyof ReaderSettings) => {
-      const el = $<HTMLSelectElement>(`#setting-${key}`)
-      if (el) el.value = settings.value[key] as string, el.onchange = () => ((settings.value[key] as any) = el.value, save())
+
+    const mountEl = dialog.element.querySelector('#sireader-settings-mount')
+    if (mountEl) {
+      app = createApp(SettingsVue, {
+        modelValue: settings.value,
+        i18n,
+        onSave: save,
+        'onUpdate:modelValue': (newSettings: ReaderSettings) => {
+          settings.value = newSettings
+        },
+      })
+      app.use(MotionPlugin)
+      app.mount(mountEl)
     }
-    ;(['openMode', 'tocPosition', 'pageTurnMode', 'pageAnimation', 'columnMode'] as const).forEach(bindSelect)
-    
-    // 标注模式
-    const modeSelect = $<HTMLSelectElement>('#setting-annotationMode')
-    const [notebookMode, documentMode] = ['#notebook-mode', '#document-mode'].map(s => $<HTMLElement>(s))
-    const updateMode = () => ((m => (notebookMode.style.display = m === 'notebook' ? 'block' : 'none', documentMode.style.display = m === 'document' ? 'block' : 'none'))(modeSelect.value))
-    modeSelect.value = settings.value.annotationMode, updateMode()
-    modeSelect.onchange = () => (settings.value.annotationMode = modeSelect.value as any, updateMode(), save())
-    
-    // 笔记本与文档选择
-    const notebookSelect = $<HTMLSelectElement>('#setting-notebookId')
-    const [docSearch, docResults, parentDocSelect, docHint] = ['#setting-docSearch', '#doc-results', '#setting-parentDoc', '#selected-doc-hint'].map(s => $(s)) as [HTMLInputElement, HTMLElement, HTMLSelectElement, HTMLElement]
-    import('../core/epubDoc').then(({ notebook, document }) => (
-      notebookSelect && notebook.initSelect(notebookSelect, settings.value.notebookId || '', id => (settings.value.notebookId = id, save()), i18n),
-      docSearch && document.initSearchSelect(docSearch, parentDocSelect, docResults, docHint, settings.value.parentDoc, doc => (settings.value.parentDoc = doc, save()), i18n)
-    )).catch(() => {})
-    
-    // 主题配置
-    const theme = $<HTMLSelectElement>('#setting-theme'), custom = $('#custom-theme')
-    const [color, bg, bgImg] = ['#setting-color', '#setting-bg', '#setting-bgImg'].map(s => $<HTMLInputElement>(s))
-    const preview = $('#theme-preview')
-    const refresh = () => (applyTheme(preview, settings.value), preview.style.cssText += 'padding:16px;border-radius:4px;font-size:14px;line-height:1.8')
-    const updateCustom = () => (settings.value.customTheme = { name: '自定义', color: color.value, bg: bg.value, bgImg: bgImg.value || undefined }, refresh(), save())
-    
-    theme.value = settings.value.theme, custom.style.display = settings.value.theme === 'custom' ? 'block' : 'none'
-    theme.onchange = () => (settings.value.theme = theme.value, custom.style.display = theme.value === 'custom' ? 'block' : 'none', refresh(), save())
-    color.value = settings.value.customTheme.color, bg.value = settings.value.customTheme.bg, bgImg.value = settings.value.customTheme.bgImg || ''
-    color.onchange = bg.onchange = updateCustom, bgImg.onblur = updateCustom
-    refresh()
   }
 
   load()
