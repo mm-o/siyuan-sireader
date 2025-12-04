@@ -1,0 +1,157 @@
+import { Plugin } from 'siyuan'
+import { createApp } from 'vue'
+import OnlineReader from '@/components/OnlineReader.vue'
+import { useSetting } from '@/composables/useSetting'
+import { openTab } from 'siyuan'
+import { bookshelfManager } from '@/core/bookshelf'
+
+const TAB_TYPE = 'custom_tab_online_reader'
+const activeTabs = new Map<string, { bookUrl: string, chapterIndex: number }>()
+
+const center = (content: string, color = '#999') => 
+  `<div style="display:flex;align-items:center;justify-content:center;height:100%;color:${color}">${content}</div>`
+
+/**
+ * 注册在线阅读器 Tab
+ */
+export function registerOnlineReaderTab(plugin: Plugin) {
+  const { open: openSetting } = useSetting(plugin)
+  
+  plugin.addTab({
+    type: TAB_TYPE,
+    async init() {
+      const container = document.createElement('div')
+      container.style.cssText = 'width:100%;height:100%'
+      this.element.appendChild(container)
+      
+      const tabId = (this.element as HTMLElement).dataset.id || Date.now().toString()
+      const { bookInfo } = this.data
+      
+      if (!bookInfo) {
+        return container.innerHTML = center('无法加载书籍信息', '#f00')
+      }
+      
+      // 加载配置
+      const cfg = (await plugin.loadData('config.json') || {}).settings || {}
+      const settings = { 
+        enabled: true, 
+        openMode: 'newTab', 
+        tocPosition: 'left', 
+        pageAnimation: 'slide', 
+        columnMode: 'single', 
+        theme: 'default', 
+        customTheme: { name: 'custom', color: '#202124', bg: '#ffffff' },
+        annotationMode: 'notebook',
+        ...cfg 
+      }
+      
+      // 挂载 Vue 组件
+      const app = createApp(OnlineReader, {
+        bookInfo,
+        plugin,
+        settings,
+        onTabReady: (chapterIndex: number) => {
+          activeTabs.set(tabId, { 
+            bookUrl: bookInfo.bookUrl, 
+            chapterIndex 
+          })
+        },
+        onSettings: openSetting,
+      })
+      
+      app.mount(container)
+      
+      // 保存 app 实例以便销毁
+      ;(this as any)._app = app
+    },
+    
+    async destroy() {
+      const tabId = (this.element as HTMLElement).dataset.id!
+      const tab = activeTabs.get(tabId)
+      
+      if (tab?.bookUrl) {
+        try {
+          await bookshelfManager.updateProgress(tab.bookUrl, tab.chapterIndex, 0)
+        } catch {}
+        activeTabs.delete(tabId)
+      }
+      
+      // 销毁 Vue 实例
+      const app = (this as any)._app
+      if (app) {
+        app.unmount()
+        ;(this as any)._app = null
+      }
+    },
+  })
+}
+
+/**
+ * 创建在线阅读器链接处理器
+ */
+export function createOnlineReaderLinkHandler(plugin: Plugin, getSettings: () => { openMode: string }) {
+  return async (e: MouseEvent) => {
+    const target = e.target as HTMLElement
+    const linkEl = target.closest('[data-online-book]')
+    
+    if (!linkEl) return
+    
+    e.preventDefault()
+    e.stopPropagation()
+    
+    const bookUrl = linkEl.getAttribute('data-book-url')
+    if (!bookUrl) return
+    
+    // 检查是否已打开
+    const openedTab = Array.from(activeTabs.entries()).find(([_, tab]) => tab.bookUrl === bookUrl)
+    if (openedTab) {
+      const [tabId] = openedTab
+      document.querySelector(`[data-id="${tabId}"]`)?.parentElement?.click()
+      return
+    }
+    
+    // 加载书籍信息
+    const bookInfo = await bookshelfManager.getBook(bookUrl)
+    if (!bookInfo) return
+    
+    openOnlineReaderTab(plugin, bookInfo, getSettings)
+  }
+}
+
+/**
+ * 打开在线阅读器 Tab
+ */
+export function openOnlineReaderTab(plugin: Plugin, bookInfo: any, getSettings: () => { openMode: string }) {
+  const { openMode } = getSettings()
+  
+  openTab({
+    app: (plugin as any).app,
+    custom: {
+      icon: 'iconBook',
+      title: bookInfo.name || '在线阅读',
+      data: { bookInfo },
+      id: `${plugin.name}${TAB_TYPE}`,
+    } as any,
+    position: openMode === 'rightTab' ? 'right' : openMode === 'bottomTab' ? 'bottom' : undefined,
+  })
+}
+
+/**
+ * 保存所有打开的在线阅读器进度
+ */
+export async function saveAllOnlineProgress() {
+  const promises: Promise<any>[] = []
+  for (const [_, tab] of activeTabs) {
+    promises.push(
+      bookshelfManager.updateProgress(tab.bookUrl, tab.chapterIndex, 0).catch(() => {})
+    )
+  }
+  await Promise.all(promises)
+}
+
+/**
+ * 清理所有在线阅读器
+ */
+export function cleanupAllOnlineReaders() {
+  activeTabs.clear()
+}

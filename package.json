@@ -1,6 +1,6 @@
 {
   "name": "siyuan-sireader",
-  "version": "0.2.6",
+  "version": "0.3.1",
   "type": "module",
   "description": "思源笔记电子书阅读增强插件 - 思阅 SiReader",
   "author": "mm-o",
@@ -17,7 +17,10 @@
     "build": "vite build"
   },
   "dependencies": {
+    "@vueuse/motion": "^3.0.3",
     "epubjs": "^0.3.93",
+    "foliate-js": "^1.0.1",
+    "jszip": "^3.10.1",
     "vue": "^3.3.8"
   },
   "devDependencies": {

@@ -1,0 +1,630 @@
+<template>
+  <div class="online-reader" @click="handleClick">
+    <div ref="readerWrapRef" class="online-reader-wrap">
+      <div ref="containerRef" class="online-container" tabindex="0">
+        <!-- 章节标题 -->
+        <div v-if="!ui.loading && currentChapter" class="chapter-title">{{ currentChapter.title || currentChapter.name }}</div>
+        
+        <!-- 章节内容 -->
+        <div v-if="!ui.loading && !ui.error && paragraphs.length > 0" class="chapter-content">
+          <div v-for="(para, index) in paragraphs" :key="index" class="paragraph">
+            <!-- 纯图片段落 -->
+            <img 
+              v-if="isImageParagraph(para)" 
+              :src="getImageSrc(para)"
+              class="content-image"
+              loading="lazy"
+            />
+            <!-- 普通段落 -->
+            <p v-else v-html="para"></p>
+          </div>
+        </div>
+        
+        <!-- 错误显示 -->
+        <div v-if="ui.error" class="error-message">
+          <p>{{ ui.error }}</p>
+          <button class="b3-button" @click="retryLoad">重试</button>
+        </div>
+      </div>
+    </div>
+    
+    <!-- 加载中 -->
+    <div v-if="ui.loading" class="online-loading">
+      <div class="loading-spinner"></div>
+      <div>{{ ui.error || i18n?.loading || '加载中...' }}</div>
+    </div>
+    
+    <!-- 加载下一章 -->
+    <div v-if="ui.loadingNext" class="online-loading-next">
+      <div class="loading-spinner-small"></div>
+      <span>{{ i18n?.loadingNext || '加载下一章...' }}</span>
+    </div>
+    
+    <!-- 工具栏 -->
+    <div class="online-toolbar">
+      <button class="toolbar-btn b3-tooltips b3-tooltips__n" @click.stop="showTocDialog" :aria-label="i18n?.tocBtn || '目录'">
+        <svg><use xlink:href="#iconList"></use></svg>
+      </button>
+      <button class="toolbar-btn b3-tooltips b3-tooltips__n" @click.stop="prevChapter" :disabled="!canPrev" :aria-label="i18n?.prevBtn || '上一章'">
+        <svg><use xlink:href="#iconLeft"></use></svg>
+      </button>
+      <span class="chapter-progress">{{ currentIndex + 1 }} / {{ chapters.length }}</span>
+      <button class="toolbar-btn b3-tooltips b3-tooltips__n" @click.stop="nextChapter" :disabled="!canNext" :aria-label="i18n?.nextBtn || '下一章'">
+        <svg><use xlink:href="#iconRight"></use></svg>
+      </button>
+      <button class="toolbar-btn b3-tooltips b3-tooltips__n" @click.stop="emit('settings')" :aria-label="i18n?.settingsBtn || '设置'">
+        <svg><use xlink:href="#iconSettings"></use></svg>
+      </button>
+    </div>
+    
+    <!-- 选中菜单 -->
+    <div v-show="ui.menuShow" class="online-selection-menu" :style="{ left: ui.menuX + 'px', top: ui.menuY + 'px' }" @mousedown.stop>
+      <div class="menu-btn-wrapper" @mouseenter="ui.colorShow = true" @mouseleave="handleColorHide">
+        <div v-show="ui.colorShow" class="color-picker" @mousedown.stop>
+          <button 
+            v-for="c in COLORS" :key="c.color"
+            class="color-btn" 
+            :style="{ background: c.bg }" 
+            :title="c.title"
+            @click.stop="addMark(c.color), closeMenu()"
+          ></button>
+        </div>
+        <button class="menu-btn b3-tooltips b3-tooltips__n" @click.stop="addMark('yellow'), closeMenu()" :aria-label="i18n?.highlight || '标注'">
+          <svg><use xlink:href="#iconMark"></use></svg>
+        </button>
+      </div>
+      <button class="menu-btn b3-tooltips b3-tooltips__n" @click.stop="copySelection(), closeMenu()" :aria-label="i18n?.copyBtn || '复制'">
+        <svg><use xlink:href="#iconCopy"></use></svg>
+      </button>
+      <button class="menu-btn b3-tooltips b3-tooltips__n" @click.stop="openDict(ui.menuText, ui.menuX, ui.menuY + 50), closeMenu()" :aria-label="i18n?.dictBtn || '词典'">
+        <svg><use xlink:href="#iconLanguage"></use></svg>
+      </button>
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { reactive, ref, computed, onMounted, onUnmounted } from 'vue'
+import { showMessage } from 'siyuan'
+import type { Plugin } from 'siyuan'
+import type { ReaderSettings } from '@/composables/useSetting'
+import { bookSourceManager } from '@/core/book'
+import { bookshelfManager } from '@/core/bookshelf'
+import { openDict } from '@/core/dictionary'
+import { RuleParser } from '@/core/RuleParser'
+
+// ===== 类型定义 =====
+export type HighlightColor = 'red' | 'orange' | 'yellow' | 'green' | 'pink' | 'blue' | 'purple'
+
+const COLORS = [
+  { color: 'red', bg: '#fee', title: '红色' },
+  { color: 'orange', bg: '#fed', title: '橙色' },
+  { color: 'yellow', bg: '#ffc', title: '黄色' },
+  { color: 'green', bg: '#efe', title: '绿色' },
+  { color: 'pink', bg: '#fef', title: '粉色' },
+  { color: 'blue', bg: '#eef', title: '蓝色' },
+  { color: 'purple', bg: '#f9f', title: '紫色' },
+]
+
+interface Props {
+  bookInfo: any
+  plugin: Plugin
+  settings?: ReaderSettings
+  onTabReady?: (chapterIndex: number) => void
+  onSettings?: () => void
+}
+
+const props = withDefaults(defineProps<Props>(), {
+  settings: () => ({
+    enabled: true,
+    openMode: 'newTab',
+    pageAnimation: 'slide',
+    columnMode: 'single',
+  })
+})
+
+// ===== 状态 =====
+const emit = defineEmits<{ settings: [] }>()
+const [containerRef, readerWrapRef] = [ref<HTMLElement>(), ref<HTMLElement>()]
+const ui = reactive({ 
+  loading: true, 
+  error: '', 
+  loadingNext: false, 
+  menuShow: false, 
+  menuX: 0, 
+  menuY: 0, 
+  menuText: '', 
+  colorShow: false 
+})
+
+const i18n = props.plugin.i18n as any
+
+// 书籍数据
+const chapters = ref<any[]>([])
+const currentIndex = ref(0)
+const chapterContent = ref('')
+const paragraphs = ref<string[]>([])
+
+const currentChapter = computed(() => chapters.value[currentIndex.value])
+const canPrev = computed(() => currentIndex.value > 0)
+const canNext = computed(() => currentIndex.value < chapters.value.length - 1)
+
+// ===== 初始化 =====
+onMounted(async () => {
+  try {
+    ui.loading = true
+    
+    // 加载章节列表
+    if (props.bookInfo.chapters && props.bookInfo.chapters.length > 0) {
+      chapters.value = props.bookInfo.chapters
+      console.log('[Book] 使用已有章节列表，前3个章节:')
+      chapters.value.slice(0, 3).forEach((ch, i) => {
+        console.log(`  章节${i}:`, {
+          title: ch.title || ch.name,
+          url: ch.url,
+          index: ch.index
+        })
+      })
+    } else {
+      console.log('[Book] 获取章节列表')
+      const chapterList = await bookSourceManager.getChapters(
+        props.bookInfo.sourceUrl || props.bookInfo.origin, 
+        props.bookInfo.tocUrl || props.bookInfo.bookUrl
+      )
+      chapters.value = chapterList.map((ch, index) => ({
+        index,
+        title: ch.name || ch.title || `第${index + 1}章`,
+        url: ch.url,
+      }))
+      
+      // 更新书籍文件
+      if (props.bookInfo.bookUrl) {
+        await bookshelfManager.saveBook({
+          ...props.bookInfo,
+          chapters: chapters.value,
+          totalChapterNum: chapters.value.length
+        })
+      }
+    }
+    
+    // 加载当前章节
+    const startIndex = props.bookInfo.durChapterIndex || 0
+    await loadChapter(startIndex)
+    
+    // 通知 tab 已准备好
+    props.onTabReady?.(currentIndex.value)
+    
+    // 应用设置
+    applySettings()
+    
+  } catch (e: any) {
+    ui.error = e.message
+    console.error('[Book] 初始化失败:', e)
+  } finally {
+    ui.loading = false
+  }
+})
+
+onUnmounted(() => {
+  // 清理工作
+})
+
+// ===== 章节导航 =====
+async function loadChapter(index: number) {
+  if (index < 0 || index >= chapters.value.length) return
+  
+  try {
+    ui.loading = true
+    ui.error = ''
+    currentIndex.value = index
+    
+    const chapter = chapters.value[index]
+    
+    // 获取内容
+    let content = ''
+    if (chapter.content) {
+      console.log('[Book] 使用缓存:', chapter.title)
+      content = chapter.content
+    } else {
+      console.log('[Book] 获取章节内容:', chapter.title)
+      content = await bookSourceManager.getChapterContent(
+        props.bookInfo.sourceUrl || props.bookInfo.origin,
+        chapter.url
+      )
+      console.log('[Book] 原始内容长度:', content.length)
+      
+      // 缓存
+      if (props.bookInfo.bookUrl) {
+        await bookshelfManager.cacheChapterContent(
+          props.bookInfo.bookUrl,
+          index,
+          content
+        )
+      }
+    }
+    
+    // 处理内容
+    if (content) {
+      paragraphs.value = RuleParser.processContent(content)
+      chapterContent.value = content
+    } else {
+      paragraphs.value = ['章节内容为空']
+      ui.error = '章节内容为空'
+    }
+    
+    // 更新进度
+    if (props.bookInfo.bookUrl) {
+      await bookshelfManager.updateProgress(props.bookInfo.bookUrl, index, 0)
+    }
+    
+    // 滚动到顶部
+    containerRef.value?.scrollTo(0, 0)
+    
+  } catch (e: any) {
+    ui.error = e.message
+    console.error('[Book] 加载章节失败:', e)
+  } finally {
+    ui.loading = false
+  }
+}
+
+function prevChapter() {
+  if (canPrev.value) {
+    loadChapter(currentIndex.value - 1)
+  }
+}
+
+function nextChapter() {
+  if (canNext.value) {
+    loadChapter(currentIndex.value + 1)
+  }
+}
+
+// ===== 目录 =====
+function showTocDialog() {
+  // TODO: 实现目录对话框
+  showMessage('目录功能开发中...', 2000, 'info')
+}
+
+// ===== 选择和标注 =====
+function handleClick(e: MouseEvent) {
+  const selection = window.getSelection()
+  if (!selection || selection.isCollapsed) {
+    closeMenu()
+    return
+  }
+  
+  const text = selection.toString().trim()
+  if (!text) return
+  
+  const range = selection.getRangeAt(0)
+  const rect = range.getBoundingClientRect()
+  
+  ui.menuShow = true
+  ui.menuX = rect.left + rect.width / 2
+  ui.menuY = rect.top - 50
+  ui.menuText = text
+}
+
+function closeMenu() {
+  ui.menuShow = false
+  ui.colorShow = false
+}
+
+function handleColorHide() {
+  setTimeout(() => {
+    ui.colorShow = false
+  }, 200)
+}
+
+function addMark(color: HighlightColor) {
+  const selection = window.getSelection()
+  if (!selection || selection.isCollapsed) return
+  
+  const range = selection.getRangeAt(0)
+  const span = document.createElement('span')
+  span.className = `highlight-${color}`
+  span.style.background = COLORS.find(c => c.color === color)?.bg || '#ffc'
+  
+  try {
+    range.surroundContents(span)
+    showMessage(i18n?.highlightAdded || '标注已添加', 1000, 'info')
+  } catch (e) {
+    console.error('[Book] 标注失败:', e)
+  }
+}
+
+function copySelection() {
+  const selection = window.getSelection()
+  if (!selection) return
+  
+  const text = selection.toString()
+  navigator.clipboard.writeText(text).then(() => {
+    showMessage(i18n?.copied || '已复制', 1000, 'info')
+  })
+}
+
+// ===== 内容处理 =====
+function isImageParagraph(para: string): boolean {
+  return RuleParser.isImage(para)
+}
+
+function getImageSrc(para: string): string {
+  return RuleParser.extractImageUrl(para)
+}
+
+function retryLoad() {
+  loadChapter(currentIndex.value)
+}
+
+function applySettings() {
+  if (!containerRef.value) return
+  
+  const container = containerRef.value
+  const wrap = readerWrapRef.value
+  const { theme, customTheme, textSettings: t, paragraphSettings: p, pageSettings: pg } = props.settings
+  
+  // 应用主题
+  if (theme === 'custom' && customTheme) {
+    container.style.color = customTheme.color
+    container.style.background = customTheme.bg
+  }
+  
+  // 应用字体设置
+  if (t.fontFamily) {
+    container.style.fontFamily = t.fontFamily === 'custom' && t.customFont?.fontFamily 
+      ? `"${t.customFont.fontFamily}", sans-serif` 
+      : t.fontFamily
+  }
+  if (t.fontSize) container.style.fontSize = `${t.fontSize}px`
+  if (t.letterSpacing) container.style.letterSpacing = `${t.letterSpacing}em`
+  
+  // 应用段落设置（使用CSS变量）
+  if (p.lineHeight) container.style.setProperty('--reader-line-height', p.lineHeight.toString())
+  if (p.paragraphSpacing) container.style.setProperty('--reader-paragraph-spacing', `${p.paragraphSpacing}em`)
+  if (p.textIndent) container.style.setProperty('--reader-text-indent', `${p.textIndent}em`)
+  
+  // 应用页面设置
+  if (pg.marginHorizontal !== undefined || pg.marginVertical !== undefined) {
+    container.style.padding = `${pg.marginVertical || 40}px ${pg.marginHorizontal || 60}px 100px`
+  }
+  
+  // 连续滚动模式
+  if (wrap && pg.continuousScroll !== undefined) {
+    wrap.style.overflowY = pg.continuousScroll ? 'auto' : 'hidden'
+  }
+}
+</script>
+
+<style scoped lang="scss">
+.online-reader { 
+  position: relative; 
+  width: 100%; 
+  height: 100%; 
+  overflow: hidden; 
+  background: var(--b3-theme-background); 
+}
+
+.online-reader-wrap { 
+  width: 100%; 
+  height: 100%; 
+  overflow-y: auto; 
+  overflow-x: hidden; 
+}
+
+.online-container { 
+  max-width: 800px; 
+  margin: 0 auto; 
+  padding: 40px 60px 100px; 
+  min-height: 100%; 
+  outline: none;
+  
+  &:focus { outline: none; }
+}
+
+.chapter-title {
+  font-size: 24px;
+  font-weight: 600;
+  margin-bottom: 32px;
+  text-align: center;
+  color: var(--b3-theme-on-background);
+}
+
+.chapter-content { 
+  font-size: var(--reader-font-size, 18px); 
+  line-height: var(--reader-line-height, 1.8); 
+  color: var(--b3-theme-on-background);
+}
+
+.paragraph {
+  margin: var(--reader-paragraph-spacing, 16px) 0;
+  
+  p { 
+    text-indent: var(--reader-text-indent, 2em); 
+    margin: 0;
+    
+    &:empty { display: none; }
+  }
+  
+  :deep(img) { 
+    max-width: 100%; 
+    height: auto; 
+  }
+  
+  :deep(h1), :deep(h2), :deep(h3) { 
+    margin: 1.5em 0 0.5em; 
+    text-indent: 0; 
+  }
+}
+
+.content-image {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 20px auto;
+}
+
+.error-message {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--b3-theme-error);
+  
+  button {
+    margin-top: 16px;
+  }
+}
+
+// 加载状态
+.online-loading {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  color: var(--b3-theme-on-background);
+  
+  .loading-spinner {
+    width: 48px;
+    height: 48px;
+    border: 4px solid var(--b3-theme-primary-lighter);
+    border-top-color: var(--b3-theme-primary);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+  }
+}
+
+.online-loading-next {
+  position: absolute;
+  bottom: 20px;
+  right: 20px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: var(--b3-theme-surface);
+  border-radius: 16px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  
+  .loading-spinner-small {
+    width: 16px;
+    height: 16px;
+    border: 2px solid var(--b3-theme-primary-lighter);
+    border-top-color: var(--b3-theme-primary);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+// 工具栏
+.online-toolbar {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: var(--b3-theme-surface);
+  border-radius: 24px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  z-index: 100;
+  
+  .toolbar-btn {
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    background: transparent;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: all 0.2s;
+    
+    svg { width: 18px; height: 18px; }
+    
+    &:hover { background: var(--b3-list-hover); }
+    &:disabled { opacity: 0.3; cursor: not-allowed; }
+  }
+  
+  .chapter-progress {
+    font-size: 13px;
+    color: var(--b3-theme-on-surface);
+    opacity: 0.7;
+    padding: 0 8px;
+    white-space: nowrap;
+  }
+}
+
+// 选择菜单
+.online-selection-menu {
+  position: fixed;
+  z-index: 1000;
+  display: flex;
+  gap: 4px;
+  padding: 6px;
+  background: var(--b3-theme-surface);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+  transform: translateX(-50%);
+  
+  .menu-btn-wrapper {
+    position: relative;
+    
+    .color-picker {
+      position: absolute;
+      bottom: calc(100% + 8px);
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 4px;
+      padding: 6px;
+      background: var(--b3-theme-surface);
+      border-radius: 8px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+      
+      .color-btn {
+        width: 24px;
+        height: 24px;
+        border: 2px solid transparent;
+        border-radius: 4px;
+        cursor: pointer;
+        transition: all 0.2s;
+        
+        &:hover { border-color: var(--b3-theme-primary); transform: scale(1.1); }
+      }
+    }
+  }
+  
+  .menu-btn {
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    background: transparent;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+    
+    svg { width: 16px; height: 16px; }
+    
+    &:hover { background: var(--b3-list-hover); }
+  }
+}
+
+// 响应式
+@media (max-width: 768px) {
+  .online-container { padding: 20px 16px 80px; }
+  .online-toolbar { bottom: 16px; }
+}
+</style>

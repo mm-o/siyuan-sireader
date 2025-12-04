@@ -1,103 +1,116 @@
-name: Create Release on Tag Push
+name: Build and Release
 
 on:
   push:
-    tags:
-      - "v*"
+    branches:
+      - main
+    paths:
+      - 'package.json'
+      - 'plugin.json'
 
 jobs:
-  build:
+  build-and-release:
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      # Checkout
       - name: Checkout
         uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
 
-      # Install Node.js
+      - name: Get version
+        id: version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "📦 Current version: v$VERSION"
+
+      - name: Check if tag exists
+        id: check-tag
+        run: |
+          if git rev-parse "v${{ steps.version.outputs.version }}" >/dev/null 2>&1; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "⏭️ Tag v${{ steps.version.outputs.version }} already exists, skipping"
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "✨ Tag v${{ steps.version.outputs.version }} is new, will build and release"
+          fi
+
       - name: Install Node.js
+        if: steps.check-tag.outputs.exists == 'false'
         uses: actions/setup-node@v3
         with:
           node-version: 18
-          registry-url: "https://registry.npmjs.org"
 
-        # Install pnpm
       - name: Install pnpm
+        if: steps.check-tag.outputs.exists == 'false'
         uses: pnpm/action-setup@v2
-        id: pnpm-install
         with:
           version: 8
           run_install: false
 
-      # Get pnpm store directory
       - name: Get pnpm store directory
+        if: steps.check-tag.outputs.exists == 'false'
         id: pnpm-cache
-        shell: bash
-        run: |
-          echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
+        run: echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
 
-      # Setup pnpm cache
       - name: Setup pnpm cache
+        if: steps.check-tag.outputs.exists == 'false'
         uses: actions/cache@v3
         with:
           path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
           key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-pnpm-store-
+          restore-keys: ${{ runner.os }}-pnpm-store-
 
-      # Install dependencies
       - name: Install dependencies
+        if: steps.check-tag.outputs.exists == 'false'
         run: pnpm install
 
-      # Build for production
-      - name: Build for production
+      - name: Build
+        if: steps.check-tag.outputs.exists == 'false'
         run: pnpm build
 
-      # 创建发布包（使用显式 zip 命令确保可靠性）
-      - name: Create release package
+      - name: Verify package
+        if: steps.check-tag.outputs.exists == 'false'
         run: |
-          echo "📦 Checking for package.zip..."
+          echo "📁 Build output:"
           ls -la
           
-          # 等待可能的异步操作完成
-          sleep 3
+          sleep 2
           
-          # 如果 vite-plugin-zip-pack 已生成 package.zip，使用它
           if [ -f "package.zip" ]; then
-            echo "✅ Found package.zip from vite-plugin-zip-pack"
+            echo "✅ package.zip found"
             ls -lh package.zip
+            echo "📦 Package contents:"
+            unzip -l package.zip | head -30
           else
-            # 否则手动创建 package.zip
-            echo "⚠️ package.zip not found, creating manually from dist folder..."
-            
-            # 检查 dist 目录
+            echo "❌ package.zip not found, creating from dist/"
             if [ ! -d "dist" ]; then
-              echo "❌ Error: dist directory not found!"
+              echo "❌ dist directory not found!"
               exit 1
             fi
-            
-            echo "📁 Contents of dist directory:"
-            ls -la dist/
-            
-            # 创建 zip 包
-            cd dist
-            zip -r ../package.zip .
-            cd ..
-            
-            echo "✅ package.zip created successfully"
+            cd dist && zip -r ../package.zip . && cd ..
+            echo "✅ package.zip created"
             ls -lh package.zip
           fi
-          
-          echo "📊 Final package.zip info:"
-          ls -lh package.zip
-          unzip -l package.zip | head -20
 
-      - name: Release
+      - name: Create tag
+        if: steps.check-tag.outputs.exists == 'false'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "v${{ steps.version.outputs.version }}" -m "Release v${{ steps.version.outputs.version }}"
+          git push origin "v${{ steps.version.outputs.version }}"
+          echo "✅ Tag v${{ steps.version.outputs.version }} created"
+
+      - name: Create Release
+        if: steps.check-tag.outputs.exists == 'false'
         uses: ncipollo/release-action@v1
         with:
-          allowUpdates: true
-          artifactErrorsFailBuild: true
+          tag: v${{ steps.version.outputs.version }}
+          name: v${{ steps.version.outputs.version }}
           artifacts: "package.zip"
           token: ${{ secrets.GITHUB_TOKEN }}
-          prerelease: false
+          generateReleaseNotes: true
+          makeLatest: true

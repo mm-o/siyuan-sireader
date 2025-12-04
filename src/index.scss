@@ -23,6 +23,7 @@
 // ==================== 核心容器 ====================
 .epub-reader, .epub-container { width: 100%; height: 100%; }
 .epub-reader { background: var(--b3-theme-background); position: relative; cursor: pointer; }
+.epub-container { transition: width 0.3s ease, margin-left 0.3s ease, margin-right 0.3s ease; }
 
 // ==================== 工具栏 ====================
 .epub-toolbar, .epub-selection-menu {
@@ -217,8 +218,8 @@
   @include btn-base(32px, 32px); svg { width: 16px; height: 16px; }
   &.active { color: var(--b3-theme-primary); background: var(--b3-theme-primary-lighter); }
 }
-.toc-tools { display: flex; gap: 4px; }
-.toc-search { padding: 8px 12px; border-bottom: 1px solid var(--b3-border-color); input { width: 100%; } }
+.toc-tools, .toc-extra-btns { display: flex; gap: 4px; }
+.toc-search { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--b3-border-color); input { flex: 1; } }
 
 // 目录主体
 .toc-body {
@@ -241,8 +242,52 @@
       .toc-bookmark-btn, .toc-delete-btn { opacity: 0.6; }
     }
     &--focus { background: var(--b3-theme-primary-lighter); font-weight: 500; }
+    &[data-cfi], &[data-href]:not([data-wrap] &) { 
+      margin: 6px 8px; border-radius: 4px; padding: 8px 12px; 
+    }
   }
   .toc-subitems { transition: none; }
+  .toc-item-content { 
+    flex: 1; word-break: break-word; line-height: 1.6; padding-right: 64px; min-width: 0;
+  }
+  .toc-note-text { font-weight: 600; margin-bottom: 4px; }
+  .toc-note-excerpt { font-size: 12px; opacity: 0.65; }
+  .toc-chapter { font-size: 11px; opacity: 0.6; margin-top: 4px; color: var(--b3-theme-on-surface-light); }
+}
+
+// ==================== 设置页面 ====================
+.toc-settings {
+  padding: 16px; display: flex; flex-direction: column; gap: 20px;
+}
+.toc-settings-group {
+  display: flex; flex-direction: column; gap: 8px;
+}
+.toc-settings-label {
+  font-size: 13px; font-weight: 600; color: var(--b3-theme-primary); margin-bottom: 6px;
+}
+.toc-settings-current {
+  padding: 12px; background: var(--b3-theme-surface); border-radius: 6px;
+  border: 1px solid var(--b3-border-color);
+}
+.toc-doc-name {
+  font-weight: 500; margin-bottom: 4px;
+}
+.toc-doc-id {
+  font-size: 12px; opacity: 0.65; font-family: monospace;
+}
+.toc-settings-results {
+  max-height: 250px; overflow-y: auto; margin-top: 8px;
+  background: var(--b3-theme-surface); border: 1px solid var(--b3-border-color);
+  border-radius: 6px;
+}
+.toc-empty {
+  padding: 20px; text-align: center; color: var(--b3-theme-on-surface-light); opacity: 0.6;
+}
+.toc-doc-item {
+  padding: 10px 12px; cursor: pointer; transition: background 0.15s;
+  border-bottom: 1px solid var(--b3-border-color);
+  &:last-child { border-bottom: none; }
+  &:hover { background: var(--b3-list-hover); }
 }
 
 // ==================== 笔记输入框 ====================

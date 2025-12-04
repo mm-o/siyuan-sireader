@@ -36,10 +36,11 @@ export default class PluginSample extends Plugin {
   }
 
   async onunload() {
-    const { saveAllProgress } = await import('@/core/epub')
+    const { saveAllProgress, cleanupAllReaders } = await import('@/core/reader')
     const { cleanupAllProgressSavers } = await import('@/core/epubView')
     await saveAllProgress()
     cleanupAllProgressSavers()
+    cleanupAllReaders()
     destroy()
     console.log('[SiReader] 插件已禁用')
   }
