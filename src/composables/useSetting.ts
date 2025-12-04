@@ -5,22 +5,26 @@
 
 import { createApp, ref, toRaw } from 'vue'
 import { MotionPlugin } from '@vueuse/motion'
-import { Dialog, showMessage } from 'siyuan'
+import { Dialog, showMessage, fetchSyncPost } from 'siyuan'
 import type { Plugin } from 'siyuan'
 import type { DocInfo } from '@/core/epubDoc'
 import SettingsVue from '@/components/Settings.vue'
 
-// ===== 类型定义 =====
-export type PageAnimation = 'slide' | 'fade' | 'flip' | 'scroll' | 'vertical' | 'none'
+export type PageAnimation = 'slide' | 'scroll' | 'none'  // slide/none翻页，scroll滚动
 export type ColumnMode = 'single' | 'double'
 export type TocPosition = 'left' | 'right'
 export interface ReadTheme { name: string; color: string; bg: string; bgImg?: string }
 
-// 页面排版设置
+export interface FontFileInfo {
+  name: string
+  displayName: string
+}
+
 export interface TextSettings {
   fontFamily: string
   fontSize: number
   letterSpacing: number
+  customFont: { fontFamily: string; fontFile: string }
 }
 
 export interface ParagraphSettings {
@@ -51,7 +55,6 @@ export interface ReaderSettings {
   pageSettings: PageSettings
 }
 
-// ===== 主题配置 =====
 export const PRESET_THEMES: Record<string, ReadTheme> = {
   default: { name: 'themeDefault', color: '#202124', bg: '#ffffff' },
   almond: { name: 'themeAlmond', color: '#414441', bg: '#FAF9DE' },
@@ -83,38 +86,22 @@ export const applyTheme = (el: HTMLElement, settings: ReaderSettings) => {
 export const applyPageStyles = (iframe: HTMLIFrameElement, settings: ReaderSettings) => {
   const doc = iframe.contentDocument
   if (!doc?.body) return
-  
   const { textSettings: t, paragraphSettings: p, pageSettings: pg } = settings
-  
-  // 移除旧样式
   doc.querySelectorAll('style[data-sireader-page]').forEach(s => s.remove())
   
-  // 注入新样式
-  const style = doc.createElement('style')
-  style.setAttribute('data-sireader-page', 'true')
-  style.textContent = `
-    body {
-      font-family: ${t.fontFamily} !important;
-      font-size: ${t.fontSize}px !important;
-      letter-spacing: ${t.letterSpacing}em !important;
-      padding-left: ${pg.marginHorizontal}px !important;
-      padding-right: ${pg.marginHorizontal}px !important;
-      padding-top: ${pg.marginVertical}px !important;
-      padding-bottom: ${pg.marginVertical}px !important;
-    }
-    p, div {
-      line-height: ${p.lineHeight} !important;
-      margin-top: ${p.paragraphSpacing}em !important;
-      margin-bottom: ${p.paragraphSpacing}em !important;
-    }
-    p {
-      text-indent: ${p.textIndent}em !important;
-    }
-  `
+  // 字体
+  const isCustom = t.fontFamily === 'custom' && t.customFont.fontFamily
+  const font = isCustom ? `"${t.customFont.fontFamily}", sans-serif` : (t.fontFamily || 'inherit')
+  const fontFace = isCustom ? `@font-face{font-family:"${t.customFont.fontFamily}";src:url("/plugins/custom-fonts/${t.customFont.fontFile}")}` : ''
+  
+  const style = Object.assign(doc.createElement('style'), { 
+    'data-sireader-page': 'true',
+    textContent: `${fontFace}body{font-family:${font}!important;font-size:${t.fontSize}px!important;letter-spacing:${t.letterSpacing}em!important;padding:${pg.marginVertical}px ${pg.marginHorizontal}px!important}p,div{line-height:${p.lineHeight}!important;margin:${p.paragraphSpacing}em 0!important}p{text-indent:${p.textIndent}em!important}`
+  })
   doc.head.appendChild(style)
 }
 
-// ===== 默认配置 =====
+// 默认配置
 const DEFAULT_SETTINGS: ReaderSettings = {
   enabled: true,
   openMode: 'newTab',
@@ -130,6 +117,7 @@ const DEFAULT_SETTINGS: ReaderSettings = {
     fontFamily: 'inherit',
     fontSize: 16,
     letterSpacing: 0,
+    customFont: { fontFamily: '', fontFile: '' },
   },
   paragraphSettings: {
     lineHeight: 1.6,
@@ -143,10 +131,20 @@ const DEFAULT_SETTINGS: ReaderSettings = {
   },
 }
 
-// ===== 工具函数 =====
 const msg = { success: (m: string) => showMessage(m, 2000, 'info'), error: (m: string) => showMessage(m, 3000, 'error') }
 
-// ===== 设置管理 Composable =====
+// 扫描字体
+export const scanCustomFonts = async (): Promise<FontFileInfo[]> => {
+  try {
+    const res = await fetchSyncPost('/api/file/readDir', { path: '/data/plugins/custom-fonts' })
+    return res?.code === 0 && Array.isArray(res.data)
+      ? res.data
+          .filter((f: any) => !f.isDir && /\.(ttf|otf|woff2?)$/i.test(f.name))
+          .map((f: any) => ({ name: f.name, displayName: f.name.replace(/\.(ttf|otf|woff2?)$/i, '') }))
+      : []
+  } catch { return [] }
+}
+
 export function useSetting(plugin: Plugin) {
   const settings = ref<ReaderSettings>({ ...DEFAULT_SETTINGS })
   let dialog: Dialog | null = null

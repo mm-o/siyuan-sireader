@@ -143,6 +143,7 @@ export default defineConfig(({
 
         output: {
           entryFileNames: "[name].js",
+          inlineDynamicImports: true, // 内联所有动态导入，强制单文件
           assetFileNames: (assetInfo) => {
             if (assetInfo.name === "style.css") {
               return "index.css"

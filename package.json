@@ -19,6 +19,8 @@
   "dependencies": {
     "@vueuse/motion": "^3.0.3",
     "epubjs": "^0.3.93",
+    "foliate-js": "^1.0.1",
+    "jszip": "^3.10.1",
     "vue": "^3.3.8"
   },
   "devDependencies": {

@@ -1,0 +1,131 @@
+<template>
+  <div class="toc-item-wrap">
+    <div 
+      :class="['toc-item', { active: isActive }]" 
+      :style="{ paddingLeft: `${8 + level * 16}px` }"
+      v-motion-pop-visible>
+      <button 
+        v-if="item.subitems?.length" 
+        class="toc-toggle" 
+        @click.stop="$emit('toggle', itemId)">
+        <svg class="toggle-icon" :class="{ rotated: isExpanded }">
+          <use xlink:href="#iconRight"/>
+        </svg>
+      </button>
+      <span v-else class="toc-spacer"></span>
+      <span class="toc-label" @click="$emit('goto', item)">{{ item.label }}</span>
+    </div>
+    <div v-if="item.subitems?.length && isExpanded" class="toc-subitems">
+      <TocItem 
+        v-for="(sub, idx) in item.subitems" 
+        :key="idx"
+        :item="sub"
+        :level="level + 1"
+        :currentHref="currentHref"
+        :expanded="expanded"
+        @toggle="$emit('toggle', $event)"
+        @goto="$emit('goto', $event)" />
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { computed } from 'vue'
+
+const props = defineProps<{
+  item: any
+  level: number
+  currentHref: string
+  expanded: Map<string, boolean>
+}>()
+
+defineEmits<{
+  toggle: [id: string]
+  goto: [item: any]
+}>()
+
+const itemId = computed(() => props.item.id || props.item.href || props.item.label)
+const isExpanded = computed(() => props.expanded.get(itemId.value) ?? true)
+const isActive = computed(() => {
+  const href = props.item.href
+  return href && props.currentHref && (
+    props.currentHref === href || 
+    props.currentHref.startsWith(href.split('#')[0])
+  )
+})
+</script>
+
+<style scoped lang="scss">
+.toc-item-wrap {
+  .toc-item {
+    padding: 6px 8px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    transition: all .12s;
+    border-left: 2px solid transparent;
+    
+    &:hover {
+      background: var(--b3-list-hover);
+    }
+    
+    &.active {
+      background: var(--b3-theme-primary-lighter);
+      border-left-color: var(--b3-theme-primary);
+    }
+  }
+  
+  .toc-toggle {
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    border: none;
+    background: transparent;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    flex-shrink: 0;
+    border-radius: 3px;
+    transition: all .15s;
+    
+    &:hover {
+      background: var(--b3-list-hover);
+    }
+    
+    .toggle-icon {
+      width: 12px;
+      height: 12px;
+      transition: transform .2s;
+      
+      &.rotated {
+        transform: rotate(90deg);
+      }
+    }
+  }
+  
+  .toc-spacer {
+    width: 20px;
+    flex-shrink: 0;
+  }
+  
+  .toc-label {
+    flex: 1;
+    font-size: 13px;
+    line-height: 1.5;
+    cursor: pointer;
+    user-select: none;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    
+    &:hover {
+      color: var(--b3-theme-primary);
+    }
+  }
+  
+  .toc-subitems {
+    // 子项容器，无需额外样式
+  }
+}
+</style>
