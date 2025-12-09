@@ -10,8 +10,9 @@ import { MotionPlugin } from '@vueuse/motion'
 import { usePlugin, setOpenSettingHandler, registerCleanup } from '@/main'
 import { useSetting } from '@/composables/useSetting'
 import { useStats } from '@/composables/useStats'
-import { registerEpubTab, createEpubLinkHandler, registerOnlineReaderTab, createOnlineReaderLinkHandler } from './core/reader'
-import { initEpubBlockMenu, renderAllEpubBlocks } from '@/core/epubView'
+import { registerEpubTab, createEpubLinkHandler, registerOnlineReaderTab } from '@/core/tabs'
+// TODO: EPUB 块功能待恢复
+// import { initEpubBlockMenu, renderAllEpubBlocks } from '@/core/epubView'
 import { bookSourceManager } from '@/core/book'
 import Settings from '@/components/Settings.vue'
 
@@ -31,7 +32,7 @@ setOpenSettingHandler(openSetting)
 registerEpubTab(plugin)
 registerOnlineReaderTab(plugin)
 
-// 添加Dock - 参考mplayer实现
+// 添加Dock
 const iconId = 'siyuan-reader-icon'
 plugin.addIcons(`
   <symbol id="${iconId}" viewBox="0 0 1696 1536">
@@ -82,6 +83,11 @@ plugin.addIcons(`
     <path d="M21.378 16.626a1 1 0 0 0-3.004-3.004l-4.01 4.012a2 2 0 0 0-.506.854l-.837 2.87a.5.5 0 0 0 .62.62l2.87-.837a2 2 0 0 0 .854-.506z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
     <circle cx="10" cy="10" r="3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
   </symbol>
+  <symbol id="lucide-wallet-cards" viewBox="0 0 24 24">
+    <rect width="18" height="18" x="3" y="3" rx="2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M3 9a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M3 11h3c.8 0 1.6.3 2.1.9l1.1.9c1.6 1.6 4.1 1.6 5.7 0l1.1-.9c.5-.5 1.3-.9 2.1-.9H21" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  </symbol>
   <symbol id="lucide-panel-top-close" viewBox="0 0 24 24">
     <rect width="18" height="18" x="3" y="3" rx="2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
     <path d="M3 9h18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -105,6 +111,40 @@ plugin.addIcons(`
     <path d="M17 10V4h-2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
     <path d="M15 10h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
     <rect x="15" y="14" width="4" height="6" ry="2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  </symbol>
+  <symbol id="lucide-sliders-horizontal" viewBox="0 0 24 24">
+    <path d="M10 5H3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M12 19H3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M14 3v4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M16 17v4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M21 12h-9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M21 19h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M21 5h-7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M8 10v4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M8 12H3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  </symbol>
+  <symbol id="lucide-clock-plus" viewBox="0 0 24 24">
+    <path d="M12 6v6l3.644 1.822" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M16 19h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M19 16v6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M21.92 13.267a10 10 0 1 0-8.653 8.653" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  </symbol>
+  <symbol id="lucide-panels-top-left" viewBox="0 0 24 24">
+    <rect width="18" height="18" x="3" y="3" rx="2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M3 9h18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M9 21V9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  </symbol>
+  <symbol id="lucide-list-restart" viewBox="0 0 24 24">
+    <path d="M21 5H3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M7 12H3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M7 19H3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M12 18a5 5 0 0 0 9-3 4.5 4.5 0 0 0-4.5-4.5c-1.33 0-2.54.54-3.41 1.41L11 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M11 10v4h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  </symbol>
+  <symbol id="lucide-book-plus" viewBox="0 0 24 24">
+    <path d="M12 7v6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M9 10h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
   </symbol>
 `)
 
@@ -152,15 +192,17 @@ useStats(plugin).init()
 onMounted(async () => {
   await bookSourceManager.loadSources()
   
+  // EPUB 链接处理
   const epubLinkHandler = createEpubLinkHandler(plugin, () => settings.value)
   window.addEventListener('click', epubLinkHandler, true)
   
-  const cleanupEpubMenu = initEpubBlockMenu(plugin, () => settings.value)
-  renderAllEpubBlocks()
+  // TODO: EPUB 块功能待恢复
+  // const cleanupEpubMenu = initEpubBlockMenu(plugin, () => settings.value)
+  // renderAllEpubBlocks()
   
   registerCleanup(() => {
     window.removeEventListener('click', epubLinkHandler, true)
-    cleanupEpubMenu()
+    // cleanupEpubMenu()
   })
 })
 </script>

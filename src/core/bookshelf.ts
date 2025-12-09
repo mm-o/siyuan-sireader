@@ -48,12 +48,14 @@ export interface BookIndex {
   bookUrl: string
   name: string
   author: string
+  coverUrl?: string  // 封面路径（非base64）
   durChapterIndex: number
   totalChapterNum: number
   durChapterTime: number
   addTime: number
   lastCheckCount: number
-  isEpub?: boolean  // EPUB 标记
+  isEpub?: boolean
+  epubProgress?: number  // EPUB阅读进度
 }
 
 export interface UpdateResult {
@@ -67,7 +69,6 @@ export type SortType = 'time' | 'name' | 'author' | 'update'
 
 const STORAGE_PATH = {
   BOOKS: '/data/storage/petal/siyuan-sireader/books/',
-  EPUB: '/data/storage/petal/siyuan-sireader/epub/',
   INDEX: '/data/storage/petal/siyuan-sireader/index.json',
 }
 
@@ -79,11 +80,39 @@ class BookshelfManager {
   async init(force = false) {
     if (this.initialized && !force) return
     try {
+      await putFile(STORAGE_PATH.BOOKS, true, new File([], '')).catch(() => {})
       this.index = Array.isArray(await getFile(STORAGE_PATH.INDEX)) ? await getFile(STORAGE_PATH.INDEX) : []
-    } catch {
-      this.index = []
-    }
+    } catch { this.index = [] }
     this.initialized = true
+  }
+
+  private getHash(bookUrl: string): string {
+    let hash = 0
+    for (let i = 0; i < bookUrl.length; i++) {
+      hash = ((hash << 5) - hash) + bookUrl.charCodeAt(i)
+      hash = hash & hash
+    }
+    return Math.abs(hash).toString(36)
+  }
+
+  private async saveCover(hash: string, data: string): Promise<string | undefined> {
+    if (!data?.startsWith('data:image/')) return undefined
+    try {
+      const bytes = new Uint8Array(atob(data.split(',')[1]).split('').map(c => c.charCodeAt(0)))
+      const path = `${STORAGE_PATH.BOOKS}${hash}.jpg`
+      await putFile(path, false, new File([bytes], `${hash}.jpg`, { type: 'image/jpeg' }))
+      return path
+    } catch { return undefined }
+  }
+
+  private async downloadCover(hash: string, url: string): Promise<string | undefined> {
+    if (!url || url.startsWith('data:') || url.startsWith('/icons/')) return undefined
+    try {
+      const blob = await (await fetch(url)).blob()
+      const path = `${STORAGE_PATH.BOOKS}${hash}.jpg`
+      await putFile(path, false, new File([blob], `${hash}.jpg`, { type: 'image/jpeg' }))
+      return path
+    } catch { return undefined }
   }
 
   private async saveIndex() {
@@ -91,24 +120,19 @@ class BookshelfManager {
   }
 
   async getBook(bookUrl: string): Promise<Book | null> {
-    const idx = this.index.find(b => b.bookUrl === bookUrl)
-    if (!idx) return null
     try {
-      const book = await getFile(`${STORAGE_PATH.BOOKS}${this.getFilename(idx.name, idx.author)}`) as Book
-      if (book?.isEpub && book.epubPath && !book.chapters?.length) {
-        book.chapters = await this.getEpubChapters(book.epubPath)
-      }
+      const book = await getFile(`${STORAGE_PATH.BOOKS}${this.getHash(bookUrl)}.json`) as Book
+      if (book?.isEpub && book.epubPath && !book.chapters?.length) book.chapters = await this.getEpubChapters(book.epubPath)
       return book || null
-    } catch {
-      return null
-    }
+    } catch { return null }
   }
 
   async saveBook(book: Book) {
-    const filename = this.getFilename(book.name, book.author)
-    const data = book.isEpub ? { ...book, chapters: [] } : book
-    await putFile(`${STORAGE_PATH.BOOKS}${filename}`, false, new File([JSON.stringify(data, null, 2)], filename, { type: 'application/json' }))
-    this.updateIndex(book)
+    const hash = this.getHash(book.bookUrl)
+    const data = book.isEpub ? { ...book, chapters: [], coverUrl: undefined } : { ...book, coverUrl: undefined }
+    await putFile(`${STORAGE_PATH.BOOKS}${hash}.json`, false, new File([JSON.stringify(data, null, 2)], `${hash}.json`, { type: 'application/json' }))
+    const cover = book.coverUrl?.startsWith('data:') ? await this.saveCover(hash, book.coverUrl) : book.coverUrl?.startsWith('http') ? await this.downloadCover(hash, book.coverUrl) : book.coverUrl
+    this.updateIndex(book, cover)
     await this.saveIndex()
   }
 
@@ -183,84 +207,58 @@ class BookshelfManager {
       intro: get(/<dc:description[^>]*>([^<]+)<\/dc:description>/),
       chapters: spine.map((id, i) => ({ index: i, title: titles[manifest[id]?.split('/').pop() || ''] || `第${i + 1}章`, url: manifest[id] || '' })).filter(c => c.url),
       cover: async () => {
-        // 多种方式查找封面
         let coverHref = get(/<item[^>]+id="cover[^"]*"[^>]+href="([^"]+)"/i)
         if (!coverHref) coverHref = get(/<item[^>]+properties="cover-image"[^>]+href="([^"]+)"/)
         if (!coverHref) coverHref = get(/<item[^>]+href="([^"]+)"[^>]+properties="cover-image"/)
         if (!coverHref) return undefined
         
         try {
-          const coverPath = opfPath.replace(/[^/]+$/, '') + coverHref
-          const buf = await zip.file(coverPath)?.async('arraybuffer')
+          const buf = await zip.file(opfPath.replace(/[^/]+$/, '') + coverHref)?.async('arraybuffer')
           if (!buf) return undefined
           
-          // 分块转换为 base64，避免堆栈溢出
           const bytes = new Uint8Array(buf)
           const chunkSize = 8192
           let binary = ''
           for (let i = 0; i < bytes.length; i += chunkSize) {
-            const chunk = bytes.subarray(i, Math.min(i + chunkSize, bytes.length))
-            binary += String.fromCharCode(...chunk)
+            binary += String.fromCharCode(...bytes.subarray(i, Math.min(i + chunkSize, bytes.length)))
           }
-          const b64 = btoa(binary)
-          
           const ext = coverHref.split('.').pop()?.toLowerCase() || 'jpg'
-          return `data:image/${ext === 'png' ? 'png' : ext === 'gif' ? 'gif' : 'jpeg'};base64,${b64}`
-        } catch (e) {
-          console.warn('[SiReader] 封面提取失败:', e)
-        }
+          return `data:image/${ext === 'png' ? 'png' : ext === 'gif' ? 'gif' : 'jpeg'};base64,${btoa(binary)}`
+        } catch {}
       }
     }
   }
   
   async getEpubChapters(epubPath: string): Promise<Chapter[]> {
     try {
-      const file = await getFile(epubPath)
-      if (!file) return []
-      const zip = await JSZip.loadAsync(file as any)
-      const container = await zip.file('META-INF/container.xml')?.async('text')
-      const opfPath = container?.match(/full-path="([^"]+)"/)?.[1]
+      const zip = await JSZip.loadAsync(await getFile(epubPath) as any)
+      const opfPath = (await zip.file('META-INF/container.xml')?.async('text'))?.match(/full-path="([^"]+)"/)?.[1]
       if (!opfPath) return []
       const opf = await zip.file(opfPath)?.async('text')
-      if (!opf) return []
-      const meta = await this.parseEpubMetadata(zip, opfPath, opf)
-      return meta.chapters
-    } catch {
-      return []
-    }
+      return opf ? (await this.parseEpubMetadata(zip, opfPath, opf)).chapters : []
+    } catch { return [] }
   }
 
   async addEpubBook(file: File) {
-    // 清理文件名：移除 .epub，替换所有特殊字符（包括中文标点）为下划线
-    const cleanName = file.name
-      .replace('.epub', '')
-      .replace(/[\\/:*?"<>|《》（）【】「」『』、，。；：！？]/g, '_')
-      .replace(/_{2,}/g, '_')
-      .replace(/^_+|_+$/g, '')
-      .trim()
-      .substring(0, 80) || 'book'
-    const filename = `${Date.now()}_${cleanName}.epub`
-    const epubPath = `${STORAGE_PATH.EPUB}${filename}`
-    
-    console.log('[SiReader] EPUB 文件名处理:', { 原始: file.name, 清理后: cleanName, 最终: filename })
-    
     try {
       const zip = await JSZip.loadAsync(file)
       const container = await zip.file('META-INF/container.xml')?.async('text')
       if (!container) throw new Error('无效 EPUB')
-      
       const opfPath = container.match(/full-path="([^"]+)"/)?.[1]
       if (!opfPath) throw new Error('找不到 OPF')
-      
       const opf = await zip.file(opfPath)?.async('text')
       if (!opf) throw new Error('读取 OPF 失败')
       
       const meta = await this.parseEpubMetadata(zip, opfPath, opf)
+      const bookUrl = `epub://${Date.now()}_${file.name}`
+      const hash = this.getHash(bookUrl)
+      const epubPath = `${STORAGE_PATH.BOOKS}${hash}.epub`
+      
       await putFile(epubPath, false, file)
       
       await this.addBook({
-        bookUrl: `epub://${filename}`,
-        name: meta.title || cleanName,
+        bookUrl,
+        name: meta.title || file.name.replace('.epub', ''),
         author: meta.author,
         intro: meta.intro,
         coverUrl: await meta.cover(),
@@ -272,20 +270,13 @@ class BookshelfManager {
         totalChapterNum: meta.chapters.length
       })
     } catch (err) {
-      try { await removeFile(epubPath) } catch {}
       throw new Error(`EPUB 导入失败: ${err instanceof Error ? err.message : err}`)
     }
   }
 
   async removeBook(bookUrl: string) {
-    const idx = this.index.find(b => b.bookUrl === bookUrl)
-    if (idx) {
-      const book = await this.getBook(bookUrl)
-      try {
-        await removeFile(`${STORAGE_PATH.BOOKS}${this.getFilename(idx.name, idx.author)}`)
-        if (book?.epubPath) await removeFile(book.epubPath)
-      } catch {}
-    }
+    const hash = this.getHash(bookUrl)
+    await Promise.all(['.json', '.jpg', '.epub'].map(ext => removeFile(`${STORAGE_PATH.BOOKS}${hash}${ext}`).catch(() => {})))
     this.index = this.index.filter(b => b.bookUrl !== bookUrl)
     await this.saveIndex()
   }
@@ -359,24 +350,12 @@ class BookshelfManager {
     return Promise.all(this.index.map(idx => this.checkUpdate(idx.bookUrl)))
   }
 
-  private getFilename(name: string, author: string) {
-    const clean = (s: string) => s ? s.replace(/[\\/:*?"<>|\s]/g, '_').replace(/_{2,}/g, '_').trim().substring(0, 50) || 'unknown' : 'unknown'
-    const [n, a] = [clean(name), clean(author)]
-    return `${a !== 'unknown' ? `${n}_${a}` : n}.json`
-  }
-
-  private updateIndex(book: Book) {
+  private updateIndex(book: Book, cover?: string) {
     const i = this.index.findIndex(b => b.bookUrl === book.bookUrl)
     const idx: BookIndex = {
-      bookUrl: book.bookUrl,
-      name: book.name,
-      author: book.author,
-      durChapterIndex: book.durChapterIndex,
-      totalChapterNum: book.totalChapterNum,
-      durChapterTime: book.durChapterTime,
-      addTime: book.addTime,
-      lastCheckCount: book.lastCheckCount,
-      isEpub: book.isEpub,  // EPUB 标记
+      bookUrl: book.bookUrl, name: book.name, author: book.author, coverUrl: cover || this.index[i]?.coverUrl,
+      durChapterIndex: book.durChapterIndex, totalChapterNum: book.totalChapterNum, durChapterTime: book.durChapterTime,
+      addTime: book.addTime, lastCheckCount: book.lastCheckCount, isEpub: book.isEpub, epubProgress: book.epubProgress || this.index[i]?.epubProgress
     }
     i >= 0 ? (this.index[i] = idx) : this.index.push(idx)
   }

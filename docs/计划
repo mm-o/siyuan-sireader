@@ -18,6 +18,6 @@ src\components\BookSourceManager.vue现在是不是没有用到
 不再单独设计src\core\epub.ts、src\core\online.ts、src统一由src\core\reader.ts负责解析显示
 
 现在需要修改目录（书签、标注、笔记）顶部输入框控制栏
-充分利用Vue3 + motion特性功能样式重新设计
+利用Vue3 + motion特性功功能样式重新设计
 还需要固定在顶部，不随滚动
 简洁高效

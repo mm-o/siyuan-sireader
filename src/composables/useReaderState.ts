@@ -1,32 +1,27 @@
 // 全局阅读器状态管理
 import { ref, computed } from 'vue'
-import type { ReaderCore } from '@/core/reader'
 
 // 当前活动的阅读器实例
-const activeReader = ref<ReaderCore | null>(null)
-const activeView = ref<any>(null)
+const activeReaderInstance = ref<any>(null) // FoliateReader 实例
+const activeReader = ref<any>(null) // 保持向后兼容
+const activeView = ref<any>(null) // FoliateView 实例
 const activeDocId = ref<string>('')
 const activeFormat = ref<string>('')
 
 export function useReaderState() {
-  // 设置当前阅读器
-  const setActiveReader = (reader: ReaderCore | null, docId: string = '') => {
-    activeReader.value = reader
+  // 设置当前阅读器（接收 view 和可选的 reader 实例）
+  const setActiveReader = (view: any, docId: string = '', reader?: any) => {
+    activeView.value = view
+    activeReader.value = view // 向后兼容
+    activeReaderInstance.value = reader || null
     activeDocId.value = docId
-    activeFormat.value = reader?.getFormat() || ''
-    
-    // 获取view实例（EPUB或TXT）
-    if (reader) {
-      const renderer = reader.getRenderer() as any
-      activeView.value = renderer?.getView?.()
-    } else {
-      activeView.value = null
-    }
+    activeFormat.value = 'epub'
   }
 
   // 清空阅读器
   const clearActiveReader = () => {
     activeReader.value = null
+    activeReaderInstance.value = null
     activeView.value = null
     activeDocId.value = ''
     activeFormat.value = ''
@@ -56,6 +51,7 @@ export function useReaderState() {
   return {
     // 状态
     activeReader,
+    activeReaderInstance,
     activeView,
     activeDocId,
     activeFormat,

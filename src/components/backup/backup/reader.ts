@@ -1,9 +1,4 @@
-// ========================================
-// Reader Core - 统一阅读器核心
-// 支持 EPUB, TXT, 在线书源等所有格式
-// 极限精简，优雅完美
-// ========================================
-
+// ===== 阅读器核心 =====
 import type { Plugin } from 'siyuan'
 import { openTab } from 'siyuan'
 import { createApp } from 'vue/dist/vue.esm-bundler.js'
@@ -16,30 +11,11 @@ import Reader from '@/components/Reader.vue'
 import 'foliate-js/view.js'
 
 export type ReaderFormat = 'auto' | 'epub' | 'txt' | 'fb2' | 'cbz' | 'mobi'
+export interface ReaderLocation { section?: number; cfi?: string; href?: string; offset?: number; page?: number; percentage?: number; tocItem?: any }
+export interface ReaderSection { index: number; title: string; href?: string; url?: string }
 
-export interface ReaderLocation {
-  section: number
-  cfi?: string
-  offset?: number
-  page?: number  // TXT 分页模式的页码
-  percentage?: number
-  tocItem?: any
-}
-
-export interface ReaderSection {
-  index: number
-  title: string
-  href?: string
-  url?: string
-}
-
-// ===== 极简事件系统 =====
-class EventEmitter {
-  private events = new Map<string, Set<(d: any) => void>>()
-  on(e: string, cb: (d: any) => void) { (this.events.get(e) || this.events.set(e, new Set()).get(e)!).add(cb) }
-  emit(e: string, d?: any) { this.events.get(e)?.forEach(cb => cb(d)) }
-  clear() { this.events.clear() }
-}
+// ===== 事件系统 =====
+class EventEmitter { private events = new Map<string, Set<(d: any) => void>>(); on(e: string, cb: (d: any) => void) { (this.events.get(e) || this.events.set(e, new Set()).get(e)!).add(cb) }; emit(e: string, d?: any) { this.events.get(e)?.forEach(cb => cb(d)) }; clear() { this.events.clear() } }
 
 // ===== TXT 渲染器 =====
 class TxtRenderer extends EventEmitter {
@@ -76,10 +52,8 @@ class TxtRenderer extends EventEmitter {
     })
   }
   
-  // HTML转义和生成
-  private esc = (t: string) => { const d = document.createElement('div'); d.textContent = t; return d.innerHTML }
-  private toHtml = (title: string, content: string) => 
-    `<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{max-width:800px;margin:0 auto;padding:2em;font-size:18px;line-height:1.8}h1{text-align:center;margin-bottom:2em}p{text-indent:2em;margin:1em 0}</style></head><body><h1>${this.esc(title)}</h1>${content.split(/\n+/).map(p => p.trim()).filter(Boolean).map(this.esc).map(p => `<p>${p}</p>`).join('')}</body></html>`
+  private esc = (t: string) => (d => (d.textContent = t, d.innerHTML))(document.createElement('div'))
+  private toHtml = (title: string, content: string) => `<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{max-width:800px;margin:0 auto;padding:2em;font-size:18px;line-height:1.8}h1{text-align:center;margin-bottom:2em}p{text-indent:2em;margin:1em 0}</style></head><body><h1>${this.esc(title)}</h1>${content.split(/\n+/).map(p => p.trim()).filter(Boolean).map(this.esc).map(p => `<p>${p}</p>`).join('')}</body></html>`
   
   async render(chapterIndex = 0, _pageIndex = 0) {
     // 构建所有章节的sections
@@ -118,7 +92,7 @@ class TxtRenderer extends EventEmitter {
   }
   
   // 导航（完全使用foliate-js原生API）
-  async goTo(loc: ReaderLocation) { loc.section !== undefined && await this.view?.goTo(loc.section) }
+  async goTo(loc: ReaderLocation) { (loc.section !== undefined || loc.href) && await this.view?.goTo(loc.section ?? loc.href) }
   prev() { this.view?.goLeft?.() }
   next() { this.view?.goRight?.() }
   
@@ -184,6 +158,7 @@ class EpubRenderer {
   
   async goTo(location: ReaderLocation) {
     location.cfi ? await this.view?.goTo(location.cfi) 
+      : location.href ? await this.view?.goTo(location.href)
       : location.section !== undefined && await this.view?.goTo(location.section)
   }
   
@@ -200,18 +175,9 @@ class EpubRenderer {
 }
 
 // ===== 工具函数 =====
-// 统一视图配置（foliate-js）
-const applyViewConfig = (view: any, settings: ReaderSettings) => {
-  const r = view?.renderer
-  if (!r) return
-  const { columnMode, pageAnimation } = settings
-  const isScroll = pageAnimation === 'scroll'
-  r.setAttribute('flow', isScroll ? 'scrolled' : 'paginated')
-  r.setAttribute('max-column-count', columnMode === 'double' ? '2' : '1')
-  !isScroll && pageAnimation === 'slide' ? r.setAttribute('animated', '') : r.removeAttribute('animated')
-  r.setAttribute('gap', '5%')
-  r.setAttribute('max-inline-size', '800px')
-}
+const applyViewConfig = (view: any, settings: ReaderSettings) => { const r = view?.renderer; if (!r) return; const { columnMode, pageAnimation, layoutSettings: l, visualSettings: v } = settings, isScroll = pageAnimation === 'scroll'; r.setAttribute('flow', isScroll ? 'scrolled' : 'paginated'); r.setAttribute('max-column-count', columnMode === 'double' ? '2' : '1'); !isScroll && pageAnimation === 'slide' ? r.setAttribute('animated', '') : r.removeAttribute('animated'); r.setAttribute('gap', `${l.gap || 5}%`); r.setAttribute('max-inline-size', '800px'); l.headerFooterMargin > 0 ? r.setAttribute('margin', `${l.headerFooterMargin}px`) : r.removeAttribute('margin'); l.maxBlockSize > 0 ? r.setAttribute('max-block-size', `${l.maxBlockSize}px`) : r.removeAttribute('max-block-size'); applyVisualFilter(view, v) }
+
+const applyVisualFilter = (view: any, v: ReaderSettings['visualSettings']) => { if (!view) return; document.getElementById('sireader-visual-filter')?.remove(); const filters = [v.brightness !== 1 && `brightness(${v.brightness})`, v.contrast !== 1 && `contrast(${v.contrast})`, v.sepia > 0 && `sepia(${v.sepia})`, v.saturate !== 1 && `saturate(${v.saturate})`, v.invert && 'invert(1) hue-rotate(180deg)'].filter(Boolean).join(' '); filters && document.head.appendChild(Object.assign(document.createElement('style'), { id: 'sireader-visual-filter', textContent: `foliate-view::part(filter) { filter: ${filters}; }` })) }
 
 const center = (c: string, color = '#999') => `<div style="display:flex;align-items:center;justify-content:center;height:100%;color:${color}">${c}</div>`
 const isEpub = (url?: string | null) => !!url && url.toLowerCase().split('?')[0].split('#')[0].endsWith('.epub')
@@ -307,61 +273,21 @@ export class ReaderCore extends EventEmitter {
   }
   
   // ===== 导航 =====
-  async goTo(loc: string | number | ReaderLocation) {
-    if (!this.renderer) return
-    const target: ReaderLocation = typeof loc === 'number' ? { section: loc }
-      : typeof loc === 'string' && loc.startsWith('#chapter-') ? { section: parseInt(loc.replace('#chapter-', '')) }
-      : loc as ReaderLocation
-    await this.renderer.goTo(target)
-    this.emit('relocate', this.getLocation())
-  }
+  async goTo(loc: string | number | ReaderLocation) { if (!this.renderer) return; await this.renderer.goTo(typeof loc === 'number' ? { section: loc } : typeof loc === 'string' ? (loc.startsWith('#chapter-') ? { section: parseInt(loc.replace('#chapter-', '')) } : { href: loc }) : loc as ReaderLocation); this.emit('relocate', this.getLocation()) }
   prev() { this.renderer?.prev(); this.emit('relocate', this.getLocation()) }
   next() { this.renderer?.next(); this.emit('relocate', this.getLocation()) }
   getLocation() { return this.renderer?.getLocation() || null }
   
   // 进度保存（统一处理）
-  private async saveEpubProgress(bookUrl: string, loc: ReaderLocation) {
-    if (!bookUrl || !loc.cfi) return
-    const book = await bookshelfManager.getBook(bookUrl)
-    book && (book.epubCfi = loc.cfi, book.epubProgress = Math.round((loc.percentage || 0) * 100), book.durChapterTime = Date.now(), await bookshelfManager.saveBook(book))
-  }
-  
-  private async saveTxtProgress(bookUrl: string, loc: ReaderLocation) {
-    if (!bookUrl || loc.section === undefined) return
-    const book = await bookshelfManager.getBook(bookUrl)
-    book && (book.durChapterIndex = loc.section, book.durChapterPage = loc.page, book.durChapterTime = Date.now(), await bookshelfManager.saveBook(book))
-  }
+  private async saveEpubProgress(bookUrl: string, loc: ReaderLocation) { if (!bookUrl || !loc.cfi) return; const book = await bookshelfManager.getBook(bookUrl); book && (book.epubCfi = loc.cfi, book.epubProgress = Math.round((loc.percentage || 0) * 100), book.durChapterTime = Date.now(), await bookshelfManager.saveBook(book)) }
+  private async saveTxtProgress(bookUrl: string, loc: ReaderLocation) { if (!bookUrl || loc.section === undefined) return; const book = await bookshelfManager.getBook(bookUrl); book && (book.durChapterIndex = loc.section, book.durChapterPage = loc.page, book.durChapterTime = Date.now(), await bookshelfManager.saveBook(book)) }
   
   // 书签（统一处理EPUB/TXT）
-  async addBookmark(title?: string, location?: { cfi?: string; section?: number; page?: number }) {
-    const loc = location ? { ...this.getLocation(), ...location } : this.getLocation()
-    if (!loc || !this.bookInfo?.bookUrl) throw new Error('无法获取位置或书籍信息')
-    const key = this.format === 'epub' ? 'epubBookmarks' : 'txtBookmarks'
-    const bookmark = this.format === 'epub'
-      ? { cfi: loc.cfi, title: title || `书签${(this.bookInfo[key]?.length || 0) + 1}`, progress: Math.round((loc.percentage || 0) * 100), time: Date.now() }
-      : { section: loc.section ?? 0, page: loc.page, title: title || `书签${(this.bookInfo[key]?.length || 0) + 1}`, progress: Math.round((loc.percentage || 0) * 100), time: Date.now() }
-    this.bookInfo[key] = [...(this.bookInfo[key] || []), bookmark]
-    const book = await bookshelfManager.getBook(this.bookInfo.bookUrl)
-    book && (book[key] = this.bookInfo[key], bookshelfManager.saveBook(book))
-  }
-  
-  async removeBookmark(id: string | number) {
-    const key = this.format === 'epub' ? 'epubBookmarks' : 'txtBookmarks'
-    if (!this.bookInfo?.[key]) return
-    this.bookInfo[key] = this.bookInfo[key].filter((b: any) => (this.format === 'epub' ? b.cfi : b.section) !== id)
-    const book = await bookshelfManager.getBook(this.bookInfo.bookUrl)
-    book && (book[key] = this.bookInfo[key], bookshelfManager.saveBook(book))
-  }
-  
+  async addBookmark(title?: string, location?: { cfi?: string; href?: string; section?: number; page?: number }) { const loc = location ? { ...this.getLocation(), ...location } : this.getLocation(); if (!loc || !this.bookInfo?.bookUrl) throw new Error('无法获取位置或书籍信息'); const key = this.format === 'epub' ? 'epubBookmarks' : 'txtBookmarks', bookmark = this.format === 'epub' ? { cfi: loc.cfi, href: loc.href, title: title || `书签${(this.bookInfo[key]?.length || 0) + 1}`, progress: Math.round((loc.percentage || 0) * 100), time: Date.now() } : { section: loc.section ?? 0, page: loc.page, title: title || `书签${(this.bookInfo[key]?.length || 0) + 1}`, progress: Math.round((loc.percentage || 0) * 100), time: Date.now() }; this.bookInfo[key] = [...(this.bookInfo[key] || []), bookmark]; const book = await bookshelfManager.getBook(this.bookInfo.bookUrl); book && (book[key] = this.bookInfo[key], bookshelfManager.saveBook(book)) }
+  async removeBookmark(id: string | number) { const key = this.format === 'epub' ? 'epubBookmarks' : 'txtBookmarks'; if (!this.bookInfo?.[key]) return; this.bookInfo[key] = this.bookInfo[key].filter((b: any) => this.format === 'epub' ? (b.cfi !== id && b.href !== id) : b.section !== id); const book = await bookshelfManager.getBook(this.bookInfo.bookUrl); book && (book[key] = this.bookInfo[key], bookshelfManager.saveBook(book)) }
   getBookmarks() { return this.bookInfo?.[this.format === 'epub' ? 'epubBookmarks' : 'txtBookmarks'] || [] }
   
-  async saveProgress(blockId: string, location: ReaderLocation) {
-    if (!location) return
-    const attrs: Record<string, string> = { 'custom-last-read': new Date().toISOString() }
-    this.format === 'txt' ? (attrs['custom-txt-chapter'] = location.section?.toString() || '0', attrs['custom-txt-progress'] = ((location.percentage || 0) * 100).toFixed(3))
-      : this.format === 'epub' && location.cfi && (attrs['custom-epub-cfi'] = location.cfi, attrs['custom-epub-progress'] = ((location.percentage || 0) * 100).toFixed(3))
-    await API.setBlockAttrs(blockId, attrs).catch(() => {})
-  }
+  async saveProgress(blockId: string, location: ReaderLocation) { if (!location) return; const attrs: Record<string, string> = { 'custom-last-read': new Date().toISOString() }; this.format === 'txt' ? (attrs['custom-txt-chapter'] = location.section?.toString() || '0', attrs['custom-txt-progress'] = ((location.percentage || 0) * 100).toFixed(3)) : this.format === 'epub' && location.cfi && (attrs['custom-epub-cfi'] = location.cfi, attrs['custom-epub-progress'] = ((location.percentage || 0) * 100).toFixed(3)); await API.setBlockAttrs(blockId, attrs).catch(() => {}) }
   
   getFormat() { return this.format }
   getRenderer() { return this.renderer }

@@ -1,432 +1,301 @@
 <template>
-  <div class="reader-toc">
-    <div class="toc-toolbar">
-      <input v-model="search" :placeholder="placeholder" v-motion-fade>
-      <button @click="toggleScroll" title="顶部/底部" v-motion-pop>
-        <svg><use xlink:href="#lucide-panel-top-open"/></svg>
+  <div class="sr-toc">
+    <!-- 工具栏 -->
+    <div class="sr-toolbar">
+      <input v-model="keyword" :placeholder="placeholders[mode]" v-motion-fade>
+      <div v-if="mode==='mark'" class="sr-select">
+        <button @click="showColorMenu=!showColorMenu" :title="filterColor||'全部'" v-motion-pop :delay="50">
+          <svg><use xlink:href="#lucide-palette"/></svg>
+        </button>
+        <Transition name="menu">
+          <div v-if="showColorMenu" class="sr-menu" @click="showColorMenu=false">
+            <div v-for="(c,i) in colorMenu" :key="i" v-motion-pop :delay="i*20"
+                 :class="['sr-menu-item',{active:c.active}]" @click="filterColor=c.value">
+              <span v-if="c.color" class="dot" :style="{background:c.color}"></span>{{ c.label }}
+            </div>
+          </div>
+        </Transition>
+      </div>
+      <button @click="isReverse=!isReverse" :title="isReverse?'倒序':'正序'" v-motion-pop :delay="100">
+        <svg><use :xlink:href="isReverse?'#lucide-arrow-up-1-0':'#lucide-arrow-down-0-1'"/></svg>
       </button>
-      <button @click="toggleSort" :title="reversed ? '倒序' : '正序'" v-motion-pop>
-        <svg><use :xlink:href="reversed ? '#lucide-arrow-up-1-0' : '#lucide-arrow-down-0-1'"/></svg>
+      <button @click="toggleScroll" :title="isAtTop?'底部':'顶部'" v-motion-pop :delay="150">
+        <svg><use :xlink:href="isAtTop?'#lucide-panel-top-open':'#lucide-panel-top-close'"/></svg>
       </button>
     </div>
-    <div class="toc-body" ref="bodyRef">
-      <TransitionGroup name="fade" mode="out-in">
-        <div v-if="mode === 'toc'" key="toc" class="toc-list">
-          <div v-if="!filteredToc.length" class="toc-empty">{{ search ? '未找到匹配项' : '暂无目录' }}</div>
-          <TocItem v-for="(item, idx) in filteredToc" :key="idx" :item="item" :level="0" />
-        </div>
+
+    <!-- 内容区 -->
+    <div ref="contentRef" class="sr-content" @scroll="onScroll">
+      <Transition name="fade" mode="out-in">
+        <!-- 目录 -->
+        <div v-if="mode==='toc'" key="toc" ref="tocRef"></div>
         
-        <div v-else-if="mode === 'bookmark'" key="bookmark" class="toc-list">
-          <div v-if="!bookmarks.length" class="toc-empty">暂无书签</div>
-          <div v-for="(bm, idx) in bookmarks" :key="idx" 
-            class="b3-list-item bookmark-item"
-            @click="goTo(bm)"
-            v-motion-pop-visible>
-            <span class="b3-list-item__text fn__flex-1">{{ bm.label }}</span>
-            <button class="bookmark-remove-btn" @click.stop="toggleBookmark(bm)">
-              <svg style="width:14px;height:14px;color:var(--b3-theme-error)"><use xlink:href="#iconTrashcan"/></svg>
+        <!-- 书签 -->
+        <div v-else-if="mode==='bookmark'" key="bookmark" class="sr-list">
+          <div v-if="!list.length" class="sr-empty">{{ emptyText }}</div>
+          <div v-else v-for="(item,i) in list" :key="item.id||i" v-motion-slide-visible-once-bottom :delay="i*30"
+               class="sr-item" @click="goTo(item)">
+            <span class="sr-text">{{ item.title||'无标题' }}</span>
+            <button class="sr-remove-btn b3-tooltips b3-tooltips__nw" aria-label="删除书签" @click.stop="removeBookmark(item)">
+              <svg style="width:14px;height:14px"><use xlink:href="#iconTrashcan"/></svg>
             </button>
           </div>
         </div>
         
-        <div v-else-if="mode === 'mark'" key="mark" class="toc-list">
-          <div class="toc-empty">标注功能开发中...</div>
+        <!-- 标注 -->
+        <div v-else-if="mode==='mark'" key="mark" class="sr-list">
+          <div v-if="!list.length" class="sr-empty">{{ emptyText }}</div>
+          <div v-else v-for="(item,i) in list" :key="item.id||i" v-motion-slide-visible-once-bottom :delay="i*30"
+               class="sr-item" @click="goTo(item)">
+            <div class="sr-item-content">
+              <div class="sr-text" :class="`sr-style-${item.style||'highlight'}`" :style="{['--mark-color']:colors[item.color]||'#ffeb3b'}">{{ item.text||'无内容' }}</div>
+              <div v-if="item.note" class="sr-note">{{ item.note }}</div>
+            </div>
+            <div class="sr-item-actions">
+              <button ref="editBtnRef" class="sr-action-btn" @click.stop="editMark(item,$event)" title="编辑"><svg><use xlink:href="#iconEdit"/></svg></button>
+              <button class="sr-action-btn" @click.stop="deleteMark(item)" title="删除"><svg><use xlink:href="#iconTrashcan"/></svg></button>
+            </div>
+          </div>
         </div>
         
-        <div v-else-if="mode === 'note'" key="note" class="toc-list">
-          <div class="toc-empty">笔记功能开发中...</div>
+        <!-- 笔记 -->
+        <div v-else-if="mode==='note'" key="note" class="sr-list">
+          <div v-if="!list.length" class="sr-empty">{{ emptyText }}</div>
+          <div v-else v-for="(item,i) in list" :key="item.id||i" v-motion-slide-visible-once-bottom :delay="i*30"
+               class="sr-item" @click="goTo(item)">
+            <div class="sr-item-content">
+              <div class="sr-text" :class="`sr-style-${item.style||'outline'}`" :style="{['--mark-color']:colors[item.color]||'#42a5f5'}">{{ item.text||'无内容' }}</div>
+              <div class="sr-note">{{ item.note }}</div>
+            </div>
+            <div class="sr-item-actions">
+              <button class="sr-action-btn" @click.stop="editMark(item,$event)" title="编辑"><svg><use xlink:href="#iconEdit"/></svg></button>
+              <button class="sr-action-btn" @click.stop="deleteMark(item)" title="删除"><svg><use xlink:href="#iconTrashcan"/></svg></button>
+            </div>
+          </div>
         </div>
-      </TransitionGroup>
+        
+        <!-- 卡包 -->
+        <div v-else-if="mode==='vocabulary'" key="vocabulary" class="sr-list">
+          <div v-if="!list.length" class="sr-empty">{{ emptyText }}</div>
+          <div v-else v-for="(item,i) in list" :key="item.id||i" v-motion-slide-visible-once-bottom :delay="i*30"
+               class="sr-item" @click="goTo(item)">
+            <div class="sr-word">{{ item.word||'无单词' }}</div>
+            <div v-if="item.translation" class="sr-trans">{{ item.translation }}</div>
+          </div>
+        </div>
+      </Transition>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted, provide, reactive } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useReaderState } from '@/composables/useReaderState'
-import TocItem from './TocItem.vue'
+import { showMessage } from 'siyuan'
 
-const props = defineProps<{
-  mode?: 'toc' | 'bookmark' | 'mark' | 'note'
-  bookmarks?: any[]  // 从父组件传入，不再使用localStorage
-}>()
+const props = defineProps<{ mode: 'toc'|'bookmark'|'mark'|'note'|'vocabulary' }>()
+const { activeView, activeReaderInstance, goToLocation } = useReaderState()
 
-const emit = defineEmits<{ 
-  close: []
-  toggleBookmark: [item: any]
-}>()
+// ===== 状态 =====
+const tocRef = ref<HTMLElement>()
+const contentRef = ref<HTMLElement>()
+const keyword = ref('')
+const filterColor = ref('')
+const showColorMenu = ref(false)
+const isReverse = ref(false)
+const isAtTop = ref(true)
+const refreshKey = ref(0) // 强制刷新
 
-const { activeView, getToc, goToLocation } = useReaderState()
+// ===== 常量 =====
+const colors={red:'#ef5350',orange:'#ff9800',yellow:'#ffeb3b',green:'#66bb6a',pink:'#ec407a',blue:'#42a5f5',purple:'#ab47bc'}
+const placeholders={toc:'搜索目录...',bookmark:'搜索书签...',mark:'搜索标注...',note:'搜索笔记...',vocabulary:'搜索卡包...'}
 
-// 常量
-const PLACEHOLDERS = {
-  toc: '搜索目录...',
-  bookmark: '搜索书签...',
-  mark: '搜索标注...',
-  note: '搜索笔记...'
-}
+// ===== Computed =====
+const colorMenu=computed(()=>[
+  {label:'全部',value:'',active:!filterColor.value},
+  ...Object.entries(colors).map(([k,v])=>({label:k,value:k,color:v,active:filterColor.value===k}))
+])
 
-// 状态
-type Mode = 'toc' | 'bookmark' | 'mark' | 'note'
-const mode = ref<Mode>(props.mode || 'toc')
-const search = ref('')
-const bodyRef = ref<HTMLElement>()
-const toc = ref<any[]>([])
-const currentHref = ref('')
-const reversed = ref(false)
-const expanded = ref(new Map<string, boolean>())
-// 书签操作（完全移除localStorage，由父组件管理）
-const bookmarks = computed(() => props.bookmarks || [])
-
-const toggleBookmark = (item: any) => {
-  if (!item.href) return emit('toggleBookmark', item)
-  const bookmark = bookmarks.value.find((b: any) => b.label === item.label)
-  if (bookmark) return emit('toggleBookmark', bookmark)
-  const section = item.href.startsWith('#chapter-') ? parseInt(item.href.replace('#chapter-', '')) : 0
-  emit('toggleBookmark', item.cfi ? { label: item.label, cfi: item.cfi, fromToc: true } : { label: item.label, section, fromToc: true })
-}
-
-// 通过 label 检查是否已添加书签
-const isBookmarked = (label: string) => bookmarks.value.some((b: any) => b.label === label)
-
-// 计算属性
-const placeholder = computed(() => PLACEHOLDERS[mode.value] || '搜索...')
-const loadToc = () => toc.value = getToc() || []
-
-// 递归处理（过滤+反转）
-const processTocItems = (items: any[], query: string, reverse: boolean): any[] => {
-  const filter = (arr: any[]): any[] => {
-    if (!query) return arr
-    const q = query.toLowerCase()
-    return arr.reduce((acc, item) => {
-      const match = item.label?.toLowerCase().includes(q)
-      const subs = item.subitems ? filter(item.subitems) : []
-      if (match || subs.length) acc.push({ ...item, subitems: subs.length ? subs : undefined })
-      return acc
-    }, [])
+const data=computed(()=>{
+  refreshKey.value
+  const reader=activeReaderInstance.value
+  if(!reader?.marks)return{bookmarks:[],marks:[],notes:[],vocabulary:[]}
+  return{
+    bookmarks:reader.marks.getBookmarks(),
+    marks:reader.marks.getAnnotations(filterColor.value as any),
+    notes:reader.marks.getNotes(),
+    vocabulary:reader.marks.getVocabulary()
   }
-  
-  const reverseTree = (arr: any[]): any[] => 
-    [...arr].reverse().map(item => ({
-      ...item,
-      subitems: item.subitems ? reverseTree(item.subitems) : undefined
-    }))
-  
-  const result = filter(items)
-  return reverse ? reverseTree(result) : result
-}
-
-const filteredToc = computed(() => processTocItems(toc.value, search.value, reversed.value))
-
-// 导航（支持cfi、section+page、href）
-const goTo = async (item: any) => {
-  if (item.cfi) {
-    await goToLocation(item.cfi)
-  } else if (item.section !== undefined) {
-    // TXT书签可能有page信息
-    await goToLocation({ section: item.section, page: item.page })
-  } else if (item.href) {
-    await goToLocation(item.href)
-  }
-}
-
-// 监听位置变化
-const updateCurrent = (event?: any) => {
-  const d = event?.detail
-  if (!d) return
-  currentHref.value = d.tocItem?.href ?? (d.section !== undefined ? `#chapter-${d.section}` : currentHref.value)
-  setTimeout(scrollToCurrentItem, 500)
-}
-
-// 滚动到当前章节
-const scrollToCurrentItem = () => {
-  const activeItem = bodyRef.value?.querySelector('.toc-item-active')
-  activeItem?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-}
-
-const toggleScroll = () => {
-  if (!bodyRef.value) return
-  const items = bodyRef.value.querySelectorAll('.toc-item, .bookmark-item')
-  if (!items.length) return
-  const { scrollTop } = bodyRef.value
-  const target = scrollTop < 50 ? items[items.length - 1] : items[0]
-  target?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-}
-
-const toggleSort = () => reversed.value = !reversed.value
-const toggleExpand = (itemId: string) => expanded.value.set(itemId, !(expanded.value.get(itemId) ?? true))
-
-// 提供给递归组件（不要用reactive包装computed）
-provide('tocContext', {
-  expanded,
-  currentHref,
-  bookmarks,  // computed本身已经是响应式的
-  toggleExpand,
-  goTo,
-  toggleBookmark,
-  isBookmarked
 })
 
-// 获取当前TOC项
-const getCurrentTocItem = () => {
-  const tocItem = activeView.value?.lastLocation?.tocItem
-  return tocItem ? { tocItem } : null
+const list=computed(()=>{
+  const kw=keyword.value.toLowerCase()
+  const filterFn=(item:any)=>!kw||(item.title||item.text||item.note||item.translation||'').toLowerCase().includes(kw)
+  const items={
+    bookmark:data.value.bookmarks,
+    mark:data.value.marks,
+    note:data.value.notes,
+    vocabulary:data.value.vocabulary
+  }[props.mode]||[]
+  return isReverse.value?[...items.filter(filterFn)].reverse():items.filter(filterFn)
+})
+
+const emptyText=computed(()=>keyword.value?`未找到${placeholders[props.mode].replace(/搜索|\.\.\./g,'')}`:`暂无${placeholders[props.mode].replace(/搜索|\.\.\./g,'')}`)
+
+// ===== 目录（foliate-js 原生 API）=====
+let tocView:any=null
+let relocateHandler:any=null
+
+const initToc=async()=>{
+  if(props.mode!=='toc'||!tocRef.value||!activeView.value?.book?.toc)return
+  cleanupToc()
+  try{
+    const{createTOCView}=await import('foliate-js/ui/tree.js')
+    tocView=createTOCView(activeView.value.book.toc,goToLocation)
+    tocRef.value.innerHTML=''
+    tocRef.value.appendChild(tocView.element)
+    relocateHandler=(e:any)=>tocView?.setCurrentHref?.(e.detail?.tocItem?.href)
+    activeView.value.addEventListener('relocate',relocateHandler)
+    requestAnimationFrame(()=>{tocView?.setCurrentHref?.(activeView.value?.lastLocation?.tocItem?.href);addBookmarkButtons()})
+  }catch(e){console.error('[TOC]',e)}
 }
 
-// 初始化
-const initView = () => {
-  loadToc()
-  const loc = activeView.value?.getLocation?.()
-  loc && updateCurrent({ detail: loc })
+const cleanupToc=()=>{
+  relocateHandler&&activeView.value?.removeEventListener('relocate',relocateHandler)
+  relocateHandler=null
+  if(tocRef.value)tocRef.value.innerHTML=''
+  tocView=null
 }
 
-// 监听view变化
-watch(activeView, (view, oldView) => {
-  oldView?.removeEventListener?.('relocate', updateCurrent)
-  if (view) {
-    setTimeout(() => {
-      view.addEventListener?.('relocate', updateCurrent)
-      initView()
-    }, 200)
+// ===== 书签按钮（foliate-js 原生 + Vue3 优化）=====
+const addBookmarkButtons=()=>{
+  if(!tocRef.value||!activeReaderInstance.value)return
+  const bookmarks=data.value.bookmarks
+  tocRef.value.querySelectorAll('a[href]').forEach((link:Element)=>{
+    const parent=link.parentElement
+    if(!parent||parent.querySelector('.toc-bookmark-btn'))return
+    const href=link.getAttribute('href')||''
+    if(!href)return
+    const label=link.textContent?.trim()||''
+    const hasBookmark=bookmarks.some((b:any)=>b.title===label)
+    const btn=document.createElement('button')
+    btn.className='toc-bookmark-btn b3-tooltips b3-tooltips__w'
+    btn.setAttribute('aria-label',hasBookmark?'移除书签':'添加书签')
+    btn.innerHTML='<svg style="width:14px;height:14px"><use xlink:href="#iconBookmark"/></svg>'
+    if(hasBookmark){btn.style.opacity='1';btn.classList.add('has-bookmark')}
+    btn.onclick=e=>{e.stopPropagation();e.preventDefault();toggleBookmark(btn,href,label)}
+    parent.appendChild(btn)
+  })
+}
+
+const toggleBookmark=async(btn:HTMLButtonElement,href:string,label:string)=>{
+  const reader=activeReaderInstance.value
+  const view=activeView.value
+  if(!reader?.marks||!view)return showMessage('书签功能未初始化',2000,'error')
+  try{
+    btn.style.transform='translateY(-50%) scale(1.3)'
+    await view.goTo(href)
+    await new Promise(resolve=>setTimeout(resolve,50))
+    const added=reader.marks.toggleBookmark()
+    btn.classList.toggle('has-bookmark',added)
+    btn.style.opacity=added?'1':'0'
+    btn.setAttribute('aria-label',added?'移除书签':'添加书签')
+    btn.style.transform=`translateY(-50%) scale(${added?1.2:0.8})`
+    setTimeout(()=>btn.style.transform='translateY(-50%) scale(1)',150)
+    showMessage(added?'书签已添加':'书签已删除',1500,'info')
+    refreshKey.value++
+  }catch(e:any){
+    btn.style.transform='translateY(-50%) scale(1)'
+    showMessage(e.message||'操作失败',2000,'error')
   }
-}, { immediate: true })
+}
 
-onMounted(() => setTimeout(initView, 500))
-onUnmounted(() => activeView.value?.removeEventListener?.('relocate', updateCurrent))
+// ===== 操作 =====
+const removeBookmark=(item:any)=>{activeReaderInstance.value?.marks?.deleteBookmark(item.cfi);showMessage('书签已删除',1500,'info');refreshKey.value++}
 
-// 监听props
-watch(() => props.mode, (newMode) => newMode && (mode.value = newMode))
+const editMark=(item:any,event:MouseEvent)=>{
+  const panel=(event.currentTarget as HTMLElement).closest('.sr-item') as HTMLElement
+  if(!panel)return
+  const rect=panel.getBoundingClientRect()
+  window.dispatchEvent(new CustomEvent('sireader:edit-mark',{detail:{item,position:{x:rect.right+20,y:rect.top-10}}}))
+}
+
+const deleteMark=async(item:any)=>{
+  try{await activeReaderInstance.value?.marks?.deleteMark(item.cfi);showMessage('已删除',1500,'info');refreshKey.value++}
+  catch{showMessage('删除失败',3000,'error')}
+}
+
+const goTo=(item:any)=>item.cfi?activeReaderInstance.value?.marks?.goTo?.(item)||goToLocation(item.cfi):goToLocation(item.id)
+
+const toggleScroll=()=>{
+  if(!contentRef.value)return
+  const{scrollTop,scrollHeight}=contentRef.value
+  contentRef.value.scrollTo({top:scrollTop<50?scrollHeight:0,behavior:'smooth'})
+}
+
+const onScroll=(e:Event)=>isAtTop.value=(e.target as HTMLElement).scrollTop<50
+
+// ===== 生命周期 =====
+const refresh=()=>refreshKey.value++
+
+watch(()=>activeView.value?.book,book=>book?.toc&&props.mode==='toc'?requestAnimationFrame(initToc):cleanupToc(),{immediate:true})
+watch(()=>props.mode,()=>props.mode==='toc'&&requestAnimationFrame(initToc))
+
+onMounted(()=>window.addEventListener('sireader:marks-updated',refresh))
+onUnmounted(()=>{cleanupToc();window.removeEventListener('sireader:marks-updated',refresh)})
 </script>
 
-<style lang="scss">
-.reader-toc{width:100%;height:100%;display:flex;flex-direction:column}
-
-.toc-toolbar{
-  position:sticky;top:0;z-index:10;display:flex;gap:4px;padding:6px 8px;
-  border-bottom:1px solid var(--b3-border-color);
-  
-  input{
-    flex:1;height:28px;padding:0 10px;border:none;border-bottom:1px solid var(--b3-border-color);
-    font-size:12px;outline:none;transition:border .2s;color:var(--b3-theme-on-background);
-    &:focus{border-color:var(--b3-theme-primary)}
-    &::placeholder{color:var(--b3-theme-on-surface-light);opacity:0.5}
-  }
-  
-  button{
-    width:28px;height:28px;border:none;background:none;cursor:pointer;
-    color:var(--b3-theme-on-surface);transition:all .2s;
-    svg{width:16px;height:16px}
-    &:hover{color:var(--b3-theme-primary);transform:scale(1.05)}
-    &:active{transform:scale(0.95)}
-  }
-}
-
-.toc-body{flex:1;overflow-y:auto;scrollbar-width:thin;
-  &::-webkit-scrollbar{width:6px}
-  &::-webkit-scrollbar-thumb{background:var(--b3-scroll-color);border-radius:3px}
-}
-
-.toc-list{padding:6px 4px}
-
-.toc-item-wrap{
-  .toc-item{
-    position:relative;
-    padding:10px 48px 10px 12px;
-    margin:2px 4px;
-    border-radius:6px;
-    transition:all .25s cubic-bezier(0.4, 0, 0.2, 1);
-    cursor:pointer;
-    user-select:none;
-    border-left:3px solid transparent;
-    
-    &:hover{
-      background:var(--b3-list-hover);
-      transform:translateX(2px);
-      box-shadow:0 1px 3px rgba(0,0,0,0.06);
-      
-      .b3-list-item__text{
-        color:var(--b3-theme-primary);
-        font-weight:500;
-      }
-      
-      .toc-bookmark-btn{
-        opacity:0.6 !important;
-      }
-    }
-    
-    &.toc-item-active{
-      background:linear-gradient(to right, rgba(25, 118, 210, 0.12), rgba(25, 118, 210, 0.02));
-      border-left-color:var(--b3-theme-primary);
-      border-left-width:4px;
-      box-shadow:0 2px 8px rgba(25, 118, 210, 0.15);
-      font-weight:500;
-      
-      .b3-list-item__text{
-        color:var(--b3-theme-primary);
-        font-weight:600;
-      }
-      
-      &:hover{
-        background:linear-gradient(to right, rgba(25, 118, 210, 0.15), rgba(25, 118, 210, 0.03));
-      }
-    }
-  }
-  
-  .toc-expand-btn{
-    width:20px;
-    height:20px;
-    display:inline-flex;
-    align-items:center;
-    justify-content:center;
-    cursor:pointer;
-    opacity:0.4;
-    transition:all .25s cubic-bezier(0.4, 0, 0.2, 1);
-    flex-shrink:0;
-    border-radius:4px;
-    
-    &:hover{
-      opacity:1;
-      transform:scale(1.2);
-      background:rgba(25, 118, 210, 0.1);
-    }
-  }
-  
-  .b3-list-item__text{
-    flex:1;
-    overflow:hidden;
-    text-overflow:ellipsis;
-    white-space:nowrap;
-    font-size:14px;
-    line-height:1.8;
-    color:var(--b3-theme-on-background);
-    transition:all .25s cubic-bezier(0.4, 0, 0.2, 1);
-    letter-spacing:0.3px;
-  }
-  
-  .toc-bookmark-btn{
-    position:absolute;
-    right:12px;
-    top:50%;
-    transform:translateY(-50%);
-    width:26px;
-    height:26px;
-    padding:0;
-    margin:0;
-    border:none !important;
-    background:transparent !important;
-    outline:none !important;
-    box-shadow:none !important;
-    display:inline-flex;
-    align-items:center;
-    justify-content:center;
-    cursor:pointer;
-    opacity:0;
-    transition:all .3s cubic-bezier(0.4, 0, 0.2, 1);
-    flex-shrink:0;
-    border-radius:50%;
-    
-    &:hover{
-      opacity:1 !important;
-      transform:translateY(-50%) scale(1.2) rotate(10deg);
-      background:rgba(244, 67, 54, 0.15) !important;
-    }
-    
-    &:active{
-      transform:translateY(-50%) scale(0.9) rotate(-5deg);
-    }
-    
-    &.is-bookmarked{
-      opacity:1 !important;
-      background:rgba(244, 67, 54, 0.08) !important;
-      
-      &:hover{
-        background:rgba(244, 67, 54, 0.18) !important;
-      }
-    }
-    
-    svg{
-      pointer-events:none;
-      filter:drop-shadow(0 1px 2px rgba(0,0,0,0.1));
-    }
-  }
-  
-  .toc-item:hover .toc-bookmark-btn{
-    opacity:0.5 !important;
-  }
-}
-
-.bookmark-item{
-  cursor:pointer;
-  position:relative;
-  padding:12px 44px 12px 16px;
-  margin:2px 4px;
-  transition:all .25s cubic-bezier(0.4, 0, 0.2, 1);
-  border-radius:6px;
-  border-left:3px solid rgba(244, 67, 54, 0.3);
-  
-  &:hover{
-    background:var(--b3-list-hover);
-    transform:translateX(2px);
-    box-shadow:0 2px 6px rgba(0,0,0,0.08);
-    
-    .bookmark-remove-btn{
-      opacity:0.6 !important;
-    }
-  }
-  
-  .b3-list-item__text{
-    font-size:14px;
-    line-height:1.8;
-    color:var(--b3-theme-on-background);
-    font-weight:500;
-  }
-  
-  .bookmark-remove-btn{
-    position:absolute;
-    right:12px;
-    top:50%;
-    transform:translateY(-50%);
-    width:26px;
-    height:26px;
-    padding:0;
-    margin:0;
-    border:none !important;
-    background:transparent !important;
-    outline:none !important;
-    box-shadow:none !important;
-    display:inline-flex;
-    align-items:center;
-    justify-content:center;
-    cursor:pointer;
-    opacity:0;
-    transition:all .3s cubic-bezier(0.4, 0, 0.2, 1);
-    border-radius:50%;
-    
-    &:hover{
-      opacity:1 !important;
-      transform:translateY(-50%) scale(1.2) rotate(-10deg);
-      background:rgba(244, 67, 54, 0.15) !important;
-    }
-    
-    &:active{
-      transform:translateY(-50%) scale(0.9);
-    }
-    
-    svg{
-      pointer-events:none;
-      filter:drop-shadow(0 1px 2px rgba(0,0,0,0.1));
-    }
-  }
-}
-
-.toc-empty{
-  padding:60px 20px;
-  text-align:center;
-  color:var(--b3-theme-on-surface-light);
-  opacity:0.5;
-  font-size:14px;
-  line-height:1.8;
-}
+<style scoped lang="scss">
+.sr-toc{display:flex;flex-direction:column;height:100%;overflow:hidden}
+.sr-toolbar{flex-shrink:0;display:flex;gap:4px;padding:8px;background:var(--b3-theme-background);border-bottom:1px solid var(--b3-border-color);
+  input{flex:1;min-width:0;height:28px;padding:0 10px;border:none;border-bottom:1px solid var(--b3-border-color);background:transparent;font-size:12px;outline:none;color:var(--b3-theme-on-background);transition:border-color .2s;&:focus{border-color:var(--b3-theme-primary)}&::placeholder{opacity:.4}}
+  button{width:28px;height:28px;flex-shrink:0;border:none;background:none;cursor:pointer;transition:all .15s;svg{width:16px;height:16px}&:hover{color:var(--b3-theme-primary);transform:scale(1.08)}&:active{transform:scale(.92)}}}
+.sr-select{position:relative;flex-shrink:0}
+.sr-menu{position:absolute;top:calc(100% + 4px);right:0;background:var(--b3-theme-surface);border-radius:6px;box-shadow:0 4px 12px #0003;min-width:100px;padding:4px;z-index:100}
+.sr-menu-item{padding:6px 12px;border-radius:4px;cursor:pointer;font-size:12px;transition:background .15s;display:flex;align-items:center;gap:8px;&:hover{background:var(--b3-list-hover)}&.active{background:var(--b3-theme-primary-lightest);color:var(--b3-theme-primary);font-weight:600}}
+.dot{width:12px;height:12px;border-radius:50%;flex-shrink:0}
+.menu-enter-active,.menu-leave-active{transition:all .2s cubic-bezier(.4,0,.2,1)}
+.menu-enter-from{opacity:0;transform:translateY(-8px) scale(.95)}
+.menu-leave-to{opacity:0;transform:translateY(-4px) scale(.98)}
 .fade-enter-active,.fade-leave-active{transition:opacity .2s}
 .fade-enter-from,.fade-leave-to{opacity:0}
+.sr-content{flex:1;overflow-y:auto;padding:8px;min-height:0;
+  :deep(ol){list-style:none;padding:0;margin:0}
+  :deep(li){margin:0;position:relative}
+  :deep(a),:deep(span[role="treeitem"]){display:block;padding:10px 48px 10px 12px;margin:2px 4px;color:var(--b3-theme-on-background);text-decoration:none;border-radius:6px;cursor:pointer;transition:all .25s cubic-bezier(.4,0,.2,1);border-left:3px solid transparent;
+    &:hover{background:var(--b3-list-hover);transform:translateX(2px);box-shadow:0 1px 3px rgba(0,0,0,.06)}
+    &[aria-current="page"]{background:linear-gradient(to right,rgba(25,118,210,.12),rgba(25,118,210,.02));border-left-color:var(--b3-theme-primary);border-left-width:4px;box-shadow:0 2px 8px rgba(25,118,210,.15);font-weight:600;color:var(--b3-theme-primary)}}
+  :deep(svg){width:12px;height:12px;margin-right:6px;fill:currentColor;transition:transform .2s;cursor:pointer}
+  :deep([aria-expanded="true"]>svg){transform:rotate(0deg)}
+  :deep([aria-expanded="false"]>svg){transform:rotate(-90deg)}
+  :deep([role="group"]){display:none}
+  :deep([aria-expanded="true"]+[role="group"]){display:block}
+  :deep(.toc-bookmark-btn){position:absolute;right:12px;top:50%;transform:translateY(-50%);width:26px;height:26px;padding:0;margin:0;border:none!important;background:transparent!important;outline:none!important;box-shadow:none!important;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;opacity:0;transition:all .3s cubic-bezier(.4,0,.2,1);border-radius:50%;
+    svg{pointer-events:none;filter:drop-shadow(0 1px 2px rgba(0,0,0,.1));color:var(--b3-theme-on-surface);transition:all .3s cubic-bezier(.4,0,.2,1)}
+    &:hover{opacity:1!important;transform:translateY(-50%) scale(1.2) rotate(10deg);background:rgba(244,67,54,.15)!important}
+    &:active{transform:translateY(-50%) scale(.9) rotate(-5deg)}
+    &.has-bookmark{opacity:1!important;background:rgba(244,67,54,.08)!important;
+      svg{color:var(--b3-theme-error)}
+      &:hover{background:rgba(244,67,54,.18)!important}}}
+  :deep(li:hover .toc-bookmark-btn){opacity:.5!important}}
+.sr-list{padding:6px 4px}
+.sr-item{position:relative;padding:10px 12px;margin:2px 4px;border-radius:6px;cursor:pointer;transition:all .25s cubic-bezier(.4,0,.2,1);background:var(--b3-theme-surface);display:flex;align-items:flex-start;gap:8px;
+  &:hover{background:var(--b3-list-hover);transform:translateX(2px);box-shadow:0 2px 6px rgba(0,0,0,.08);
+    .sr-item-actions{opacity:1}}}
+.sr-item-content{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px}
+.sr-text{font-size:14px;line-height:1.8;color:var(--b3-theme-on-background);font-weight:500;padding:2px 0;
+  &.sr-style-highlight{background:linear-gradient(transparent 60%,var(--mark-color) 60%)}
+  &.sr-style-underline{text-decoration:underline;text-decoration-color:var(--mark-color);text-decoration-thickness:2px;text-underline-offset:2px}
+  &.sr-style-outline{border:2px solid var(--mark-color);padding:2px 6px;border-radius:4px}
+  &.sr-style-squiggly{text-decoration:underline wavy;text-decoration-color:var(--mark-color);text-decoration-thickness:2px;text-underline-offset:2px}}
+.sr-note{font-size:12px;color:var(--b3-theme-on-surface-variant);opacity:.8;line-height:1.6}
+.sr-item-actions{display:flex;gap:4px;opacity:0;transition:opacity .2s;flex-shrink:0}
+.sr-action-btn{width:28px;height:28px;padding:0;border:none;background:transparent;border-radius:6px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;svg{width:14px;height:14px}&:hover{background:var(--b3-list-hover);transform:scale(1.1)}&:active{transform:scale(.95)}}
+.sr-word{font-size:16px;font-weight:600;color:var(--b3-theme-primary)}
+.sr-trans{font-size:13px;color:var(--b3-theme-on-surface-variant)}
+.sr-remove-btn{position:absolute;right:12px;top:50%;transform:translateY(-50%);width:26px;height:26px;padding:0;margin:0;border:none!important;background:transparent!important;outline:none!important;box-shadow:none!important;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;opacity:0;transition:all .3s cubic-bezier(.4,0,.2,1);border-radius:50%;
+  svg{pointer-events:none;filter:drop-shadow(0 1px 2px rgba(0,0,0,.1));color:var(--b3-theme-error)}
+  &:hover{opacity:1!important;transform:translateY(-50%) scale(1.2) rotate(-10deg);background:rgba(244,67,54,.15)!important}
+  &:active{transform:translateY(-50%) scale(.9)}}
+.sr-empty{padding:60px 20px;text-align:center;color:var(--b3-theme-on-surface-variant);opacity:.5;font-size:14px;line-height:1.8}
 </style>

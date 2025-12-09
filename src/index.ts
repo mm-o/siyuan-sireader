@@ -36,11 +36,7 @@ export default class PluginSample extends Plugin {
   }
 
   async onunload() {
-    const { saveAllProgress, cleanupAllReaders } = await import('@/core/reader')
-    const { cleanupAllProgressSavers } = await import('@/core/epubView')
-    await saveAllProgress()
-    cleanupAllProgressSavers()
-    cleanupAllReaders()
+    // 新的 foliate 系统会在组件卸载时自动清理
     destroy()
     console.log('[SiReader] 插件已禁用')
   }

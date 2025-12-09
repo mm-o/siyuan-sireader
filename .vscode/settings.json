@@ -55,5 +55,6 @@
     "scss",
     "pcss",
     "postcss"
-  ]
+  ],
+  "kiroAgent.configureMCP": "Disabled"
 }

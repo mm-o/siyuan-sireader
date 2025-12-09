@@ -1,13 +1,12 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, toRaw, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import type { ReaderSettings, FontFileInfo } from '@/composables/useSetting'
-import { PRESET_THEMES, scanCustomFonts } from '@/composables/useSetting'
+import { PRESET_THEMES, UI_CONFIG, useSetting } from '@/composables/useSetting'
 import { fetchSyncPost, showMessage } from 'siyuan'
 import BookSearch from './BookSearch.vue'
 import SourceMgr from './SourceMgr.vue'
 import Bookshelf from './Bookshelf.vue'
 import { bookshelfManager } from '@/core/bookshelf'
-import { openOnlineReaderTab } from '@/core/reader'
 import { Dialog } from 'siyuan'
 import { createApp } from 'vue'
 import { MotionPlugin } from '@vueuse/motion'
@@ -25,27 +24,25 @@ const emit = defineEmits<{
   'update:modelValue': [value: ReaderSettings]
 }>()
 
+// ===== 状态 =====
 const settings = ref<ReaderSettings>(props.modelValue)
-const activeTab = ref<'general' | 'appearance' | 'bookshelf' | 'search' | 'toc' | 'bookmark' | 'mark' | 'note'>('bookshelf')
+const activeTab = ref<'general' | 'appearance' | 'bookshelf' | 'search' | 'toc' | 'bookmark' | 'mark' | 'note' | 'vocabulary'>('bookshelf')
 const notebooks = ref<{ id: string; name: string; icon: string }[]>([])
 const docSearch = ref({ input: '', results: [] as any[], show: false })
-const customFonts = ref<FontFileInfo[]>([]), isLoadingFonts = ref(false)
 const plugin = usePlugin()
 const { canShowToc, activeReader } = useReaderState()
+const settingManager = useSetting(plugin)
+const { customFonts, isLoadingFonts } = settingManager
 
-// 书签数据（从 activeReader 获取，支持EPUB和TXT）
-const bookmarks = computed(() => 
-  (activeReader.value?.getBookmarks() || []).map((bm: any) => ({ 
-    label: bm.title || '未命名书签', cfi: bm.cfi, section: bm.section, page: bm.page, progress: bm.progress, time: bm.time 
-  }))
-)
-
+// ===== 计算属性 =====
+const bookmarks = computed(() => [])
 const isNotebookMode = computed(() => settings.value.annotationMode === 'notebook')
 const isDocMode = computed(() => settings.value.annotationMode === 'document')
 
 const tabs = computed(() => [
   { id: 'bookshelf' as const, icon: 'lucide-library-big', tip: 'bookshelf' },
   { id: 'search' as const, icon: 'lucide-book-search', tip: 'search' },
+  { id: 'vocabulary' as const, icon: 'lucide-wallet-cards', tip: '卡包' },
   { id: 'general' as const, icon: 'lucide-settings-2', tip: 'general' },
   { id: 'appearance' as const, icon: 'lucide-paintbrush-vertical', tip: 'tabAppearance' },
   ...(canShowToc.value ? [
@@ -57,136 +54,77 @@ const tabs = computed(() => [
 ])
 
 const previewStyle = computed(() => {
-  const theme = settings.value.theme === 'custom'
-    ? settings.value.customTheme
-    : PRESET_THEMES[settings.value.theme]
+  const theme = settings.value.theme === 'custom' ? settings.value.customTheme : PRESET_THEMES[settings.value.theme]
   if (!theme) return {}
+  const { textSettings: t, paragraphSettings: p, layoutSettings: l, visualSettings: v, columnMode } = settings.value
+  const filters = [
+    v.brightness !== 1 && `brightness(${v.brightness})`,
+    v.contrast !== 1 && `contrast(${v.contrast})`,
+    v.sepia > 0 && `sepia(${v.sepia})`,
+    v.saturate !== 1 && `saturate(${v.saturate})`,
+    v.invert && 'invert(1) hue-rotate(180deg)'
+  ].filter(Boolean).join(' ')
+  const fontFamily = t.fontFamily === 'custom' && t.customFont.fontFamily ? `"${t.customFont.fontFamily}", sans-serif` : (t.fontFamily || 'inherit')
   return {
     color: theme.color,
     backgroundColor: theme.bgImg ? 'transparent' : theme.bg,
     backgroundImage: theme.bgImg ? `url("${theme.bgImg}")` : 'none',
     backgroundSize: 'cover',
     backgroundPosition: 'center',
+    fontFamily,
+    fontSize: `${t.fontSize}px`,
+    letterSpacing: `${t.letterSpacing}em`,
+    lineHeight: p.lineHeight,
+    filter: filters || 'none',
+    '--paragraph-spacing': p.paragraphSpacing,
+    '--text-indent': p.textIndent,
+    '--margin-h': `${l.marginHorizontal}px`,
+    '--margin-v': `${l.marginVertical}px`,
+    '--gap': `${l.gap}%`,
+    '--header-footer': `${l.headerFooterMargin}px`,
+    '--max-block': l.maxBlockSize > 0 ? `${l.maxBlockSize}px` : 'none',
+    '--column-count': columnMode === 'double' ? 2 : 1,
   }
 })
 
-const save = async () => {
-  emit('update:modelValue', toRaw(settings.value))
-  await props.onSave()
-  window.dispatchEvent(new CustomEvent('sireaderSettingsUpdated', { detail: settings.value }))
-  showMessage(props.i18n?.saved || '设置已保存')
+// ===== 核心方法 =====
+const save = async () => { emit('update:modelValue', settings.value); await props.onSave() }
+const debouncedSave = (() => { let timer: any; return () => (clearTimeout(timer), timer = setTimeout(save, 300)) })()
+const resetStyles = () => confirm(props.i18n.confirmReset || '确定要恢复默认设置吗？') && settingManager.resetStyles()
+
+// ===== 业务逻辑 =====
+const handleRemoveBookmark = async (bookmark: any) => { 
+  showMessage('书签功能需要更新', 2000, 'info')
+  // TODO: 使用新的 foliate reader 书签API
 }
-
-const debouncedSave = (() => {
-  let timer: any
-  return () => {
-    clearTimeout(timer)
-    timer = setTimeout(() => save(), 300)
-  }
-})()
-
-const resetStyles = () => confirm(props.i18n.confirmReset || '确定要恢复默认设置吗？') && (
-  settings.value.textSettings = { fontFamily: 'inherit', fontSize: 16, letterSpacing: 0, customFont: { fontFamily: '', fontFile: '' } },
-  settings.value.paragraphSettings = { lineHeight: 1.6, paragraphSpacing: 0.8, textIndent: 0 },
-  settings.value.pageSettings = { marginHorizontal: 40, marginVertical: 20, continuousScroll: false },
-  save()
-)
-
-// 书签操作（极限精简）
-const handleRemoveBookmark = async (bookmark: any) => {
-  const reader = activeReader.value
-  if (!reader) return
-  try {
-    if (bookmark.fromToc) {
-      const location = bookmark.cfi ? { cfi: bookmark.cfi } : { section: bookmark.section, page: bookmark.page }
-      await reader.addBookmark(bookmark.label, location)
-      showMessage('书签已添加', 1500, 'info')
-    } else {
-      await reader.removeBookmark(bookmark.cfi || bookmark.section)
-      showMessage('书签已删除', 1500, 'info')
-    }
-  } catch (e: any) {
-    showMessage(e.message || '操作失败', 2000, 'error')
-  }
-}
-
 const loadNotebooks = async () => !notebooks.value.length && fetchSyncPost('/api/notebook/lsNotebooks', {}).then(r => r?.code === 0 && (notebooks.value = r.data?.notebooks || []))
 const searchDoc = async () => docSearch.value.input.trim() && fetchSyncPost('/api/filetree/searchDocs', { k: docSearch.value.input.trim() }).then(r => (docSearch.value.results = r?.code === 0 && Array.isArray(r.data) ? r.data : [], docSearch.value.show = true))
 const selectDoc = (d: any) => (settings.value.parentDoc = { id: d.id, name: d.hPath || d.content || '无标题', path: d.path || '', notebook: d.box || '' }, docSearch.value = { input: '', results: [], show: false }, save())
-
-// 字体（极限精简）
-const loadCustomFonts = async () => {
-  isLoadingFonts.value = true
-  customFonts.value = await scanCustomFonts()
-  isLoadingFonts.value = false
-  const s = document.getElementById('sr-fonts') || Object.assign(document.createElement('style'), {id: 'sr-fonts'})
-  s.textContent = customFonts.value.map(f => `@font-face{font-family:"${f.displayName}";src:url("/plugins/custom-fonts/${f.name}")}`).join('')
-  document.head.appendChild(s)
+const setFont = (f?: FontFileInfo) => (settingManager.setFont(f, f ? debouncedSave : save))
+const handleReadOnline = async (book: any) => { 
+  try { 
+    const { openOnlineReaderTab } = await import('@/core/tabs')
+    await openOnlineReaderTab(plugin, book, () => settings.value)
+  } catch (e: any) { 
+    showMessage(`打开失败: ${e.message}`, 3000, 'error') 
+  } 
 }
-const setFont = (f?: FontFileInfo) => (settings.value.textSettings.fontFamily = f ? 'custom' : 'inherit', f && (settings.value.textSettings.customFont = {fontFamily: f.displayName, fontFile: f.name}), f ? debouncedSave() : save())
+const openSourceMgr = () => { const d = new Dialog({title:'书源管理', content:'<div id="src-mgr"></div>', width:'800px', height:'600px'}); d.element.querySelector('.b3-dialog__scrim')?.remove(); const app = createApp(SourceMgr, {i18n: props.i18n}); app.use(MotionPlugin); app.mount(d.element.querySelector('#src-mgr')!); d.element.querySelector('.b3-dialog__close')?.addEventListener('click', () => { app.unmount(); d.destroy() }) }
 
-onMounted(async () => {
-  loadCustomFonts()
-  await bookshelfManager.init()
-})
-
-const handleReadOnline = async (book: any) => {
-  try { await openOnlineReaderTab(plugin, book, () => settings.value) } 
-  catch (e: any) { showMessage(`打开失败: ${e.message}`, 3000, 'error') }
-}
-
-
-const openSourceMgr = () => {
-  const d = new Dialog({title:'书源管理', content:'<div id="src-mgr"></div>', width:'800px', height:'600px'})
-  d.element.querySelector('.b3-dialog__scrim')?.remove()
-  const app = createApp(SourceMgr, {i18n: props.i18n})
-  app.use(MotionPlugin)
-  app.mount(d.element.querySelector('#src-mgr')!)
-  const cleanup = () => { app.unmount(); d.destroy() }
-  d.element.querySelector('.b3-dialog__close')?.addEventListener('click', cleanup)
-}
-
+// ===== 生命周期 =====
+onMounted(async () => (settingManager.loadCustomFonts(), await bookshelfManager.init()))
 watch(() => [activeTab.value, isNotebookMode.value], ([tab, notebook]) => tab === 'general' && notebook && loadNotebooks())
 watch(() => props.modelValue, (val) => settings.value = val, { deep: true })
 
-const interfaceItems = [
-  { key: 'openMode', opts: ['newTab', 'rightTab', 'bottomTab', 'newWindow'] },
-  { key: 'tocPosition', opts: ['left', 'right'] },
-  { key: 'columnMode', opts: ['single', 'double'] },
-  { key: 'pageAnimation', opts: ['slide', 'scroll', 'none'] },  // slide/none翻页，scroll滚动
-]
+// 监听 activeReader 变化，关闭书籍时切换到书架
+watch(() => canShowToc.value, (canShow) => {
+  if (!canShow && ['toc', 'bookmark', 'mark', 'note'].includes(activeTab.value)) {
+    activeTab.value = 'bookshelf'
+  }
+})
 
-const customThemeItems = [
-  { key: 'color', label: 'textColor', type: 'color' },
-  { key: 'bg', label: 'bgColor', type: 'color' },
-  { key: 'bgImg', label: 'bgImage', type: 'text' },
-]
-
-const appearanceGroups = [
-  {
-    title: 'textSettings',
-    items: [
-      { key: 'fontSize', type: 'range', min: 12, max: 32, step: 1, unit: 'px' },
-      { key: 'letterSpacing', type: 'range', min: 0, max: 0.2, step: 0.01, unit: 'em' },
-    ],
-  },
-  {
-    title: 'paragraphSettings',
-    items: [
-      { key: 'lineHeight', type: 'range', min: 1.0, max: 3.0, step: 0.1 },
-      { key: 'paragraphSpacing', type: 'range', min: 0, max: 2, step: 0.1, unit: 'em' },
-      { key: 'textIndent', type: 'range', min: 0, max: 4, step: 0.5, unit: 'em' },
-    ],
-  },
-  {
-    title: 'pageSettings',
-    items: [
-      { key: 'marginHorizontal', type: 'range', min: 0, max: 100, step: 5, unit: 'px' },
-      { key: 'marginVertical', type: 'range', min: 0, max: 80, step: 5, unit: 'px' },
-      { key: 'continuousScroll', type: 'checkbox' },
-    ],
-  },
-]
+// ===== 配置常量 =====
+const { interfaceItems, customThemeItems, appearanceGroups } = UI_CONFIG
 </script>
 
 <template>
@@ -204,6 +142,20 @@ const appearanceGroups = [
     </aside>
 
     <main class="sr-content">
+      <!-- 样式预览 -->
+      <Transition name="fade">
+        <div v-if="activeTab === 'appearance'" class="sr-preview-outer" :style="previewStyle">
+          <div class="sr-preview-header">{{ i18n.livePreview || '实时预览' }}</div>
+          <div class="sr-preview-content">
+            <div class="sr-preview-columns">
+              <p>春江潮水连海平，海上明月共潮生。</p>
+              <p>滟滟随波千万里，何处春江无月明。</p>
+            </div>
+          </div>
+          <div class="sr-preview-footer">{{ settings.columnMode === 'double' ? '双页模式' : '单页模式' }}</div>
+        </div>
+      </Transition>
+
       <Transition name="slide" mode="out-in">
         <div :key="activeTab" class="sr-panel">
           <!-- General -->
@@ -298,10 +250,6 @@ const appearanceGroups = [
                   </div>
                 </div>
               </Transition>
-
-              <div class="sr-preview" :style="previewStyle">
-                <div v-html="i18n.previewText" />
-              </div>
             </div>
 
             <div v-for="group in appearanceGroups" :key="group.title" v-motion-pop-visible class="sr-group">
@@ -310,7 +258,6 @@ const appearanceGroups = [
               <div v-for="item in group.items" :key="item.key" class="sr-item">
                 <div class="sr-label">
                   <div class="sr-label-text">{{ i18n[item.key] }}</div>
-                  <div v-if="item.key === 'continuousScroll'" class="sr-label-desc">{{ i18n.continuousScrollDesc }}</div>
                 </div>
                 
                 <select v-if="item.type === 'select'" v-model="settings[group.title][item.key]" class="b3-select" @change="debouncedSave">
@@ -364,12 +311,12 @@ const appearanceGroups = [
 
           <!-- TOC -->
           <div v-else-if="activeTab === 'toc'" class="sr-toc-container">
-            <ReaderToc mode="toc" :bookmarks="bookmarks" @toggle-bookmark="handleRemoveBookmark" />
+            <ReaderToc mode="toc" />
           </div>
 
           <!-- Bookmark -->
           <div v-else-if="activeTab === 'bookmark'" class="sr-toc-container">
-            <ReaderToc mode="bookmark" :bookmarks="bookmarks" @toggle-bookmark="handleRemoveBookmark" />
+            <ReaderToc mode="bookmark" />
           </div>
 
           <!-- Mark -->
@@ -380,6 +327,11 @@ const appearanceGroups = [
           <!-- Note -->
           <div v-else-if="activeTab === 'note'" class="sr-toc-container">
             <ReaderToc mode="note" />
+          </div>
+
+          <!-- Vocabulary -->
+          <div v-else-if="activeTab === 'vocabulary'" class="sr-toc-container">
+            <ReaderToc mode="vocabulary" />
           </div>
         </div>
       </Transition>
@@ -394,7 +346,72 @@ const appearanceGroups = [
   &:hover{background:var(--b3-list-hover)}
   &.active{background:var(--b3-theme-primary);color:var(--b3-theme-on-primary);box-shadow:0 2px 4px #0003}
 }
-.sr-content { flex: 1; overflow-y: auto; padding: 20px; }
+.sr-content { flex: 1; overflow: hidden; padding: 0; display: flex; flex-direction: column; }
+
+// 预览外层容器
+.sr-preview-outer {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  margin: 20px;
+  margin-bottom: 0;
+  background: var(--b3-theme-surface);
+  border-radius: 8px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  max-height: var(--max-block);
+}
+
+// 页眉
+.sr-preview-header {
+  height: var(--header-footer);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  opacity: 0.4;
+  border-bottom: 1px dashed currentColor;
+  flex-shrink: 0;
+  transition: height 0.3s;
+}
+
+// 内容区域
+.sr-preview-content {
+  flex: 1;
+  padding: var(--margin-v) var(--margin-h);
+  overflow: auto;
+  transition: padding 0.3s;
+}
+
+// 多列布局
+.sr-preview-columns {
+  column-count: var(--column-count, 1);
+  column-gap: var(--gap);
+  transition: column-count 0.3s, column-gap 0.3s;
+  p { 
+    margin: 0;
+    text-indent: calc(1em * var(--text-indent, 0));
+    line-height: inherit;
+    break-inside: avoid;
+    transition: text-indent 0.3s;
+    & + p { margin-top: calc(1em * var(--paragraph-spacing, 0.8)); }
+  }
+}
+
+// 页脚
+.sr-preview-footer {
+  height: var(--header-footer);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  opacity: 0.4;
+  border-top: 1px dashed currentColor;
+  flex-shrink: 0;
+  transition: height 0.3s;
+}
+.sr-panel { flex: 1; overflow: hidden; display: flex; flex-direction: column; &:has(.sr-section) { padding: 20px; overflow-y: auto; } }
 .sr-section { display: flex; flex-direction: column; gap: 20px; }
 .sr-group { background: var(--b3-theme-surface); border-radius: 8px; padding: 18px; box-shadow: 0 1px 3px #0000000d; transition: box-shadow .3s;
   &:hover { box-shadow: 0 4px 10px #00000014; }
@@ -410,7 +427,6 @@ const appearanceGroups = [
 .sr-slider { display: flex; align-items: center; gap: 10px; }
 .b3-slider { width: 130px; }
 .sr-value { min-width: 55px; text-align: right; font-size: 12px; font-weight: 500; color: var(--b3-theme-primary); }
-.sr-preview { margin-top: 14px; padding: 18px; border-radius: 6px; font-size: 13px; line-height: 1.8; transition: all .3s; }
 .sr-custom { margin-top: 10px; }
 .sr-color { width: 55px; height: 34px; padding: 3px; border-radius: 4px; cursor: pointer; border: 1px solid var(--b3-border-color); }
 .sr-reset { width: 100%; margin-top: 14px; padding: 9px; font-size: 12px; transition: all .2s;
@@ -419,8 +435,8 @@ const appearanceGroups = [
 .slide-enter-active { transition: all .25s cubic-bezier(.4,0,.2,1); }
 .slide-leave-active { transition: all .2s cubic-bezier(.4,0,1,1); }
 .slide-enter-from { opacity: 0; transform: translateX(15px); }
-.sr-bs-container { display:flex; flex-direction:column; height:100%; }
-.sr-toc-container { width:100%; height:100%; overflow:hidden; }
+.sr-bs-container { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+.sr-toc-container { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
 .fade-enter-active, .fade-leave-active { transition: opacity .3s; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
 .slide-leave-to { opacity: 0; transform: translateX(-15px); }
