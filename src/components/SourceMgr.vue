@@ -53,13 +53,13 @@
           <span v-if="s.bookSourceGroup" class="sr-tag">{{ s.bookSourceGroup }}</span>
         </div>
         <div class="sr-actions">
-          <button class="b3-button b3-button--text" @click.stop="toggle(s)" :title="s.enabled?'禁用':'启用'">
+          <button class="b3-button b3-button--text" @click.stop="toggle(s)" :aria-label="s.enabled?'禁用':'启用'">
             <svg><use :xlink:href="s.enabled?'#iconEye':'#iconEyeoff'"></use></svg>
           </button>
-          <button class="b3-button b3-button--text" @click.stop="check(s)" title="测试">
+          <button class="b3-button b3-button--text" @click.stop="check(s)" :aria-label="i18n.test || '测试'">
             <svg><use xlink:href="#iconRefresh"></use></svg>
           </button>
-          <button class="b3-button b3-button--text" @click.stop="del(s)" title="删除">
+          <button class="b3-button b3-button--text" @click.stop="del(s)" :aria-label="i18n.delete || '删除'">
             <svg><use xlink:href="#iconTrashcan"></use></svg>
           </button>
         </div>
@@ -228,8 +228,8 @@ onBeforeUnmount(() => {
 }
 .sr-btn-primary { background:var(--b3-theme-primary); color:white; &:hover { background:color-mix(in srgb, var(--b3-theme-primary) 90%, black); } }
 .sr-btn-secondary { background:var(--b3-theme-surface-lighter); color:var(--b3-theme-on-surface); &:hover { background:var(--b3-list-hover); } }
-.sr-btn-danger { background:#dc3545; color:white; &:hover { background:#c82333; } }
-.sr-btn-warning { background:#ff9800; color:white; &:hover { background:#f57c00; } }
+.sr-btn-danger { background:var(--b3-theme-error); color:var(--b3-theme-on-error); &:hover { background:color-mix(in srgb, var(--b3-theme-error) 90%, black); } }
+.sr-btn-warning { background:var(--b3-theme-primary); color:var(--b3-theme-on-primary); &:hover { background:color-mix(in srgb, var(--b3-theme-primary) 90%, black); } }
 .sr-btn-outline { background:transparent; color:var(--b3-theme-on-surface); border:1px solid var(--b3-border-color); &:hover { background:var(--b3-list-hover); } }
 .sr-search { flex:1; min-width:200px; position:relative; display:flex; align-items:center;
   input { padding-left:36px; padding-right:36px; }
@@ -243,7 +243,7 @@ onBeforeUnmount(() => {
 .sr-card { display:flex; align-items:center; gap:10px; padding:12px; margin-bottom:10px; background:var(--b3-theme-surface); border:1px solid var(--b3-border-color); border-radius:8px; box-shadow:0 1px 3px #0000000d; transition:all .3s cubic-bezier(.4,0,.2,1); cursor:pointer;
   &:hover { box-shadow:0 4px 10px #00000014; transform:translateY(-2px); }
   &.off { opacity:.45; filter:grayscale(.5); }
-  &.bad { border:1px solid #f44336; background:linear-gradient(135deg, #f4433509, #f4433504); }
+  &.bad { border:1px solid var(--b3-theme-error); background:color-mix(in srgb, var(--b3-theme-error) 5%, transparent); }
   &.sel { border:1px solid var(--b3-theme-primary); box-shadow:0 0 0 2px color-mix(in srgb, var(--b3-theme-primary) 20%, transparent); }
 }
 .sr-item-checkbox { width:16px; height:16px; cursor:pointer; accent-color:var(--b3-theme-primary); }
@@ -252,8 +252,8 @@ onBeforeUnmount(() => {
 }
 .spin { animation:spin 1.2s linear infinite; }
 @keyframes spin { to { transform:rotate(360deg); } }
-.ok { color:#4caf50; filter:drop-shadow(0 0 4px #4caf504d); }
-.no { color:#f44336; filter:drop-shadow(0 0 4px #f443364d); }
+.ok { color:var(--b3-theme-primary); filter:drop-shadow(0 0 4px color-mix(in srgb, var(--b3-theme-primary) 30%, transparent)); }
+.no { color:var(--b3-theme-error); filter:drop-shadow(0 0 4px color-mix(in srgb, var(--b3-theme-error) 30%, transparent)); }
 .sr-info { flex:1; min-width:0; }
 .sr-name { font-size:14px; font-weight:500; margin-bottom:4px; }
 .sr-url { font-size:11px; opacity:.65; margin-bottom:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }

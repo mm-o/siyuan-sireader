@@ -2,7 +2,7 @@
   "name": "siyuan-sireader",
   "author": "mm-o",
   "url": "https://github.com/mm-o/siyuan-sireader",
-  "version": "0.3.1",
+  "version": "0.5.0",
   "minAppVersion": "2.10.14",
   "disabledInPublish": true,
   "backends": [

@@ -4,35 +4,133 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, watch, ref } from 'vue'
-import { createApp } from 'vue'
+import { onMounted } from 'vue'
+import { createApp, type Component } from 'vue'
 import { MotionPlugin } from '@vueuse/motion'
+import { openTab, showMessage } from 'siyuan'
 import { usePlugin, setOpenSettingHandler, registerCleanup } from '@/main'
 import { useSetting } from '@/composables/useSetting'
 import { useStats } from '@/composables/useStats'
-import { registerEpubTab, createEpubLinkHandler, registerOnlineReaderTab } from '@/core/tabs'
-// TODO: EPUB 块功能待恢复
-// import { initEpubBlockMenu, renderAllEpubBlocks } from '@/core/epubView'
 import { bookSourceManager } from '@/core/book'
 import Settings from '@/components/Settings.vue'
+import Reader from '@/components/Reader.vue'
 
 const plugin = usePlugin()
-const { settings } = useSetting(plugin)
+const { settings, isLoaded } = useSetting(plugin)
 
-// Dock中的设置组件实例
 let settingsApp: any = null
 
-// 打开设置的方法：打开Dock并显示设置
 const openSetting = () => {
-  // 点击Dock按钮打开侧边栏
   document.querySelector('.dock__item[aria-label*="思阅"]')?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
 }
 
-setOpenSettingHandler(openSetting)
-registerEpubTab(plugin)
-registerOnlineReaderTab(plugin)
+// ===== 阅读器核心 =====
+const FORMATS = ['.epub', '.pdf', '.mobi', '.azw3', '.azw', '.fb2', '.cbz', '.txt']
 
-// 添加Dock
+const fetchFile = async (url: string) => {
+  try {
+    const res = await fetch(url[0] === '/' || url.startsWith('http') ? url : `/${url}`)
+    return res.ok ? new File([await res.blob()], url.split('/').pop()?.split('?')[0] || 'book') : null
+  } catch { return null }
+}
+
+const mountReader = async (el: HTMLElement, props: any) => {
+  if (!isLoaded.value) await new Promise(resolve => { const check = () => isLoaded.value ? resolve(true) : setTimeout(check, 50); check() })
+  await new Promise(resolve => requestAnimationFrame(() => resolve(true)))
+  const div = el.appendChild(Object.assign(document.createElement('div'), { style: 'width:100%;height:100%' }))
+  const { toRaw } = await import('vue')
+  const currentSettings = JSON.parse(JSON.stringify(toRaw(settings.value)))
+  const app = createApp(Reader as Component, { ...props, plugin, settings: currentSettings, i18n: plugin.i18n })
+  app.mount(div)
+  return app
+}
+
+// 暴露渲染接口供其他插件调用
+;(window as any).sireader = {
+  mountReader: async (el: HTMLElement, props: any) => await mountReader(el, props),
+  openEpubTab: (file: File, title?: string) => openTab({
+    app: (plugin as any).app,
+    custom: {
+      icon: 'iconBook',
+      title: title || file.name.replace(/\.[^.]+$/, ''),
+      data: { file },
+      id: `${plugin.name}epub_reader`
+    }
+  }),
+  openOnlineTab: (bookInfo: any) => openTab({
+    app: (plugin as any).app,
+    custom: {
+      icon: 'iconBook',
+      title: bookInfo.name || '在线阅读',
+      data: { bookInfo },
+      id: `${plugin.name}custom_tab_online_reader`
+    }
+  })
+}
+
+// 注册标签页
+plugin.addTab({
+  type: 'epub_reader',
+  async init() {
+    const { url, blockId, file } = this.data
+    const f = file?.arrayBuffer ? file : url && await fetchFile(url)
+    if (!f) return this.element.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--b3-theme-error)">加载失败</div>'
+    ;(this as any)._app = await mountReader(this.element, { file: f, url, blockId })
+  },
+  destroy() { ;(this as any)._app?.unmount() }
+})
+
+plugin.addTab({
+  type: 'custom_tab_online_reader',
+  async init() {
+    const { bookInfo } = this.data
+    if (!bookInfo) return this.element.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--b3-theme-error)">加载失败</div>'
+    ;(this as any)._app = await mountReader(this.element, { bookInfo })
+  },
+  destroy() { ;(this as any)._app?.unmount() }
+})
+
+// 链接打开书籍
+const handleEbookLink = async (e: MouseEvent) => {
+  const link = (e.target as HTMLElement).closest('a[href], [data-href], span[data-type="a"]') as HTMLElement
+  const url = link?.getAttribute('data-href') || link?.getAttribute('href')
+  if (!url) return
+  
+  // 处理自定义协议 sireader://
+  const parsed = (await import('@/composables/useSetting')).parseBookLink(url)
+  if (parsed) {
+    e.preventDefault(), e.stopPropagation()
+    if (!parsed.bookUrl) return showMessage('无效的书籍链接', 3000, 'error')
+    const { bookshelfManager } = await import('@/core/bookshelf')
+    await bookshelfManager.init()
+    const book = await bookshelfManager.getBook(parsed.bookUrl)
+    if (!book) return showMessage('书籍不存在', 3000, 'error')
+    // 查找已打开的标签页
+    const tab = Array.from(document.querySelectorAll('.layout-tab-bar .item')).find(t => (t.getAttribute('data-title') || t.querySelector('.item__text')?.textContent) === book.name)
+    if (tab) return (tab as HTMLElement).click(), requestAnimationFrame(() => window.dispatchEvent(new CustomEvent('sireader:goto', { detail: { cfi: parsed.cfi } })))
+    return openTab({ app: (plugin as any).app, custom: { icon: 'iconBook', title: book.name, data: { bookInfo: { ...book, epubCfi: parsed.cfi } }, id: `${plugin.name}custom_tab_online_reader` }, position: { rightTab: 'right', bottomTab: 'bottom' }[settings.value.openMode] })
+  }
+  
+  // 处理普通文件链接
+  if (!FORMATS.some(ext => url.toLowerCase().endsWith(ext))) return
+  e.preventDefault()
+  e.stopPropagation()
+  const file = await fetchFile(url.split('#')[0])
+  if (!file) return
+  openTab({
+    app: (plugin as any).app,
+    custom: {
+      icon: 'iconBook',
+      title: file.name.replace(/\.[^.]+$/, ''),
+      data: { file, url: url.split('#')[0], blockId: link.closest('[data-node-id]')?.getAttribute('data-node-id') },
+      id: `${plugin.name}epub_reader`
+    },
+    position: { rightTab: 'right', bottomTab: 'bottom' }[settings.value.openMode]
+  })
+}
+
+setOpenSettingHandler(openSetting)
+
 const iconId = 'siyuan-reader-icon'
 plugin.addIcons(`
   <symbol id="${iconId}" viewBox="0 0 1696 1536">
@@ -146,6 +244,11 @@ plugin.addIcons(`
     <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
     <path d="M9 10h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
   </symbol>
+  <symbol id="lucide-book-text" viewBox="0 0 24 24">
+    <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="m8 13 4-7 4 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M9.1 11h5.7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  </symbol>
 `)
 
 plugin.addDock({
@@ -170,9 +273,10 @@ plugin.addDock({
       i18n,
       onSave: async () => {
         const cfg = await plugin.loadData('config.json') || {}
-        cfg.settings = JSON.parse(JSON.stringify(settings.value))
+        const raw = JSON.parse(JSON.stringify(settings.value))
+        cfg.settings = raw
         await plugin.saveData('config.json', cfg)
-        window.dispatchEvent(new CustomEvent('sireaderSettingsUpdated', { detail: settings.value }))
+        window.dispatchEvent(new CustomEvent('sireaderSettingsUpdated', { detail: raw }))
       },
       'onUpdate:modelValue': (v: any) => { settings.value = v }
     })
@@ -191,19 +295,8 @@ useStats(plugin).init()
 
 onMounted(async () => {
   await bookSourceManager.loadSources()
-  
-  // EPUB 链接处理
-  const epubLinkHandler = createEpubLinkHandler(plugin, () => settings.value)
-  window.addEventListener('click', epubLinkHandler, true)
-  
-  // TODO: EPUB 块功能待恢复
-  // const cleanupEpubMenu = initEpubBlockMenu(plugin, () => settings.value)
-  // renderAllEpubBlocks()
-  
-  registerCleanup(() => {
-    window.removeEventListener('click', epubLinkHandler, true)
-    // cleanupEpubMenu()
-  })
+  window.addEventListener('click', handleEbookLink, true)
+  registerCleanup(() => window.removeEventListener('click', handleEbookLink, true))
 })
 </script>
 
@@ -213,4 +306,9 @@ onMounted(async () => {
   height: 100%;
   pointer-events: none;
 }
+</style>
+
+<style>
+/* Lucide Icons */
+.lucide { width: 1em; height: 1em; }
 </style>

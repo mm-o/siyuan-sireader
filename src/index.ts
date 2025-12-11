@@ -33,6 +33,19 @@ export default class PluginSample extends Plugin {
       this.isElectron = false
     }
     init(this)
+    this.addHotkeys()
+  }
+
+  private addHotkeys() {
+    const getReader = () => (window as any).__sireader_active_reader
+    const cmds = {
+      prevPage: { text: '上一页', hotkey: '', callback: () => getReader()?.prev?.() || getReader()?.goLeft?.() },
+      nextPage: { text: '下一页', hotkey: '', callback: () => getReader()?.next?.() || getReader()?.goRight?.() },
+      toggleBookmark: { text: '切换书签', hotkey: '', callback: () => window.dispatchEvent(new CustomEvent('sireader:toggleBookmark')) }
+    }
+    Object.entries(cmds).forEach(([k, { text, hotkey, callback }]) => 
+      this.addCommand({ langKey: k, langText: text, hotkey, callback })
+    )
   }
 
   async onunload() {

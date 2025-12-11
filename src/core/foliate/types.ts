@@ -45,10 +45,13 @@ export interface VocabularyItem {
 // ===== 位置类型 =====
 export interface Location {
   index?: number             // 章节索引
-  cfi?: string               // CFI 位置
+  cfi?: string               // CFI 位置（EPUB/MOBI/FB2）
+  section?: number           // 章节索引（TXT/在线）
   href?: string              // 链接
   fraction?: number          // 进度百分比
   range?: Range              // DOM Range
+  label?: string             // 章节标题
+  tocItem?: { label?: string; href?: string }  // 目录项
 }
 
 // ===== 进度信息 =====
@@ -89,7 +92,7 @@ export interface FoliateView extends HTMLElement {
   
   book: any
   renderer: any
-  lastLocation: any
+  lastLocation: Location | null
   history: any
 }
 

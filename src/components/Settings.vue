@@ -1,18 +1,19 @@
+
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import type { ReaderSettings, FontFileInfo } from '@/composables/useSetting'
-import { PRESET_THEMES, UI_CONFIG, useSetting } from '@/composables/useSetting'
-import { fetchSyncPost, showMessage } from 'siyuan'
+import { PRESET_THEMES, UI_CONFIG, useSetting, useDocSearch, useNotebooks, createDialog } from '@/composables/useSetting'
+import { openTab } from 'siyuan'
 import BookSearch from './BookSearch.vue'
 import SourceMgr from './SourceMgr.vue'
 import Bookshelf from './Bookshelf.vue'
 import { bookshelfManager } from '@/core/bookshelf'
-import { Dialog } from 'siyuan'
-import { createApp } from 'vue'
 import { MotionPlugin } from '@vueuse/motion'
 import { usePlugin } from '@/main'
-import { useReaderState } from '@/composables/useReaderState'
+import { useReaderState } from '@/core/foliate'
 import ReaderToc from './ReaderToc.vue'
+import DictMgr from './DictMgr.vue'
+import DeckMgr from './DeckMgr.vue'
 
 const props = defineProps<{
   modelValue: ReaderSettings
@@ -26,105 +27,41 @@ const emit = defineEmits<{
 
 // ===== 状态 =====
 const settings = ref<ReaderSettings>(props.modelValue)
-const activeTab = ref<'general' | 'appearance' | 'bookshelf' | 'search' | 'toc' | 'bookmark' | 'mark' | 'note' | 'vocabulary'>('bookshelf')
-const notebooks = ref<{ id: string; name: string; icon: string }[]>([])
-const docSearch = ref({ input: '', results: [] as any[], show: false })
+const activeTab = ref<'general' | 'appearance' | 'bookshelf' | 'search' | 'dictionary' | 'toc' | 'bookmark' | 'mark' | 'note' | 'deck'>('bookshelf')
 const plugin = usePlugin()
-const { canShowToc, activeReader } = useReaderState()
+const { canShowToc } = useReaderState()
 const settingManager = useSetting(plugin)
 const { customFonts, isLoadingFonts } = settingManager
 
 // ===== 计算属性 =====
-const bookmarks = computed(() => [])
 const isNotebookMode = computed(() => settings.value.annotationMode === 'notebook')
-const isDocMode = computed(() => settings.value.annotationMode === 'document')
+const tabs = computed(() => [{ id: 'bookshelf' as const, icon: 'lucide-library-big', tip: 'bookshelf' }, { id: 'search' as const, icon: 'lucide-book-search', tip: 'search' }, { id: 'deck' as const, icon: 'lucide-wallet-cards', tip: '卡包' }, ...(canShowToc.value ? [{ id: 'toc' as const, icon: 'lucide-scroll-text', tip: '目录' }, { id: 'bookmark' as const, icon: 'lucide-map-pin-check', tip: '书签' }, { id: 'mark' as const, icon: 'lucide-paint-bucket', tip: '标注' }, { id: 'note' as const, icon: 'lucide-map-pin-pen', tip: '笔记' }] : []), { id: 'general' as const, icon: 'lucide-settings-2', tip: 'tabGeneral' }, { id: 'appearance' as const, icon: 'lucide-paintbrush-vertical', tip: 'tabAppearance' }, { id: 'dictionary' as const, icon: 'lucide-book-text', tip: '词典' }])
 
-const tabs = computed(() => [
-  { id: 'bookshelf' as const, icon: 'lucide-library-big', tip: 'bookshelf' },
-  { id: 'search' as const, icon: 'lucide-book-search', tip: 'search' },
-  { id: 'vocabulary' as const, icon: 'lucide-wallet-cards', tip: '卡包' },
-  { id: 'general' as const, icon: 'lucide-settings-2', tip: 'general' },
-  { id: 'appearance' as const, icon: 'lucide-paintbrush-vertical', tip: 'tabAppearance' },
-  ...(canShowToc.value ? [
-    { id: 'toc' as const, icon: 'lucide-scroll-text', tip: '目录' },
-    { id: 'bookmark' as const, icon: 'lucide-map-pin-check', tip: '书签' },
-    { id: 'mark' as const, icon: 'lucide-paint-bucket', tip: '标注' },
-    { id: 'note' as const, icon: 'lucide-map-pin-pen', tip: '笔记' }
-  ] : [])
-])
-
-const previewStyle = computed(() => {
-  const theme = settings.value.theme === 'custom' ? settings.value.customTheme : PRESET_THEMES[settings.value.theme]
-  if (!theme) return {}
-  const { textSettings: t, paragraphSettings: p, layoutSettings: l, visualSettings: v, columnMode } = settings.value
-  const filters = [
-    v.brightness !== 1 && `brightness(${v.brightness})`,
-    v.contrast !== 1 && `contrast(${v.contrast})`,
-    v.sepia > 0 && `sepia(${v.sepia})`,
-    v.saturate !== 1 && `saturate(${v.saturate})`,
-    v.invert && 'invert(1) hue-rotate(180deg)'
-  ].filter(Boolean).join(' ')
-  const fontFamily = t.fontFamily === 'custom' && t.customFont.fontFamily ? `"${t.customFont.fontFamily}", sans-serif` : (t.fontFamily || 'inherit')
-  return {
-    color: theme.color,
-    backgroundColor: theme.bgImg ? 'transparent' : theme.bg,
-    backgroundImage: theme.bgImg ? `url("${theme.bgImg}")` : 'none',
-    backgroundSize: 'cover',
-    backgroundPosition: 'center',
-    fontFamily,
-    fontSize: `${t.fontSize}px`,
-    letterSpacing: `${t.letterSpacing}em`,
-    lineHeight: p.lineHeight,
-    filter: filters || 'none',
-    '--paragraph-spacing': p.paragraphSpacing,
-    '--text-indent': p.textIndent,
-    '--margin-h': `${l.marginHorizontal}px`,
-    '--margin-v': `${l.marginVertical}px`,
-    '--gap': `${l.gap}%`,
-    '--header-footer': `${l.headerFooterMargin}px`,
-    '--max-block': l.maxBlockSize > 0 ? `${l.maxBlockSize}px` : 'none',
-    '--column-count': columnMode === 'double' ? 2 : 1,
-  }
-})
+const previewStyle = computed(() => { const theme = settings.value.theme === 'custom' ? settings.value.customTheme : PRESET_THEMES[settings.value.theme]; if (!theme) return {}; const { textSettings: t, paragraphSettings: p, layoutSettings: l, visualSettings: v, columnMode } = settings.value, filters = [v.brightness !== 1 && `brightness(${v.brightness})`, v.contrast !== 1 && `contrast(${v.contrast})`, v.sepia > 0 && `sepia(${v.sepia})`, v.saturate !== 1 && `saturate(${v.saturate})`, v.invert && 'invert(1) hue-rotate(180deg)'].filter(Boolean).join(' '), fontFamily = t.fontFamily === 'custom' && t.customFont.fontFamily ? `"${t.customFont.fontFamily}", sans-serif` : (t.fontFamily || 'inherit'); return { color: theme.color, backgroundColor: theme.bgImg ? 'transparent' : theme.bg, backgroundImage: theme.bgImg ? `url("${theme.bgImg}")` : 'none', backgroundSize: 'cover', backgroundPosition: 'center', fontFamily, fontSize: `${t.fontSize}px`, letterSpacing: `${t.letterSpacing}em`, lineHeight: p.lineHeight, filter: filters || 'none', '--paragraph-spacing': p.paragraphSpacing, '--text-indent': p.textIndent, '--margin-h': `${l.marginHorizontal}px`, '--margin-v': `${l.marginVertical}px`, '--gap': `${l.gap}%`, '--header-footer': `${l.headerFooterMargin}px`, '--max-block': l.maxBlockSize > 0 ? `${l.maxBlockSize}px` : 'none', '--column-count': columnMode === 'double' ? 2 : 1 } })
 
 // ===== 核心方法 =====
-const save = async () => { emit('update:modelValue', settings.value); await props.onSave() }
-const debouncedSave = (() => { let timer: any; return () => (clearTimeout(timer), timer = setTimeout(save, 300)) })()
-const resetStyles = () => confirm(props.i18n.confirmReset || '确定要恢复默认设置吗？') && settingManager.resetStyles()
+const save = async () => (emit('update:modelValue', settings.value), await props.onSave())
+const debouncedSave = (() => { let t: any; return () => (clearTimeout(t), t = setTimeout(save, 300)) })()
+const resetStyles = () => confirm(props.i18n.confirmReset || '确定要恢复默认设置吗？') && (settingManager.resetStyles(), save())
 
 // ===== 业务逻辑 =====
-const handleRemoveBookmark = async (bookmark: any) => { 
-  showMessage('书签功能需要更新', 2000, 'info')
-  // TODO: 使用新的 foliate reader 书签API
-}
-const loadNotebooks = async () => !notebooks.value.length && fetchSyncPost('/api/notebook/lsNotebooks', {}).then(r => r?.code === 0 && (notebooks.value = r.data?.notebooks || []))
-const searchDoc = async () => docSearch.value.input.trim() && fetchSyncPost('/api/filetree/searchDocs', { k: docSearch.value.input.trim() }).then(r => (docSearch.value.results = r?.code === 0 && Array.isArray(r.data) ? r.data : [], docSearch.value.show = true))
-const selectDoc = (d: any) => (settings.value.parentDoc = { id: d.id, name: d.hPath || d.content || '无标题', path: d.path || '', notebook: d.box || '' }, docSearch.value = { input: '', results: [], show: false }, save())
-const setFont = (f?: FontFileInfo) => (settingManager.setFont(f, f ? debouncedSave : save))
-const handleReadOnline = async (book: any) => { 
-  try { 
-    const { openOnlineReaderTab } = await import('@/core/tabs')
-    await openOnlineReaderTab(plugin, book, () => settings.value)
-  } catch (e: any) { 
-    showMessage(`打开失败: ${e.message}`, 3000, 'error') 
-  } 
-}
-const openSourceMgr = () => { const d = new Dialog({title:'书源管理', content:'<div id="src-mgr"></div>', width:'800px', height:'600px'}); d.element.querySelector('.b3-dialog__scrim')?.remove(); const app = createApp(SourceMgr, {i18n: props.i18n}); app.use(MotionPlugin); app.mount(d.element.querySelector('#src-mgr')!); d.element.querySelector('.b3-dialog__close')?.addEventListener('click', () => { app.unmount(); d.destroy() }) }
+const { notebooks, load: loadNotebooks } = useNotebooks()
+const { state: docSearch, search: searchDoc, select: selectDocRaw } = useDocSearch()
+const selectDoc = (d: any) => selectDocRaw(d, (doc) => (settings.value.parentDoc = doc, save()))
+const setFont = (f?: FontFileInfo) => { settings.value.textSettings.fontFamily = f ? 'custom' : 'inherit'; if (f) settings.value.textSettings.customFont = { fontFamily: f.displayName, fontFile: f.name }; else settings.value.textSettings.customFont = { fontFamily: '', fontFile: '' }; f ? debouncedSave() : save() }
+const handleReadOnline = (book: any) => openTab({ app: (plugin as any).app, custom: { icon: 'iconBook', title: book.name || '在线阅读', data: { bookInfo: book }, id: `${plugin.name}custom_tab_online_reader` } })
+const openSourceMgr = () => createDialog('书源管理', 'src-mgr', SourceMgr, { i18n: props.i18n }, MotionPlugin)
 
 // ===== 生命周期 =====
-onMounted(async () => (settingManager.loadCustomFonts(), await bookshelfManager.init()))
+onMounted(() => (settingManager.loadCustomFonts(), bookshelfManager.init()))
 watch(() => [activeTab.value, isNotebookMode.value], ([tab, notebook]) => tab === 'general' && notebook && loadNotebooks())
 watch(() => props.modelValue, (val) => settings.value = val, { deep: true })
-
-// 监听 activeReader 变化，关闭书籍时切换到书架
-watch(() => canShowToc.value, (canShow) => {
-  if (!canShow && ['toc', 'bookmark', 'mark', 'note'].includes(activeTab.value)) {
-    activeTab.value = 'bookshelf'
-  }
-})
+watch(() => canShowToc.value, (show) => !show && ['toc', 'bookmark', 'mark', 'note'].includes(activeTab.value) && (activeTab.value = 'bookshelf'))
 
 // ===== 配置常量 =====
 const { interfaceItems, customThemeItems, appearanceGroups } = UI_CONFIG
+const linkFormatDesc = computed(() => `${props.i18n?.linkFormatDesc || '可用变量：书名 作者 章节 位置 链接 文本'}`)
+
 </script>
 
 <template>
@@ -193,7 +130,7 @@ const { interfaceItems, customThemeItems, appearanceGroups } = UI_CONFIG
                   </div>
                   <select v-model="settings.notebookId" class="b3-select" @change="save">
                     <option value="">{{ i18n.notSelected || '未选择' }}</option>
-                    <option v-for="nb in notebooks" :key="nb.id" :value="nb.id">
+                    <option v-for="nb in notebooks.value" :key="nb.id" :value="nb.id">
                       {{ nb.icon ? String.fromCodePoint(parseInt(nb.icon, 16)) + ' ' : '' }}{{ nb.name }}
                     </option>
                   </select>
@@ -201,7 +138,7 @@ const { interfaceItems, customThemeItems, appearanceGroups } = UI_CONFIG
               </Transition>
 
               <Transition name="expand">
-                <div v-if="isDocMode" class="sr-doc-search">
+                <div v-if="settings.annotationMode === 'document'" class="sr-doc-search">
                   <div class="sr-label">
                     <div class="sr-label-text">{{ i18n.parentDoc || '父文档' }}</div>
                     <div class="sr-label-desc">{{ i18n.parentDocDesc || '选择作为标注存储的父文档' }}</div>
@@ -210,15 +147,26 @@ const { interfaceItems, customThemeItems, appearanceGroups } = UI_CONFIG
                     <div class="sr-doc-name">{{ settings.parentDoc.name }}</div>
                     <div class="sr-doc-id">{{ settings.parentDoc.id }}</div>
                   </div>
-                  <input v-model="docSearch.input" class="b3-text-field" :placeholder="i18n.searchDocPlaceholder || '输入文档名搜索，按回车'" @keydown.enter="searchDoc">
+                  <input v-model="docSearch.value.input" class="b3-text-field" :placeholder="i18n.searchDocPlaceholder || '输入文档名搜索，按回车'" @keydown.enter="searchDoc">
                   <Transition name="expand">
-                    <div v-if="docSearch.show" class="sr-doc-results">
-                      <div v-if="!docSearch.results.length" class="sr-empty">{{ i18n.noResults || '未找到文档' }}</div>
-                      <div v-for="d in docSearch.results" :key="d.id" class="sr-doc-item" @click="selectDoc(d)">{{ d.hPath || d.content || '无标题' }}</div>
+                    <div v-if="docSearch.value.show" class="sr-doc-results">
+                      <div v-if="!docSearch.value.results.length" class="sr-empty">{{ i18n.noResults || '未找到文档' }}</div>
+                      <div v-for="d in docSearch.value.results" :key="d.id" class="sr-doc-item" @click="selectDoc(d)">{{ d.hPath || d.content || '无标题' }}</div>
                     </div>
                   </Transition>
                 </div>
               </Transition>
+            </div>
+
+            <div v-motion-pop-visible class="sr-group">
+              <h3 class="sr-title">{{ i18n.copySettings || '复制设置' }}</h3>
+              <div class="sr-item">
+                <div class="sr-label">
+                  <div class="sr-label-text">{{ i18n.linkFormat || '链接格式' }}</div>
+                  <div class="sr-label-desc">{{ linkFormatDesc }}</div>
+                </div>
+              </div>
+              <textarea v-model="settings.linkFormat" class="b3-text-field" rows="2" @input="debouncedSave" style="width:100%;resize:vertical;font-size:12px"/>
             </div>
           </div>
 
@@ -256,10 +204,7 @@ const { interfaceItems, customThemeItems, appearanceGroups } = UI_CONFIG
               <h3 class="sr-title">{{ i18n[group.title] }}</h3>
               
               <div v-for="item in group.items" :key="item.key" class="sr-item">
-                <div class="sr-label">
-                  <div class="sr-label-text">{{ i18n[item.key] }}</div>
-                </div>
-                
+                <div class="sr-label"><div class="sr-label-text">{{ i18n[item.key] }}</div></div>
                 <select v-if="item.type === 'select'" v-model="settings[group.title][item.key]" class="b3-select" @change="debouncedSave">
                   <option v-for="(opt, idx) in item.opts" :key="opt" :value="opt">{{ i18n[item.labels[idx]] }}</option>
                 </select>
@@ -275,7 +220,7 @@ const { interfaceItems, customThemeItems, appearanceGroups } = UI_CONFIG
                 <div class="sr-label">
                   <div class="sr-label-text">
                     {{ i18n.fontFamily }}
-                    <button class="b3-button b3-button--text" style="padding:0;margin-left:6px" @click="loadCustomFonts" :disabled="isLoadingFonts" :title="i18n.fontTip">
+                    <button class="b3-button b3-button--text" style="padding:0;margin-left:6px" @click="loadCustomFonts" :disabled="isLoadingFonts" :aria-label="i18n.fontTip">
                       <svg style="width:12px;height:12px"><use xlink:href="#iconRefresh"></use></svg>
                     </button>
                   </div>
@@ -309,6 +254,11 @@ const { interfaceItems, customThemeItems, appearanceGroups } = UI_CONFIG
             <BookSearch :i18n="i18n" @read="handleReadOnline" @openSettings="openSourceMgr" />
           </div>
 
+          <!-- Dictionary -->
+          <div v-else-if="activeTab === 'dictionary'" class="sr-section">
+            <DictMgr />
+          </div>
+
           <!-- TOC -->
           <div v-else-if="activeTab === 'toc'" class="sr-toc-container">
             <ReaderToc mode="toc" />
@@ -328,10 +278,10 @@ const { interfaceItems, customThemeItems, appearanceGroups } = UI_CONFIG
           <div v-else-if="activeTab === 'note'" class="sr-toc-container">
             <ReaderToc mode="note" />
           </div>
-
-          <!-- Vocabulary -->
-          <div v-else-if="activeTab === 'vocabulary'" class="sr-toc-container">
-            <ReaderToc mode="vocabulary" />
+          
+          <!-- Deck -->
+          <div v-else-if="activeTab === 'deck'" class="sr-toc-container">
+            <ReaderToc mode="deck" />
           </div>
         </div>
       </Transition>

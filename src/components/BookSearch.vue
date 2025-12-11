@@ -6,7 +6,7 @@
         <input v-model="keyword" class="b3-text-field" :placeholder="i18n.searchPlaceholder || '输入书名搜索'" @keyup.enter="search" :disabled="searching">
       </div>
       <div class="sr-source-select">
-        <button class="b3-button b3-button--text" @click="showSourceMenu = !showSourceMenu" :title="selectedSourceName">
+        <button class="b3-button b3-button--text b3-tooltips b3-tooltips__s" @click="showSourceMenu = !showSourceMenu" :aria-label="selectedSourceName">
           <svg><use xlink:href="#iconFilter"></use></svg>
         </button>
         <div v-show="showSourceMenu" class="sr-dropdown" @click="showSourceMenu = false">
@@ -14,7 +14,7 @@
           <div v-for="src in enabledSources" :key="src.bookSourceUrl" class="sr-dropdown-item" :class="{active: selectedSource === src.bookSourceUrl}" @click="selectedSource = src.bookSourceUrl">{{ src.bookSourceName }}</div>
         </div>
       </div>
-      <button class="sr-btn" @click="emit('openSettings')" :title="i18n.bookSourceManage || '书源管理'">
+      <button class="sr-btn b3-tooltips b3-tooltips__s" @click="emit('openSettings')" :aria-label="i18n.bookSourceManage || '书源管理'">
         <svg><use xlink:href="#iconSettings"></use></svg>
       </button>
     </div>

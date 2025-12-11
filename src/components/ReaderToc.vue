@@ -4,7 +4,7 @@
     <div class="sr-toolbar">
       <input v-model="keyword" :placeholder="placeholders[mode]" v-motion-fade>
       <div v-if="mode==='mark'" class="sr-select">
-        <button @click="showColorMenu=!showColorMenu" :title="filterColor||'全部'" v-motion-pop :delay="50">
+        <button class="b3-tooltips b3-tooltips__sw" @click="showColorMenu=!showColorMenu" :aria-label="filterColor||'全部'" v-motion-pop :delay="50">
           <svg><use xlink:href="#lucide-palette"/></svg>
         </button>
         <Transition name="menu">
@@ -16,10 +16,10 @@
           </div>
         </Transition>
       </div>
-      <button @click="isReverse=!isReverse" :title="isReverse?'倒序':'正序'" v-motion-pop :delay="100">
+      <button class="b3-tooltips b3-tooltips__sw" @click="isReverse=!isReverse" :aria-label="isReverse?'倒序':'正序'" v-motion-pop :delay="100">
         <svg><use :xlink:href="isReverse?'#lucide-arrow-up-1-0':'#lucide-arrow-down-0-1'"/></svg>
       </button>
-      <button @click="toggleScroll" :title="isAtTop?'底部':'顶部'" v-motion-pop :delay="150">
+      <button class="b3-tooltips b3-tooltips__sw" @click="toggleScroll" :aria-label="isAtTop?'底部':'顶部'" v-motion-pop :delay="150">
         <svg><use :xlink:href="isAtTop?'#lucide-panel-top-open':'#lucide-panel-top-close'"/></svg>
       </button>
     </div>
@@ -48,12 +48,12 @@
           <div v-else v-for="(item,i) in list" :key="item.id||i" v-motion-slide-visible-once-bottom :delay="i*30"
                class="sr-item" @click="goTo(item)">
             <div class="sr-item-content">
-              <div class="sr-text" :class="`sr-style-${item.style||'highlight'}`" :style="{['--mark-color']:colors[item.color]||'#ffeb3b'}">{{ item.text||'无内容' }}</div>
+              <div class="sr-text" :class="`sr-style-${item.style||'highlight'}`" :style="{['--mark-color']:colors[item.color]||'var(--b3-theme-primary)'}">{{ item.text||'无内容' }}</div>
               <div v-if="item.note" class="sr-note">{{ item.note }}</div>
             </div>
             <div class="sr-item-actions">
-              <button ref="editBtnRef" class="sr-action-btn" @click.stop="editMark(item,$event)" title="编辑"><svg><use xlink:href="#iconEdit"/></svg></button>
-              <button class="sr-action-btn" @click.stop="deleteMark(item)" title="删除"><svg><use xlink:href="#iconTrashcan"/></svg></button>
+              <button ref="editBtnRef" class="sr-action-btn b3-tooltips b3-tooltips__nw" @click.stop="editMark(item,$event)" :aria-label="i18n.edit || '编辑'"><svg><use xlink:href="#iconEdit"/></svg></button>
+              <button class="sr-action-btn b3-tooltips b3-tooltips__nw" @click.stop="deleteMark(item)" :aria-label="i18n.delete || '删除'"><svg><use xlink:href="#iconTrashcan"/></svg></button>
             </div>
           </div>
         </div>
@@ -64,23 +64,34 @@
           <div v-else v-for="(item,i) in list" :key="item.id||i" v-motion-slide-visible-once-bottom :delay="i*30"
                class="sr-item" @click="goTo(item)">
             <div class="sr-item-content">
-              <div class="sr-text" :class="`sr-style-${item.style||'outline'}`" :style="{['--mark-color']:colors[item.color]||'#42a5f5'}">{{ item.text||'无内容' }}</div>
+              <div class="sr-text" :class="`sr-style-${item.style||'outline'}`" :style="{['--mark-color']:colors[item.color]||'var(--b3-theme-primary)'}">{{ item.text||'无内容' }}</div>
               <div class="sr-note">{{ item.note }}</div>
             </div>
             <div class="sr-item-actions">
-              <button class="sr-action-btn" @click.stop="editMark(item,$event)" title="编辑"><svg><use xlink:href="#iconEdit"/></svg></button>
-              <button class="sr-action-btn" @click.stop="deleteMark(item)" title="删除"><svg><use xlink:href="#iconTrashcan"/></svg></button>
+              <button class="sr-action-btn" @click.stop="editMark(item,$event)" :aria-label="i18n.edit || '编辑'"><svg><use xlink:href="#iconEdit"/></svg></button>
+              <button class="sr-action-btn" @click.stop="deleteMark(item)" :aria-label="i18n.delete || '删除'"><svg><use xlink:href="#iconTrashcan"/></svg></button>
             </div>
           </div>
         </div>
         
         <!-- 卡包 -->
-        <div v-else-if="mode==='vocabulary'" key="vocabulary" class="sr-list">
+        <div v-else-if="mode==='deck'" key="deck" class="sr-list">
           <div v-if="!list.length" class="sr-empty">{{ emptyText }}</div>
-          <div v-else v-for="(item,i) in list" :key="item.id||i" v-motion-slide-visible-once-bottom :delay="i*30"
-               class="sr-item" @click="goTo(item)">
-            <div class="sr-word">{{ item.word||'无单词' }}</div>
-            <div v-if="item.translation" class="sr-trans">{{ item.translation }}</div>
+          <div v-else v-for="(item,i) in list" :key="item.id||i" v-motion-slide-visible-once-bottom :delay="i*30" class="sr-item deck-card">
+            <div class="sr-item-content" @click="toggleDeckExpand(item.id)">
+              <div class="sr-word">{{ item.word }}</div>
+              <div class="deck-meta">
+                <span class="deck-dict">{{ getDictName(item.dictId) }}</span>
+                <span class="deck-time">{{ formatTime(item.timestamp) }}</span>
+              </div>
+            </div>
+            <div class="sr-item-actions">
+              <button class="sr-action-btn b3-tooltips b3-tooltips__nw" @click.stop="goToDeckLocation(item)" :aria-label="i18n.locate || '定位'"><svg><use xlink:href="#iconFocus"/></svg></button>
+              <button class="sr-action-btn b3-tooltips b3-tooltips__nw" @click.stop="removeDeckCard(item.id)" :aria-label="i18n.delete || '删除'"><svg><use xlink:href="#iconTrashcan"/></svg></button>
+            </div>
+            <Transition name="expand">
+              <div v-if="expandedDeck===item.id" class="deck-content" v-html="renderDictCard(item.data)"></div>
+            </Transition>
           </div>
         </div>
       </Transition>
@@ -90,10 +101,12 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
-import { useReaderState } from '@/composables/useReaderState'
-import { showMessage } from 'siyuan'
+import { useReaderState } from '@/core/foliate'
+import { showMessage, Dialog } from 'siyuan'
+import { loadDeckCards, getDeckCards, removeFromDeck, renderDictCard, getDictName } from '@/core/dictionary'
+import { COLORS } from '@/core/foliate/mark'
 
-const props = defineProps<{ mode: 'toc'|'bookmark'|'mark'|'note'|'vocabulary' }>()
+const props = defineProps<{ mode: 'toc'|'bookmark'|'mark'|'note'|'deck' }>()
 const { activeView, activeReaderInstance, goToLocation } = useReaderState()
 
 // ===== 状态 =====
@@ -104,11 +117,13 @@ const filterColor = ref('')
 const showColorMenu = ref(false)
 const isReverse = ref(false)
 const isAtTop = ref(true)
-const refreshKey = ref(0) // 强制刷新
+const refreshKey = ref(0)
+const deckCards = ref<any[]>([])
+const expandedDeck = ref<string|null>(null)
 
 // ===== 常量 =====
-const colors={red:'#ef5350',orange:'#ff9800',yellow:'#ffeb3b',green:'#66bb6a',pink:'#ec407a',blue:'#42a5f5',purple:'#ab47bc'}
-const placeholders={toc:'搜索目录...',bookmark:'搜索书签...',mark:'搜索标注...',note:'搜索笔记...',vocabulary:'搜索卡包...'}
+const colors=Object.fromEntries(COLORS.map(c=>[c.color,c.bg]))
+const placeholders={toc:'搜索目录...',bookmark:'搜索书签...',mark:'搜索标注...',note:'搜索笔记...',deck:'搜索卡包...'}
 
 // ===== Computed =====
 const colorMenu=computed(()=>[
@@ -117,26 +132,22 @@ const colorMenu=computed(()=>[
 ])
 
 const data=computed(()=>{
-  refreshKey.value
-  const reader=activeReaderInstance.value
-  if(!reader?.marks)return{bookmarks:[],marks:[],notes:[],vocabulary:[]}
+  refreshKey.value  // 依赖 refreshKey
+  const marks = activeReaderInstance.value?.marks || (activeView.value as any)?.marks
+  if(!marks)return{bookmarks:[],marks:[],notes:[],deck:[]}
   return{
-    bookmarks:reader.marks.getBookmarks(),
-    marks:reader.marks.getAnnotations(filterColor.value as any),
-    notes:reader.marks.getNotes(),
-    vocabulary:reader.marks.getVocabulary()
+    bookmarks:marks.getBookmarks(),
+    marks:marks.getAnnotations(filterColor.value as any),
+    notes:marks.getNotes(),
+    deck:deckCards.value  // 卡包也依赖 refreshKey
   }
 })
 
 const list=computed(()=>{
   const kw=keyword.value.toLowerCase()
-  const filterFn=(item:any)=>!kw||(item.title||item.text||item.note||item.translation||'').toLowerCase().includes(kw)
-  const items={
-    bookmark:data.value.bookmarks,
-    mark:data.value.marks,
-    note:data.value.notes,
-    vocabulary:data.value.vocabulary
-  }[props.mode]||[]
+  const filterFn=(item:any)=>!kw||(item.title||item.text||item.note||item.translation||item.word||'').toLowerCase().includes(kw)
+  const modeMap:{[key:string]:string}={bookmark:'bookmarks',mark:'marks',note:'notes',deck:'deck',toc:'toc'}
+  const items=data.value[modeMap[props.mode]]||[]
   return isReverse.value?[...items.filter(filterFn)].reverse():items.filter(filterFn)
 })
 
@@ -167,9 +178,11 @@ const cleanupToc=()=>{
   tocView=null
 }
 
-// ===== 书签按钮（foliate-js 原生 + Vue3 优化）=====
+// ===== 书签按钮 =====
 const addBookmarkButtons=()=>{
-  if(!tocRef.value||!activeReaderInstance.value)return
+  if(!tocRef.value)return
+  const marks=activeReaderInstance.value?.marks||(activeView.value as any)?.marks
+  if(!marks)return
   const bookmarks=data.value.bookmarks
   tocRef.value.querySelectorAll('a[href]').forEach((link:Element)=>{
     const parent=link.parentElement
@@ -189,21 +202,20 @@ const addBookmarkButtons=()=>{
 }
 
 const toggleBookmark=async(btn:HTMLButtonElement,href:string,label:string)=>{
-  const reader=activeReaderInstance.value
   const view=activeView.value
-  if(!reader?.marks||!view)return showMessage('书签功能未初始化',2000,'error')
+  const marks=activeReaderInstance.value?.marks||(view as any)?.marks
+  if(!marks||!view)return showMessage('书签功能未初始化',2000,'error')
   try{
     btn.style.transform='translateY(-50%) scale(1.3)'
     await view.goTo(href)
-    await new Promise(resolve=>setTimeout(resolve,50))
-    const added=reader.marks.toggleBookmark()
+    await new Promise(resolve=>setTimeout(resolve,200))
+    const added=marks.toggleBookmark(undefined,undefined,label)
     btn.classList.toggle('has-bookmark',added)
     btn.style.opacity=added?'1':'0'
     btn.setAttribute('aria-label',added?'移除书签':'添加书签')
     btn.style.transform=`translateY(-50%) scale(${added?1.2:0.8})`
     setTimeout(()=>btn.style.transform='translateY(-50%) scale(1)',150)
-    showMessage(added?'书签已添加':'书签已删除',1500,'info')
-    refreshKey.value++
+    showMessage(added?'已添加':'已删除',1500,'info')
   }catch(e:any){
     btn.style.transform='translateY(-50%) scale(1)'
     showMessage(e.message||'操作失败',2000,'error')
@@ -211,7 +223,14 @@ const toggleBookmark=async(btn:HTMLButtonElement,href:string,label:string)=>{
 }
 
 // ===== 操作 =====
-const removeBookmark=(item:any)=>{activeReaderInstance.value?.marks?.deleteBookmark(item.cfi);showMessage('书签已删除',1500,'info');refreshKey.value++}
+const removeBookmark=(item:any)=>{
+  const marks=activeReaderInstance.value?.marks||(activeView.value as any)?.marks
+  if(!marks)return showMessage('书签功能未初始化',2000,'error')
+  const key=item.cfi||`section-${item.section}`
+  marks.deleteBookmark(key)
+  showMessage('已删除',1500,'info')
+  refreshKey.value++
+}
 
 const editMark=(item:any,event:MouseEvent)=>{
   const panel=(event.currentTarget as HTMLElement).closest('.sr-item') as HTMLElement
@@ -221,11 +240,37 @@ const editMark=(item:any,event:MouseEvent)=>{
 }
 
 const deleteMark=async(item:any)=>{
-  try{await activeReaderInstance.value?.marks?.deleteMark(item.cfi);showMessage('已删除',1500,'info');refreshKey.value++}
-  catch{showMessage('删除失败',3000,'error')}
+  const marks=activeReaderInstance.value?.marks||(activeView.value as any)?.marks
+  if(!marks)return showMessage('标记系统未初始化',3000,'error')
+  try{
+    const success=await marks.deleteMark(item.cfi||`section-${item.section}`)
+    if(success){
+      showMessage('已删除',1500,'info')
+      refreshKey.value++
+    }else showMessage('删除失败',3000,'error')
+  }catch{showMessage('删除失败',3000,'error')}
 }
 
-const goTo=(item:any)=>item.cfi?activeReaderInstance.value?.marks?.goTo?.(item)||goToLocation(item.cfi):goToLocation(item.id)
+const goTo=(item:any)=>{
+  const marks=activeReaderInstance.value?.marks||(activeView.value as any)?.marks
+  if(marks)marks.goTo(item)
+  else if(item.cfi)goToLocation(item.cfi)
+  else if(item.section!==undefined)activeView.value?.goTo(item.section)
+}
+
+// ===== 卡包操作 =====
+const formatTime=(ts:number)=>new Date(ts).toLocaleDateString('zh-CN',{month:'2-digit',day:'2-digit'})
+const toggleDeckExpand=(id:string)=>expandedDeck.value=expandedDeck.value===id?null:id
+const goToDeckLocation=(item:any)=>{
+  if(!item.cfi&&item.section===undefined)return showMessage('未保存位置信息',2000,'info')
+  if(item.cfi)goToLocation(item.cfi)
+  else activeView.value?.goTo(item.section)
+}
+const removeDeckCard=async(id:string)=>{
+  await removeFromDeck(id)
+  // removeFromDeck 触发 deck-updated → loadDeckAnnotations → marks-updated → refresh
+  showMessage('已删除',1500,'info')
+}
 
 const toggleScroll=()=>{
   if(!contentRef.value)return
@@ -236,20 +281,30 @@ const toggleScroll=()=>{
 const onScroll=(e:Event)=>isAtTop.value=(e.target as HTMLElement).scrollTop<50
 
 // ===== 生命周期 =====
-const refresh=()=>refreshKey.value++
+const refresh=async()=>{
+  refreshKey.value++
+  // 如果是卡包模式，重新加载卡包数据
+  if(props.mode==='deck')deckCards.value=await loadDeckCards()
+}
 
 watch(()=>activeView.value?.book,book=>book?.toc&&props.mode==='toc'?requestAnimationFrame(initToc):cleanupToc(),{immediate:true})
-watch(()=>props.mode,()=>props.mode==='toc'&&requestAnimationFrame(initToc))
+watch(()=>props.mode,async()=>{
+  if(props.mode==='toc')requestAnimationFrame(initToc)
+  else if(props.mode==='deck')deckCards.value=await loadDeckCards()
+})
 
-onMounted(()=>window.addEventListener('sireader:marks-updated',refresh))
+onMounted(async()=>{
+  window.addEventListener('sireader:marks-updated',refresh)
+  if(props.mode==='deck')deckCards.value=await loadDeckCards()
+})
 onUnmounted(()=>{cleanupToc();window.removeEventListener('sireader:marks-updated',refresh)})
 </script>
 
 <style scoped lang="scss">
 .sr-toc{display:flex;flex-direction:column;height:100%;overflow:hidden}
 .sr-toolbar{flex-shrink:0;display:flex;gap:4px;padding:8px;background:var(--b3-theme-background);border-bottom:1px solid var(--b3-border-color);
-  input{flex:1;min-width:0;height:28px;padding:0 10px;border:none;border-bottom:1px solid var(--b3-border-color);background:transparent;font-size:12px;outline:none;color:var(--b3-theme-on-background);transition:border-color .2s;&:focus{border-color:var(--b3-theme-primary)}&::placeholder{opacity:.4}}
-  button{width:28px;height:28px;flex-shrink:0;border:none;background:none;cursor:pointer;transition:all .15s;svg{width:16px;height:16px}&:hover{color:var(--b3-theme-primary);transform:scale(1.08)}&:active{transform:scale(.92)}}}
+  input{flex:1;min-width:0;height:28px;padding:0 10px;border:none;border-bottom:1px solid var(--b3-border-color);background:transparent;font-size:12px;outline:none;color:var(--b3-theme-on-background);transition:border-color .2s;&:focus{border-color:var(--b3-theme-primary)}&::placeholder{color:var(--b3-theme-on-surface-variant);opacity:.6}}
+  button{width:28px;height:28px;flex-shrink:0;border:none;background:none;cursor:pointer;transition:all .15s;color:var(--b3-theme-on-surface);svg{width:16px;height:16px}&:hover{color:var(--b3-theme-primary);transform:scale(1.08)}&:active{transform:scale(.92)}}}
 .sr-select{position:relative;flex-shrink:0}
 .sr-menu{position:absolute;top:calc(100% + 4px);right:0;background:var(--b3-theme-surface);border-radius:6px;box-shadow:0 4px 12px #0003;min-width:100px;padding:4px;z-index:100}
 .sr-menu-item{padding:6px 12px;border-radius:4px;cursor:pointer;font-size:12px;transition:background .15s;display:flex;align-items:center;gap:8px;&:hover{background:var(--b3-list-hover)}&.active{background:var(--b3-theme-primary-lightest);color:var(--b3-theme-primary);font-weight:600}}
@@ -293,6 +348,24 @@ onUnmounted(()=>{cleanupToc();window.removeEventListener('sireader:marks-updated
 .sr-action-btn{width:28px;height:28px;padding:0;border:none;background:transparent;border-radius:6px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;svg{width:14px;height:14px}&:hover{background:var(--b3-list-hover);transform:scale(1.1)}&:active{transform:scale(.95)}}
 .sr-word{font-size:16px;font-weight:600;color:var(--b3-theme-primary)}
 .sr-trans{font-size:13px;color:var(--b3-theme-on-surface-variant)}
+.deck-card{flex-direction:column;align-items:stretch;
+  .sr-item-content{flex:1;cursor:pointer}
+  .sr-action-btn{opacity:0;transition:opacity .2s}
+  &:hover{.sr-action-btn{opacity:1};.sr-item-actions{opacity:1}}}
+.deck-meta{display:flex;align-items:center;gap:8px;margin-top:4px;font-size:12px;opacity:.7}
+.deck-dict{padding:2px 8px;background:var(--b3-theme-primary-lightest);color:var(--b3-theme-primary);border-radius:4px}
+.deck-content{margin-top:12px;max-height:500px;overflow-y:auto;
+  :deep(.dict-card){padding:16px;box-shadow:none}
+  :deep(.dict-word){font-size:22px}
+  :deep(.dict-card-header){margin-bottom:12px}
+  :deep(.dict-badges){margin-bottom:16px}
+  :deep(.dict-meaning){padding:10px}
+  :deep(.dict-def){padding:10px}
+  :deep(.dict-example){padding:10px}
+  :deep(.b3-button){display:none}}
+.expand-enter-active,.expand-leave-active{transition:all .3s ease}
+.expand-enter-from,.expand-leave-to{max-height:0;opacity:0;margin-top:0;padding-top:0;padding-bottom:0}
+.expand-enter-to,.expand-leave-from{max-height:400px;opacity:1}
 .sr-remove-btn{position:absolute;right:12px;top:50%;transform:translateY(-50%);width:26px;height:26px;padding:0;margin:0;border:none!important;background:transparent!important;outline:none!important;box-shadow:none!important;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;opacity:0;transition:all .3s cubic-bezier(.4,0,.2,1);border-radius:50%;
   svg{pointer-events:none;filter:drop-shadow(0 1px 2px rgba(0,0,0,.1));color:var(--b3-theme-error)}
   &:hover{opacity:1!important;transform:translateY(-50%) scale(1.2) rotate(-10deg);background:rgba(244,67,54,.15)!important}

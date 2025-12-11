@@ -1,6 +1,7 @@
 import { Plugin } from 'siyuan'
 import { createApp } from 'vue'
 import App from './App.vue'
+import { initDictModule } from '@/core/dictionary'
 
 let plugin: Plugin | null = null
 export function usePlugin(pluginProps?: Plugin): Plugin {
@@ -16,6 +17,7 @@ let cleanupCallbacks: (() => void)[] = []
 export function init(plugin: Plugin) {
   usePlugin(plugin)
   pluginInstance = plugin
+  initDictModule(plugin)
 
   const div = document.createElement('div')
   div.classList.toggle('plugin-sample-vite-vue-app')

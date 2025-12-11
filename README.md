@@ -36,28 +36,65 @@ Drag EPUB files into SiYuan documents to create links, click links to open books
 
 ---
 
-## 📦 What's New in v0.3.0 (2025.11.29)
-#### ✨ New Features
-- **🎯 TOC Pinning** - Pin TOC panel to automatically adjust reading area width, avoiding content overlap
-- **📍 TOC Position Switch** - Real-time left/right TOC position switching, takes effect immediately without refresh
-- **📄 Single/Double Page Display** - Enhanced display mode supporting single/double page view switching for flexible reading
-- **⚙️ Document Binding Settings** - New settings in TOC panel for rebinding current book to SiYuan documents
-- **🔍 Smart Document Search** - Document search in settings interface, quickly locate target documents with keywords
-- **🔤 Text Customization** - Font selection (default/serif/sans-serif/Microsoft YaHei/SimSun/KaiTi)*, font size (12-32px), letter spacing control  
-  *Note: Font effects may not work on all systems
-- **📏 Paragraph Layout** - Line height adjustment (1.0-3.0x), paragraph spacing (0-2em), text indent control (0-2em)
-- **📋 Page Layout Settings** - Adjustable horizontal margin (0-100px), vertical margin (0-80px), continuous scroll toggle, one-click reset
+## 🚀 What's New in v0.5.0 (2025.12.12)
 
-#### 🛠️ Architecture Refactoring
-- **📋 Settings Panel Redesign** - Redesigned settings interface divided into Interface, Appearance, and Annotation modules
-- **⚡ Reactive Update System** - Unified reactive update logic for all settings, changes take effect immediately
-- **🎨 Style Application Optimization** - Fixed theme style regression after page turning, ensuring persistent styling
+### ✨ Core Features
+- **📚 Reading Engine Upgrade** - Completely replaced with foliate-js, supports EPUB, MOBI, PDF, TXT, online novels
+- **⌨️ Keyboard Navigation** - Support arrow keys, PageUp/Down, spacebar for page turning
+- **🎹 Custom Shortcuts** - Support SiYuan custom shortcuts (prev page, next page, toggle bookmark)
+- **🔗 Smart Link Navigation** - Support `sireader://` protocol, click links to jump to specific positions, avoid duplicate tabs
+- **📦 Card Deck** - Support vocabulary card deck management for learning and review
+- **📖 Dictionary System** - Support StarDict/MDict offline dictionaries and online dictionaries, select text to lookup
+- **🌐 AI Translation** - Integrated SiYuan AI translation and lookup features
 
-#### 🐛 Bug Fixes
-- **✅ Fixed** - Theme reverting to old styles after page turning due to caching issues
-- **✅ Fixed** - Settings updates not responding promptly
-- **✅ Fixed** - Content area layout misalignment when TOC is pinned
-- **✅ Removed** - Deprecated page turning method settings to simplify UI
+### 📚 Bookshelf & Search
+- **📖 Local Import** - Support importing local EPUB/MOBI/PDF/TXT files to bookshelf
+- **🔍 Smart Search** - Search by title, author, multiple sorting options (time/title/author/update)
+- **📋 Multiple Views** - Support grid, list, compact display modes
+- **🌐 Book Source Search** - Support concurrent multi-source search, streaming results, one-click add to bookshelf
+- **🔄 Update Check** - One-click check updates for all online books
+- **📖 Metadata Parsing** - Auto parse EPUB metadata (title, author, description, chapters, cover)
+
+### 🎨 Reading & Annotation
+- **📑 TOC Navigation** - Use foliate-js native TOC, support search and smart positioning
+- **📌 Bookmark Management** - Add, delete, jump to bookmarks
+- **🌈 7-Color Annotation** - Red🔴Orange🟠Yellow🟡Green🟢Pink🩷Blue🔵Purple🟣, support adding notes
+- **🎨 4 Styles** - Highlight, underline, outline, squiggly, freely combine
+- **🔍 Color Filter** (Coming Soon) - Filter annotations by color, batch management
+- **💾 Persistence** - Independent annotation storage, precise positioning with CFI
+
+### ⚙️ Interface & Settings
+- **⚙️ Settings Panel** - Brand new design, clear categories: General, Appearance, Dictionary
+- **📋 Sidebar** - Optimized button order: Bookshelf→Search→Cards→TOC→Bookmarks→Annotations→Notes→General→Style→Dictionary
+- **🎨 Theme System** - Unified SiYuan theme colors, perfect integration
+- **🔤 Appearance Settings** - Font, size, spacing, line height, paragraph spacing, text indent fully adjustable
+- **📏 Layout Settings** - Horizontal/vertical margins, column gap, header/footer height fine control
+- **🌈 Visual Effects** - Brightness, contrast, sepia, saturation, invert filters
+- **📖 Reading Modes** - Single/double page, slide/scroll pagination, TOC left/right switch
+
+### 🔗 Links & Copy
+- **📋 Formatted Links** - Support custom templates, default uses SiYuan callout format
+- **🎯 Precise Positioning** - Use CFI for precise book position
+- **📖 Chapter Recognition** - Auto recognize current chapter, generate links with chapter info
+- **🔗 Smart Navigation** - Click links to auto detect open books, jump directly
+
+### ⚡ Performance & Optimization
+- **📦 Architecture Optimization** - Business logic moved to composables, cleaner components
+- **🔄 Reactive** - Settings changes take effect immediately, no refresh needed
+- **💾 Smart Caching** - Cache book info, reduce redundant loading
+- **🎯 Functional Programming** - Use reduce/map/filter to simplify code
+- **🔒 Type Safety** - Complete TypeScript type definitions
+
+### 🐛 Bug Fixes
+- **✅ Font Settings** - Fixed font not working (use full URL path)
+- **✅ Theme Application** - Fixed theme not applying to entire tab
+- **✅ Reactive Updates** - Fixed reading interface not responding to settings updates
+- **✅ Chapter Retrieval** - Fixed chapter info not retrieved correctly
+- **✅ Author Formatting** - Support string/object/array formats
+- **✅ Link Encoding** - Fixed Chinese link encoding issues
+- **✅ Internationalization** - Fixed tooltip showing English text
+- **✅ Cover Parsing** - Fixed EPUB cover parsing failure causing infinite retries, auto fallback to text cover
+- **✅ Shortcut Conflicts** - Fixed shortcuts working during editing, only respond when reading
 
 ---
 
