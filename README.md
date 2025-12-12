@@ -36,6 +36,18 @@ Drag EPUB files into SiYuan documents to create links, click links to open books
 
 ---
 
+## 🚀 Latest Updates
+
+### v0.5.1 (2025.12.12)
+
+#### 🐛 Bug Fixes
+- **✅ Fixed online build issues** - Changed to local build to avoid build environment differences
+
+#### ⏸️ Feature Adjustments
+- **📊 Paused reading stats** - Temporarily disabled bottom-right reading statistics
+
+---
+
 ## 🚀 What's New in v0.5.0 (2025.12.12)
 
 ### ✨ Core Features

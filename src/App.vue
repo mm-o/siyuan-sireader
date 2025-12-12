@@ -291,7 +291,9 @@ plugin.addDock({
 })
 
 plugin.addTopBar({ icon: `<svg><use xlink:href="#${iconId}"/></svg>`, title: '思阅', callback: openSetting })
-useStats(plugin).init()
+
+// 暂时停用底部右下角的阅读统计功能
+// useStats(plugin).init()
 
 onMounted(async () => {
   await bookSourceManager.loadSources()

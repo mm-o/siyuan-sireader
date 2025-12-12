@@ -261,27 +261,27 @@ const linkFormatDesc = computed(() => `${props.i18n?.linkFormatDesc || '可用�
 
           <!-- TOC -->
           <div v-else-if="activeTab === 'toc'" class="sr-toc-container">
-            <ReaderToc mode="toc" />
+            <ReaderToc mode="toc" :i18n="props.i18n" />
           </div>
 
           <!-- Bookmark -->
           <div v-else-if="activeTab === 'bookmark'" class="sr-toc-container">
-            <ReaderToc mode="bookmark" />
+            <ReaderToc mode="bookmark" :i18n="props.i18n" />
           </div>
 
           <!-- Mark -->
           <div v-else-if="activeTab === 'mark'" class="sr-toc-container">
-            <ReaderToc mode="mark" />
+            <ReaderToc mode="mark" :i18n="props.i18n" />
           </div>
 
           <!-- Note -->
           <div v-else-if="activeTab === 'note'" class="sr-toc-container">
-            <ReaderToc mode="note" />
+            <ReaderToc mode="note" :i18n="props.i18n" />
           </div>
           
           <!-- Deck -->
           <div v-else-if="activeTab === 'deck'" class="sr-toc-container">
-            <ReaderToc mode="deck" />
+            <ReaderToc mode="deck" :i18n="props.i18n" />
           </div>
         </div>
       </Transition>

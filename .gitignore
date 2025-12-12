@@ -2,7 +2,7 @@
 # .vscode
 .DS_Store
 pnpm-lock.yaml
-package.zip
+# package.zip  # 不再忽略，需要提交到 git 用于自动发版
 node_modules
 dev
 dist

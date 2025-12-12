@@ -52,8 +52,8 @@
               <div v-if="item.note" class="sr-note">{{ item.note }}</div>
             </div>
             <div class="sr-item-actions">
-              <button ref="editBtnRef" class="sr-action-btn b3-tooltips b3-tooltips__nw" @click.stop="editMark(item,$event)" :aria-label="i18n.edit || '编辑'"><svg><use xlink:href="#iconEdit"/></svg></button>
-              <button class="sr-action-btn b3-tooltips b3-tooltips__nw" @click.stop="deleteMark(item)" :aria-label="i18n.delete || '删除'"><svg><use xlink:href="#iconTrashcan"/></svg></button>
+              <button class="sr-action-btn b3-tooltips b3-tooltips__nw" @click.stop="editMark(item,$event)" :aria-label="props.i18n?.edit||'编辑'"><svg><use xlink:href="#iconEdit"/></svg></button>
+              <button class="sr-action-btn b3-tooltips b3-tooltips__nw" @click.stop="deleteMark(item)" :aria-label="props.i18n?.delete||'删除'"><svg><use xlink:href="#iconTrashcan"/></svg></button>
             </div>
           </div>
         </div>
@@ -68,8 +68,8 @@
               <div class="sr-note">{{ item.note }}</div>
             </div>
             <div class="sr-item-actions">
-              <button class="sr-action-btn" @click.stop="editMark(item,$event)" :aria-label="i18n.edit || '编辑'"><svg><use xlink:href="#iconEdit"/></svg></button>
-              <button class="sr-action-btn" @click.stop="deleteMark(item)" :aria-label="i18n.delete || '删除'"><svg><use xlink:href="#iconTrashcan"/></svg></button>
+              <button class="sr-action-btn" @click.stop="editMark(item,$event)" :aria-label="props.i18n?.edit||'编辑'"><svg><use xlink:href="#iconEdit"/></svg></button>
+              <button class="sr-action-btn" @click.stop="deleteMark(item)" :aria-label="props.i18n?.delete||'删除'"><svg><use xlink:href="#iconTrashcan"/></svg></button>
             </div>
           </div>
         </div>
@@ -86,8 +86,8 @@
               </div>
             </div>
             <div class="sr-item-actions">
-              <button class="sr-action-btn b3-tooltips b3-tooltips__nw" @click.stop="goToDeckLocation(item)" :aria-label="i18n.locate || '定位'"><svg><use xlink:href="#iconFocus"/></svg></button>
-              <button class="sr-action-btn b3-tooltips b3-tooltips__nw" @click.stop="removeDeckCard(item.id)" :aria-label="i18n.delete || '删除'"><svg><use xlink:href="#iconTrashcan"/></svg></button>
+              <button class="sr-action-btn b3-tooltips b3-tooltips__nw" @click.stop="goToDeckLocation(item)" :aria-label="props.i18n?.locate||'定位'"><svg><use xlink:href="#iconFocus"/></svg></button>
+              <button class="sr-action-btn b3-tooltips b3-tooltips__nw" @click.stop="removeDeckCard(item.id)" :aria-label="props.i18n?.delete||'删除'"><svg><use xlink:href="#iconTrashcan"/></svg></button>
             </div>
             <Transition name="expand">
               <div v-if="expandedDeck===item.id" class="deck-content" v-html="renderDictCard(item.data)"></div>
@@ -106,7 +106,7 @@ import { showMessage, Dialog } from 'siyuan'
 import { loadDeckCards, getDeckCards, removeFromDeck, renderDictCard, getDictName } from '@/core/dictionary'
 import { COLORS } from '@/core/foliate/mark'
 
-const props = defineProps<{ mode: 'toc'|'bookmark'|'mark'|'note'|'deck' }>()
+const props = withDefaults(defineProps<{ mode: 'toc'|'bookmark'|'mark'|'note'|'deck'; i18n?: any }>(), { i18n: () => ({}) })
 const { activeView, activeReaderInstance, goToLocation } = useReaderState()
 
 // ===== 状态 =====
@@ -131,24 +131,23 @@ const colorMenu=computed(()=>[
   ...Object.entries(colors).map(([k,v])=>({label:k,value:k,color:v,active:filterColor.value===k}))
 ])
 
+const marks=computed(()=>activeReaderInstance.value?.marks||(activeView.value as any)?.marks)
 const data=computed(()=>{
-  refreshKey.value  // 依赖 refreshKey
-  const marks = activeReaderInstance.value?.marks || (activeView.value as any)?.marks
-  if(!marks)return{bookmarks:[],marks:[],notes:[],deck:[]}
+  refreshKey.value
+  if(!marks.value)return{bookmarks:[],marks:[],notes:[],deck:[]}
   return{
-    bookmarks:marks.getBookmarks(),
-    marks:marks.getAnnotations(filterColor.value as any),
-    notes:marks.getNotes(),
-    deck:deckCards.value  // 卡包也依赖 refreshKey
+    bookmarks:marks.value.getBookmarks(),
+    marks:marks.value.getAnnotations(filterColor.value as any),
+    notes:marks.value.getNotes(),
+    deck:deckCards.value
   }
 })
 
 const list=computed(()=>{
   const kw=keyword.value.toLowerCase()
-  const filterFn=(item:any)=>!kw||(item.title||item.text||item.note||item.translation||item.word||'').toLowerCase().includes(kw)
-  const modeMap:{[key:string]:string}={bookmark:'bookmarks',mark:'marks',note:'notes',deck:'deck',toc:'toc'}
-  const items=data.value[modeMap[props.mode]]||[]
-  return isReverse.value?[...items.filter(filterFn)].reverse():items.filter(filterFn)
+  const modeMap={bookmark:'bookmarks',mark:'marks',note:'notes',deck:'deck'}
+  const items=(data.value[modeMap[props.mode]]||[]).filter((item:any)=>!kw||(item.title||item.text||item.note||item.word||'').toLowerCase().includes(kw))
+  return isReverse.value?[...items].reverse():items
 })
 
 const emptyText=computed(()=>keyword.value?`未找到${placeholders[props.mode].replace(/搜索|\.\.\./g,'')}`:`暂无${placeholders[props.mode].replace(/搜索|\.\.\./g,'')}`)
@@ -180,14 +179,12 @@ const cleanupToc=()=>{
 
 // ===== 书签按钮 =====
 const addBookmarkButtons=()=>{
-  if(!tocRef.value)return
-  const marks=activeReaderInstance.value?.marks||(activeView.value as any)?.marks
-  if(!marks)return
+  if(!tocRef.value||!marks.value)return
   const bookmarks=data.value.bookmarks
   tocRef.value.querySelectorAll('a[href]').forEach((link:Element)=>{
     const parent=link.parentElement
     if(!parent||parent.querySelector('.toc-bookmark-btn'))return
-    const href=link.getAttribute('href')||''
+    const href=link.getAttribute('href')
     if(!href)return
     const label=link.textContent?.trim()||''
     const hasBookmark=bookmarks.some((b:any)=>b.title===label)
@@ -202,14 +199,12 @@ const addBookmarkButtons=()=>{
 }
 
 const toggleBookmark=async(btn:HTMLButtonElement,href:string,label:string)=>{
-  const view=activeView.value
-  const marks=activeReaderInstance.value?.marks||(view as any)?.marks
-  if(!marks||!view)return showMessage('书签功能未初始化',2000,'error')
+  if(!marks.value||!activeView.value)return showMessage('书签功能未初始化',2000,'error')
   try{
     btn.style.transform='translateY(-50%) scale(1.3)'
-    await view.goTo(href)
+    await activeView.value.goTo(href)
     await new Promise(resolve=>setTimeout(resolve,200))
-    const added=marks.toggleBookmark(undefined,undefined,label)
+    const added=marks.value.toggleBookmark(undefined,undefined,label)
     btn.classList.toggle('has-bookmark',added)
     btn.style.opacity=added?'1':'0'
     btn.setAttribute('aria-label',added?'移除书签':'添加书签')
@@ -224,27 +219,21 @@ const toggleBookmark=async(btn:HTMLButtonElement,href:string,label:string)=>{
 
 // ===== 操作 =====
 const removeBookmark=(item:any)=>{
-  const marks=activeReaderInstance.value?.marks||(activeView.value as any)?.marks
-  if(!marks)return showMessage('书签功能未初始化',2000,'error')
-  const key=item.cfi||`section-${item.section}`
-  marks.deleteBookmark(key)
+  if(!marks.value)return showMessage('书签功能未初始化',2000,'error')
+  marks.value.deleteBookmark(item.cfi||`section-${item.section}`)
   showMessage('已删除',1500,'info')
   refreshKey.value++
 }
 
 const editMark=(item:any,event:MouseEvent)=>{
-  const panel=(event.currentTarget as HTMLElement).closest('.sr-item') as HTMLElement
-  if(!panel)return
-  const rect=panel.getBoundingClientRect()
-  window.dispatchEvent(new CustomEvent('sireader:edit-mark',{detail:{item,position:{x:rect.right+20,y:rect.top-10}}}))
+  const rect=(event.currentTarget as HTMLElement).closest('.sr-item')?.getBoundingClientRect()
+  if(rect)window.dispatchEvent(new CustomEvent('sireader:edit-mark',{detail:{item,position:{x:rect.right+20,y:rect.top-10}}}))
 }
 
 const deleteMark=async(item:any)=>{
-  const marks=activeReaderInstance.value?.marks||(activeView.value as any)?.marks
-  if(!marks)return showMessage('标记系统未初始化',3000,'error')
+  if(!marks.value)return showMessage('标记系统未初始化',3000,'error')
   try{
-    const success=await marks.deleteMark(item.cfi||`section-${item.section}`)
-    if(success){
+    if(await marks.value.deleteMark(item.cfi||`section-${item.section}`)){
       showMessage('已删除',1500,'info')
       refreshKey.value++
     }else showMessage('删除失败',3000,'error')
@@ -252,8 +241,7 @@ const deleteMark=async(item:any)=>{
 }
 
 const goTo=(item:any)=>{
-  const marks=activeReaderInstance.value?.marks||(activeView.value as any)?.marks
-  if(marks)marks.goTo(item)
+  if(marks.value)marks.value.goTo(item)
   else if(item.cfi)goToLocation(item.cfi)
   else if(item.section!==undefined)activeView.value?.goTo(item.section)
 }
@@ -283,7 +271,6 @@ const onScroll=(e:Event)=>isAtTop.value=(e.target as HTMLElement).scrollTop<50
 // ===== 生命周期 =====
 const refresh=async()=>{
   refreshKey.value++
-  // 如果是卡包模式，重新加载卡包数据
   if(props.mode==='deck')deckCards.value=await loadDeckCards()
 }
 
