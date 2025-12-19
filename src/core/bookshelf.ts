@@ -42,6 +42,14 @@ export interface Book {
   epubBookmarks?: Array<{ cfi: string; title: string; progress: number; time: number }>
   txtBookmarks?: Array<{ section: number; page?: number; title: string; progress: number; time: number }>
   durChapterPage?: number
+  // 新增元数据字段
+  subtitle?: string
+  publisher?: string
+  published?: string
+  language?: string
+  identifier?: string
+  subjects?: string[]
+  series?: any
 }
 
 export interface BookIndex {
@@ -89,7 +97,7 @@ class BookshelfManager {
 
   private getHash(bookUrl: string) {
     let h = 0
-    for (let i = 0; i < bookUrl.length; i++) h = ((h << 5) - h + bookUrl.charCodeAt(i)) | 0
+    for (let i = 0; i < bookUrl.length; i++) h = (((h << 5) - h) + bookUrl.charCodeAt(i)) | 0
     return Math.abs(h).toString(36)
   }
 
@@ -135,13 +143,10 @@ class BookshelfManager {
     try {
       const idx = this.index.find(b => b.bookUrl === bookUrl)
       if (!idx) return null
-      const fileName = this.getFileName(idx.name, this.getHash(bookUrl), 'json')
+      const hash = this.getHash(bookUrl)
+      const fileName = this.getFileName(idx.name, hash, 'json')
       const book = await getFile(`${STORAGE_PATH.BOOKS}${fileName}`) as Book
-      if (!book) return null
-      if (['epub', 'mobi', 'azw3', 'fb2'].includes(book.format) && book.filePath && !book.chapters?.length) {
-        book.chapters = await this.getEpubChapters(book.filePath)
-      }
-      return book
+      return book || null
     } catch { return null }
   }
 
@@ -201,111 +206,139 @@ class BookshelfManager {
     } as Book)
   }
 
-  private async parseEpubMetadata(zip: JSZip, opfPath: string, opf: string) {
-    const get = (p: RegExp) => opf.match(p)?.[1]
-    const manifest: Record<string, string> = {}
-    const spine: string[] = []
-    const titles: Record<string, string> = {}
-    const baseDir = opfPath.replace(/[^/]+$/, '')
-    
-    opf.replace(/<item[^>]+id="([^"]+)"[^>]+href="([^"]+)"/g, (_, id, href) => (manifest[id] = href, ''))
-    opf.replace(/<itemref[^>]+idref="([^"]+)"/g, (_, id) => (spine.push(id), ''))
-    
-    const ncxHref = get(/<item[^>]+id="ncx"[^>]+href="([^"]+)"/)
-    if (ncxHref) {
-      try {
-        const ncx = await zip.file(baseDir + ncxHref)?.async('text')
-        ncx?.replace(/<navPoint[^>]*>.*?<text>([^<]+)<\/text>.*?<content src="([^"#]+)/gs, (_, t, h) => (titles[h] = t, ''))
-      } catch {}
+  private async extractMetadata(file: File, format: string, defaultName: string) {
+    if (!['epub', 'mobi', 'azw3', 'fb2', 'cbz'].includes(format)) {
+      return { title: defaultName, author: '未知作者', chapters: [] }
     }
     
-    const getCover = async () => {
-      const href = get(/<item[^>]+id="cover[^"]*"[^>]+href="([^"]+)"/i) || get(/<item[^>]+properties="cover-image"[^>]+href="([^"]+)"/) || get(/<item[^>]+href="([^"]+)"[^>]+properties="cover-image"/)
-      if (!href) return
-      try {
-        const buf = await zip.file(baseDir + href)?.async('arraybuffer')
-        if (!buf) return
-        const bytes = new Uint8Array(buf)
-        let binary = ''
-        for (let i = 0; i < bytes.length; i += 8192) binary += String.fromCharCode(...bytes.subarray(i, Math.min(i + 8192, bytes.length)))
-        const ext = href.split('.').pop()?.toLowerCase() || 'jpg'
-        return `data:image/${ext === 'png' ? 'png' : ext === 'gif' ? 'gif' : 'jpeg'};base64,${btoa(binary)}`
-      } catch {}
-    }
-    
-    return {
-      title: get(/<dc:title[^>]*>([^<]+)<\/dc:title>/) || '',
-      author: get(/<dc:creator[^>]*>([^<]+)<\/dc:creator>/) || '未知作者',
-      intro: get(/<dc:description[^>]*>([^<]+)<\/dc:description>/),
-      chapters: spine.map((id, i) => ({ index: i, title: titles[manifest[id]?.split('/').pop() || ''] || `第${i + 1}章`, url: manifest[id] || '' })).filter(c => c.url),
-      cover: getCover
+    try {
+      const view = document.createElement('foliate-view') as any
+      await view.open(file)
+      
+      const { metadata = {}, toc = [] } = view.book || {}
+      const norm = (v: any) => typeof v === 'string' ? v : (v?.['zh-CN'] || v?.['zh'] || v?.['en'] || Object.values(v || {})[0] || '')
+      const arr = (v: any) => v ? (Array.isArray(v) ? v : [v]) : []
+      const contrib = (v: any) => arr(v).map(c => typeof c === 'string' ? c : norm(c?.name)).filter(Boolean).join(', ') || undefined
+      
+      const chapters = toc.map((t: any, i: number) => ({ 
+        index: i, 
+        title: norm(t.label) || `第${i + 1}章`, 
+        url: t.href || '' 
+      })).filter((c: any) => c.url)
+      
+      const coverBlob = format === 'epub' ? await this.extractEpubCover(file) : undefined
+      
+      view.remove()
+      
+      return {
+        title: norm(metadata.title) || defaultName,
+        subtitle: norm(metadata.subtitle),
+        author: contrib(metadata.author) || '未知作者',
+        publisher: contrib(metadata.publisher),
+        published: metadata.published instanceof Date ? metadata.published.toISOString().split('T')[0] : metadata.published ? String(metadata.published) : undefined,
+        language: arr(metadata.language)[0],
+        identifier: arr(metadata.identifier)[0],
+        intro: metadata.description,
+        subjects: arr(metadata.subject).map((s: any) => typeof s === 'string' ? s : norm(s?.name)).filter(Boolean),
+        series: Array.isArray(metadata.belongsTo) ? metadata.belongsTo[0] : metadata.belongsTo,
+        coverBlob,
+        chapters
+      }
+    } catch (e) {
+      console.error('[Metadata] 提取失败:', e)
+      return { title: defaultName, author: '未知作者', chapters: [] }
     }
   }
   
-  async getEpubChapters(epubPath: string): Promise<Chapter[]> {
+  private async extractEpubCover(file: File): Promise<Blob | undefined> {
     try {
-      const zip = await JSZip.loadAsync(await getFile(epubPath) as any)
-      const opfPath = (await zip.file('META-INF/container.xml')?.async('text'))?.match(/full-path="([^"]+)"/)?.[1]
-      if (!opfPath) return []
+      const zip = await JSZip.loadAsync(file)
+      const container = await zip.file('META-INF/container.xml')?.async('text')
+      const opfPath = container?.match(/full-path="([^"]+)"/)?.[1]
+      if (!opfPath) return
       const opf = await zip.file(opfPath)?.async('text')
-      return opf ? (await this.parseEpubMetadata(zip, opfPath, opf)).chapters : []
-    } catch { return [] }
+      if (!opf) return
+      const base = opfPath.replace(/[^/]+$/, '')
+      const path = (h: string) => (base + h).replace(/\/+/g, '/')
+      const blob = async (h: string) => await zip.file(path(h))?.async('blob')
+      // EPUB3: properties="cover-image"
+      let href = opf.match(/<item[^>]+properties="cover-image"[^>]+href="([^"]+)"/)?.[1] ||
+                 opf.match(/<item[^>]+href="([^"]+)"[^>]+properties="cover-image"/)?.[1]
+      // id="cover" (图片或XHTML)
+      if (!href) {
+        const item = opf.match(/<item[^>]+id="cover(-image)?"[^>]+href="([^"]+)"/i)?.[2]
+        if (item && /\.(xhtml|html)$/i.test(item)) {
+          const html = await zip.file(path(item))?.async('text')
+          const img = html?.match(/<(?:img|image)[^>]+(?:src|(?:xlink:)?href)="([^"]+)"/i)?.[1]
+          href = img ? (item.replace(/[^/]+$/, '') + img).replace(/^\.\//, '').replace(/^\//, '') : undefined
+        } else {
+          href = item
+        }
+      }
+      // EPUB2: <meta name="cover">
+      if (!href) {
+        const id = opf.match(/<meta\s+name="cover"\s+content="([^"]+)"/i)?.[1]
+        href = id ? opf.match(new RegExp(`<item[^>]+id="${id}"[^>]+href="([^"]+)"`, 'i'))?.[1] : undefined
+      }
+      // 降级: 第一个图片或常见文件名
+      if (!href) {
+        href = opf.match(/<item[^>]+href="([^"]+\.(?:jpg|jpeg|png|gif))"/i)?.[1] ||
+               ['cover.jpg', 'cover.jpeg', 'cover.png'].find(n => 
+                 [n, 'Images/' + n, 'images/' + n].some(p => zip.file(path(p)))
+               )
+      }
+      return href ? await blob(href) : undefined
+    } catch {}
+  }
+  
+  private getFormatFromPath(path: string): BookFormat {
+    const ext = path.split('.').pop()?.toLowerCase() || ''
+    const map: Record<string, BookFormat> = { epub: 'epub', pdf: 'pdf', mobi: 'mobi', azw3: 'azw3', azw: 'azw3', fb2: 'fb2', cbz: 'cbz', txt: 'txt' }
+    return map[ext] || 'epub'
   }
 
-  private detectFormat(file: File): BookFormat {
-    const ext = file.name.split('.').pop()?.toLowerCase()
-    const formats: Record<string, BookFormat> = { epub: 'epub', pdf: 'pdf', mobi: 'mobi', azw3: 'azw3', azw: 'azw3', fb2: 'fb2', cbz: 'cbz', txt: 'txt' }
-    return formats[ext || ''] || 'epub'
+  async getEpubChapters(path: string): Promise<Chapter[]> {
+    return []
   }
 
   async addLocalBook(file: File) {
-    const format = this.detectFormat(file)
+    const format = this.getFormatFromPath(file.name)
     const bookUrl = `${format}://${Date.now()}_${file.name}`
-    const defaultName = file.name.replace(/\.[^.]+$/, '')
+    const meta = await this.extractMetadata(file, format, file.name.replace(/\.[^.]+$/, ''))
     
-    let meta = { title: defaultName, author: '未知作者', intro: undefined, cover: undefined, chapters: [] }
-    if (format === 'epub') {
-      try {
-        const zip = await JSZip.loadAsync(file)
-        const opfPath = (await zip.file('META-INF/container.xml')?.async('text'))?.match(/full-path="([^"]+)"/)?.[1]
-        if (opfPath) {
-          const opf = await zip.file(opfPath)?.async('text')
-          if (opf) {
-            const parsed = await this.parseEpubMetadata(zip, opfPath, opf)
-            meta = { title: parsed.title, author: parsed.author, intro: parsed.intro, cover: await parsed.cover(), chapters: parsed.chapters }
-          }
-        }
-      } catch {}
-    }
-    
-    const bookName = meta.title || defaultName
+    const name = meta.title || file.name.replace(/\.[^.]+$/, '')
     const hash = this.getHash(bookUrl)
-    const fileName = this.getFileName(bookName, hash, format)
+    const fileName = this.getFileName(name, hash, format)
+    const filePath = `${STORAGE_PATH.BOOKS}${fileName}`
     
-    await putFile(`${STORAGE_PATH.BOOKS}${fileName}`, false, file)
+    await putFile(filePath, false, file)
+    
     await this.addBook({
       bookUrl,
-      name: bookName,
+      name,
       author: meta.author,
       intro: meta.intro,
-      coverUrl: meta.cover,
+      coverUrl: meta.coverBlob ? await this.saveCoverFile(name, hash, meta.coverBlob) : undefined,
       origin: format,
       originName: format.toUpperCase(),
       format,
-      filePath: `${STORAGE_PATH.BOOKS}${fileName}`,
-      totalChapterNum: meta.chapters?.length || 0
+      filePath,
+      totalChapterNum: meta.chapters?.length || 0,
+      subtitle: meta.subtitle,
+      publisher: meta.publisher,
+      published: meta.published,
+      language: meta.language,
+      identifier: meta.identifier,
+      subjects: meta.subjects,
+      series: meta.series
     })
   }
-
-
-
   async removeBook(bookUrl: string) {
     const idx = this.index.find(b => b.bookUrl === bookUrl)
     if (idx) {
       const hash = this.getHash(bookUrl)
-      await Promise.all(['json', 'jpg', idx.format].map(ext => 
-        removeFile(`${STORAGE_PATH.BOOKS}${this.getFileName(idx.name, hash, ext)}`).catch(() => {})
-      ))
+      const base = `${STORAGE_PATH.BOOKS}${this.sanitizeName(idx.name)}_${hash}`
+      await Promise.all([`${base}.json`, `${base}.jpg`, `${base}.${idx.format}`].map(p => removeFile(p).catch(() => {})))
     }
     this.index = this.index.filter(b => b.bookUrl !== bookUrl)
     await this.saveIndex()
@@ -345,6 +378,7 @@ class BookshelfManager {
     try {
       const newChaps = await bookSourceManager.getChapters(book.origin, book.tocUrl || book.bookUrl)
       const newCount = newChaps.length - book.totalChapterNum
+      const now = Date.now()
       
       if (newCount > 0) {
         book.chapters.push(...newChaps.slice(book.totalChapterNum).map((ch, i) => ({ 
@@ -355,13 +389,12 @@ class BookshelfManager {
         Object.assign(book, {
           totalChapterNum: newChaps.length,
           latestChapterTitle: newChaps[newChaps.length - 1].name,
-          latestChapterTime: Date.now(),
+          latestChapterTime: now,
           lastCheckCount: newCount,
-          lastCheckTime: Date.now()
+          lastCheckTime: now
         })
       } else {
-        book.lastCheckCount = 0
-        book.lastCheckTime = Date.now()
+        Object.assign(book, { lastCheckCount: 0, lastCheckTime: now })
       }
       
       await this.saveBook(book)

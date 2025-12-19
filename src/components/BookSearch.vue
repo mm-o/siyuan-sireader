@@ -1,21 +1,18 @@
 <template>
   <div class="sr-bs-search">
     <div class="sr-toolbar" v-motion-pop-visible>
-      <div class="sr-search-input">
-        <svg class="sr-icon"><use xlink:href="#iconSearch"></use></svg>
-        <input v-model="keyword" class="b3-text-field" :placeholder="i18n.searchPlaceholder || '输入书名搜索'" @keyup.enter="search" :disabled="searching">
-      </div>
-      <div class="sr-source-select">
-        <button class="b3-button b3-button--text b3-tooltips b3-tooltips__s" @click="showSourceMenu = !showSourceMenu" :aria-label="selectedSourceName">
-          <svg><use xlink:href="#iconFilter"></use></svg>
+      <input v-model="keyword" :placeholder="i18n.searchPlaceholder || '输入书名搜索'" @keyup.enter="search" :disabled="searching">
+      <div class="sr-select">
+        <button class="b3-tooltips b3-tooltips__s" @click="showSourceMenu = !showSourceMenu" :aria-label="selectedSourceName">
+          <svg><use xlink:href="#lucide-sliders-horizontal"></use></svg>
         </button>
-        <div v-show="showSourceMenu" class="sr-dropdown" @click="showSourceMenu = false">
-          <div class="sr-dropdown-item" :class="{active: !selectedSource}" @click="selectedSource = ''">{{ i18n.allSources || '全部书源' }}</div>
-          <div v-for="src in enabledSources" :key="src.bookSourceUrl" class="sr-dropdown-item" :class="{active: selectedSource === src.bookSourceUrl}" @click="selectedSource = src.bookSourceUrl">{{ src.bookSourceName }}</div>
+        <div v-show="showSourceMenu" class="sr-menu" @click="showSourceMenu = false">
+          <div class="sr-menu-item" :class="{active: !selectedSource}" @click="selectedSource = ''">{{ i18n.allSources || '全部书源' }}</div>
+          <div v-for="src in enabledSources" :key="src.bookSourceUrl" class="sr-menu-item" :class="{active: selectedSource === src.bookSourceUrl}" @click="selectedSource = src.bookSourceUrl">{{ src.bookSourceName }}</div>
         </div>
       </div>
-      <button class="sr-btn b3-tooltips b3-tooltips__s" @click="emit('openSettings')" :aria-label="i18n.bookSourceManage || '书源管理'">
-        <svg><use xlink:href="#iconSettings"></use></svg>
+      <button class="b3-tooltips b3-tooltips__s" @click="emit('openSettings')" :aria-label="i18n.bookSourceManage || '书源管理'">
+        <svg><use xlink:href="#lucide-settings-2"></use></svg>
       </button>
     </div>
 
@@ -265,27 +262,7 @@ const onScroll = () => {
 
 <style scoped lang="scss">
 .sr-bs-search{display:flex;flex-direction:column;height:100%;background:var(--b3-theme-background)}
-.sr-toolbar{position:sticky;top:0;z-index:10;display:flex;gap:6px;padding:12px 16px;background:var(--b3-theme-surface);border-radius:8px 8px 0 0;box-shadow:0 1px 3px #0000000d;align-items:center}
-.sr-btn{display:flex;align-items:center;justify-content:center;width:32px;height:32px;padding:0;border:none;background:transparent;border-radius:6px;cursor:pointer;transition:all .15s;color:var(--b3-theme-on-surface);
-  svg{width:16px;height:16px}
-  &:hover{background:var(--b3-list-hover)}
-}
-.sr-search-input{flex:1;position:relative;display:flex;align-items:center;
-  input{padding-left:36px;width:100%;min-width:0}
-}
-.sr-icon{position:absolute;left:10px;width:16px;height:16px;opacity:.5;pointer-events:none}
-.sr-source-select{position:relative;
-  button{display:flex;align-items:center;justify-content:center;width:32px;height:32px;padding:0;
-    svg{width:16px;height:16px}
-  }
-}
-.sr-dropdown{position:absolute;top:100%;right:0;margin-top:4px;background:var(--b3-theme-surface);border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,.15);min-width:160px;max-height:300px;overflow-y:auto;z-index:100}
-.sr-dropdown-item{padding:10px 14px;cursor:pointer;font-size:13px;transition:background .15s;
-  &:hover{background:var(--b3-list-hover)}
-  &.active{background:var(--b3-theme-primary-lightest);color:var(--b3-theme-primary);font-weight:600}
-  &:first-child{border-radius:6px 6px 0 0}
-  &:last-child{border-radius:0 0 6px 6px}
-}
+.sr-toolbar{position:sticky;top:0;z-index:10}
 .sr-results{flex:1;overflow-y:auto;padding:18px 20px 20px}
 .sr-card{display:flex;gap:14px;padding:16px;margin-bottom:14px;background:var(--b3-theme-surface);border-radius:8px;box-shadow:0 1px 3px #0000000d;transition:all .25s cubic-bezier(.4,0,.2,1);
   &:hover{box-shadow:0 4px 10px #00000014;transform:translateY(-2px)}

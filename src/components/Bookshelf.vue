@@ -214,16 +214,9 @@ onMounted(async () => {
 
 <style scoped lang="scss">
 .sr-bookshelf{display:flex;flex-direction:column;height:100%;overflow:hidden}
-.sr-toolbar{position:relative;z-index:10;flex-shrink:0;display:flex;gap:4px;padding:8px;background:var(--b3-theme-background);border-bottom:1px solid var(--b3-border-color);
-  input{flex:1;min-width:0;height:28px;padding:0 10px;border:none;border-bottom:1px solid var(--b3-border-color);background:transparent;font-size:12px;outline:none;color:var(--b3-theme-on-background);transition:border-color .2s;&:focus{border-color:var(--b3-theme-primary)}&::placeholder{color:var(--b3-theme-on-surface-variant);opacity:.6}}
-  button{width:28px;height:28px;flex-shrink:0;border:none;background:none;cursor:pointer;transition:all .15s;color:var(--b3-theme-on-surface);svg{width:16px;height:16px}&:hover{color:var(--b3-theme-primary);transform:scale(1.08)}&:active{transform:scale(.92)}}
-}
-.sr-select{position:relative;flex-shrink:0}
-.sr-menu{position:absolute;top:calc(100% + 4px);right:0;background:var(--b3-theme-surface);border-radius:6px;box-shadow:0 4px 12px #0003;min-width:100px;padding:4px;z-index:100;animation:fade-in .15s}
-@keyframes fade-in{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
-.sr-menu-item{padding:6px 12px;border-radius:4px;cursor:pointer;font-size:12px;transition:background .15s;&:hover{background:var(--b3-list-hover)}&.active{background:var(--b3-theme-primary-lightest);color:var(--b3-theme-primary);font-weight:600}}
+.sr-toolbar{position:relative;z-index:10}
 .sr-books{flex:1;overflow-y:auto;padding:12px 8px;min-height:0}
-.sr-empty{padding:60px 20px;text-align:center;opacity:.4;font-size:12px}
+
 .sr-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px}
 .sr-card{position:relative;display:flex;flex-direction:column;background:var(--b3-theme-surface);border-radius:6px;overflow:visible;transition:transform .15s;&:hover{transform:translateY(-2px)}}
 .sr-btn-remove{position:absolute;top:4px;right:4px;width:24px;height:24px;border:none;background:color-mix(in srgb, var(--b3-theme-on-surface) 50%, transparent);color:var(--b3-theme-surface);border-radius:50%;cursor:pointer;opacity:0;transition:all .15s;display:flex;align-items:center;justify-content:center;z-index:10;svg{width:14px;height:14px}.sr-card:hover &{opacity:1}&:hover{background:var(--b3-theme-error);transform:scale(1.1)}}

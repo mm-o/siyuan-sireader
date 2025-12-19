@@ -37,7 +37,7 @@ const { customFonts, isLoadingFonts } = settingManager
 const isNotebookMode = computed(() => settings.value.annotationMode === 'notebook')
 const tabs = computed(() => [{ id: 'bookshelf' as const, icon: 'lucide-library-big', tip: 'bookshelf' }, { id: 'search' as const, icon: 'lucide-book-search', tip: 'search' }, { id: 'deck' as const, icon: 'lucide-wallet-cards', tip: '卡包' }, ...(canShowToc.value ? [{ id: 'toc' as const, icon: 'lucide-scroll-text', tip: '目录' }, { id: 'bookmark' as const, icon: 'lucide-map-pin-check', tip: '书签' }, { id: 'mark' as const, icon: 'lucide-paint-bucket', tip: '标注' }, { id: 'note' as const, icon: 'lucide-map-pin-pen', tip: '笔记' }] : []), { id: 'general' as const, icon: 'lucide-settings-2', tip: 'tabGeneral' }, { id: 'appearance' as const, icon: 'lucide-paintbrush-vertical', tip: 'tabAppearance' }, { id: 'dictionary' as const, icon: 'lucide-book-text', tip: '词典' }])
 
-const previewStyle = computed(() => { const theme = settings.value.theme === 'custom' ? settings.value.customTheme : PRESET_THEMES[settings.value.theme]; if (!theme) return {}; const { textSettings: t, paragraphSettings: p, layoutSettings: l, visualSettings: v, columnMode } = settings.value, filters = [v.brightness !== 1 && `brightness(${v.brightness})`, v.contrast !== 1 && `contrast(${v.contrast})`, v.sepia > 0 && `sepia(${v.sepia})`, v.saturate !== 1 && `saturate(${v.saturate})`, v.invert && 'invert(1) hue-rotate(180deg)'].filter(Boolean).join(' '), fontFamily = t.fontFamily === 'custom' && t.customFont.fontFamily ? `"${t.customFont.fontFamily}", sans-serif` : (t.fontFamily || 'inherit'); return { color: theme.color, backgroundColor: theme.bgImg ? 'transparent' : theme.bg, backgroundImage: theme.bgImg ? `url("${theme.bgImg}")` : 'none', backgroundSize: 'cover', backgroundPosition: 'center', fontFamily, fontSize: `${t.fontSize}px`, letterSpacing: `${t.letterSpacing}em`, lineHeight: p.lineHeight, filter: filters || 'none', '--paragraph-spacing': p.paragraphSpacing, '--text-indent': p.textIndent, '--margin-h': `${l.marginHorizontal}px`, '--margin-v': `${l.marginVertical}px`, '--gap': `${l.gap}%`, '--header-footer': `${l.headerFooterMargin}px`, '--max-block': l.maxBlockSize > 0 ? `${l.maxBlockSize}px` : 'none', '--column-count': columnMode === 'double' ? 2 : 1 } })
+const previewStyle = computed(() => { const theme = settings.value.theme === 'custom' ? settings.value.customTheme : PRESET_THEMES[settings.value.theme]; if (!theme) return {}; const { textSettings: t, paragraphSettings: p, layoutSettings: l, visualSettings: v, viewMode } = settings.value, filters = [v.brightness !== 1 && `brightness(${v.brightness})`, v.contrast !== 1 && `contrast(${v.contrast})`, v.sepia > 0 && `sepia(${v.sepia})`, v.saturate !== 1 && `saturate(${v.saturate})`, v.invert && 'invert(1) hue-rotate(180deg)'].filter(Boolean).join(' '), fontFamily = t.fontFamily === 'custom' && t.customFont.fontFamily ? `"${t.customFont.fontFamily}", sans-serif` : (t.fontFamily || 'inherit'); return { color: theme.color, backgroundColor: theme.bgImg ? 'transparent' : theme.bg, backgroundImage: theme.bgImg ? `url("${theme.bgImg}")` : 'none', backgroundSize: 'cover', backgroundPosition: 'center', fontFamily, fontSize: `${t.fontSize}px`, letterSpacing: `${t.letterSpacing}em`, lineHeight: p.lineHeight, filter: filters || 'none', '--paragraph-spacing': p.paragraphSpacing, '--text-indent': p.textIndent, '--margin-h': `${l.marginHorizontal}px`, '--margin-v': `${l.marginVertical}px`, '--gap': `${l.gap}%`, '--header-footer': `${l.headerFooterMargin}px`, '--max-block': l.maxBlockSize > 0 ? `${l.maxBlockSize}px` : 'none', '--column-count': viewMode === 'double' ? 2 : 1 } })
 
 // ===== 核心方法 =====
 const save = async () => (emit('update:modelValue', settings.value), await props.onSave())
@@ -60,7 +60,7 @@ watch(() => canShowToc.value, (show) => !show && ['toc', 'bookmark', 'mark', 'no
 
 // ===== 配置常量 =====
 const { interfaceItems, customThemeItems, appearanceGroups } = UI_CONFIG
-const linkFormatDesc = computed(() => `${props.i18n?.linkFormatDesc || '可用变量：书名 作者 章节 位置 链接 文本'}`)
+const linkFormatDesc = computed(() => `${props.i18n?.linkFormatDesc || '可用变量：书名 作者 章节 位置 链接 文本 笔记 截图'}`)
 
 </script>
 
@@ -89,14 +89,13 @@ const linkFormatDesc = computed(() => `${props.i18n?.linkFormatDesc || '可用�
               <p>滟滟随波千万里，何处春江无月明。</p>
             </div>
           </div>
-          <div class="sr-preview-footer">{{ settings.columnMode === 'double' ? '双页模式' : '单页模式' }}</div>
+          <div class="sr-preview-footer">{{ settings.viewMode === 'double' ? '双页' : settings.viewMode === 'scroll' ? '连续滚动' : '单页' }}</div>
         </div>
       </Transition>
 
       <Transition name="slide" mode="out-in">
-        <div :key="activeTab" class="sr-panel">
-          <!-- General -->
-          <div v-if="activeTab === 'general'" class="sr-section">
+        <!-- General -->
+        <div v-if="activeTab === 'general'" :key="activeTab" class="sr-section">
             <div v-motion-pop-visible class="sr-group">
               <h3 class="sr-title">{{ i18n.interfaceSettings || '界面设置' }}</h3>
               <div v-for="item in interfaceItems" :key="item.key" class="sr-item">
@@ -170,8 +169,8 @@ const linkFormatDesc = computed(() => `${props.i18n?.linkFormatDesc || '可用�
             </div>
           </div>
 
-          <!-- Appearance -->
-          <div v-else-if="activeTab === 'appearance'" class="sr-section">
+        <!-- Appearance -->
+        <div v-else-if="activeTab === 'appearance'" :key="activeTab" class="sr-section">
             <div v-motion-pop-visible class="sr-group">
               <h3 class="sr-title">{{ i18n.themeTitle || i18n.presetTheme }}</h3>
               
@@ -244,46 +243,17 @@ const linkFormatDesc = computed(() => `${props.i18n?.linkFormatDesc || '可用�
           </div>
 
 
-          <!-- Bookshelf -->
-          <div v-else-if="activeTab === 'bookshelf'" class="sr-bs-container">
-            <Bookshelf :i18n="i18n" @read="handleReadOnline" />
-          </div>
+        <!-- Bookshelf -->
+        <Bookshelf v-else-if="activeTab === 'bookshelf'" :key="activeTab" :i18n="i18n" @read="handleReadOnline" />
 
-          <!-- Search -->
-          <div v-else-if="activeTab === 'search'" class="sr-bs-container">
-            <BookSearch :i18n="i18n" @read="handleReadOnline" @openSettings="openSourceMgr" />
-          </div>
+        <!-- Search -->
+        <BookSearch v-else-if="activeTab === 'search'" :key="activeTab" :i18n="i18n" @read="handleReadOnline" @openSettings="openSourceMgr" />
 
-          <!-- Dictionary -->
-          <div v-else-if="activeTab === 'dictionary'" class="sr-section">
-            <DictMgr />
-          </div>
+        <!-- Dictionary -->
+        <DictMgr v-else-if="activeTab === 'dictionary'" :key="activeTab" />
 
-          <!-- TOC -->
-          <div v-else-if="activeTab === 'toc'" class="sr-toc-container">
-            <ReaderToc mode="toc" :i18n="props.i18n" />
-          </div>
-
-          <!-- Bookmark -->
-          <div v-else-if="activeTab === 'bookmark'" class="sr-toc-container">
-            <ReaderToc mode="bookmark" :i18n="props.i18n" />
-          </div>
-
-          <!-- Mark -->
-          <div v-else-if="activeTab === 'mark'" class="sr-toc-container">
-            <ReaderToc mode="mark" :i18n="props.i18n" />
-          </div>
-
-          <!-- Note -->
-          <div v-else-if="activeTab === 'note'" class="sr-toc-container">
-            <ReaderToc mode="note" :i18n="props.i18n" />
-          </div>
-          
-          <!-- Deck -->
-          <div v-else-if="activeTab === 'deck'" class="sr-toc-container">
-            <ReaderToc mode="deck" :i18n="props.i18n" />
-          </div>
-        </div>
+        <!-- TOC/Bookmark/Mark/Note/Deck -->
+        <ReaderToc v-else-if="['toc','bookmark','mark','note','deck'].includes(activeTab)" :key="activeTab" v-model:mode="activeTab" :i18n="props.i18n" />
       </Transition>
     </main>
   </div>
@@ -361,8 +331,7 @@ const linkFormatDesc = computed(() => `${props.i18n?.linkFormatDesc || '可用�
   flex-shrink: 0;
   transition: height 0.3s;
 }
-.sr-panel { flex: 1; overflow: hidden; display: flex; flex-direction: column; &:has(.sr-section) { padding: 20px; overflow-y: auto; } }
-.sr-section { display: flex; flex-direction: column; gap: 20px; }
+.sr-section{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:20px}
 .sr-group { background: var(--b3-theme-surface); border-radius: 8px; padding: 18px; box-shadow: 0 1px 3px #0000000d; transition: box-shadow .3s;
   &:hover { box-shadow: 0 4px 10px #00000014; }
 }
@@ -385,8 +354,7 @@ const linkFormatDesc = computed(() => `${props.i18n?.linkFormatDesc || '可用�
 .slide-enter-active { transition: all .25s cubic-bezier(.4,0,.2,1); }
 .slide-leave-active { transition: all .2s cubic-bezier(.4,0,1,1); }
 .slide-enter-from { opacity: 0; transform: translateX(15px); }
-.sr-bs-container { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
-.sr-toc-container { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+.sr-toc{flex:1;display:flex;flex-direction:column;overflow:hidden}
 .fade-enter-active, .fade-leave-active { transition: opacity .3s; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
 .slide-leave-to { opacity: 0; transform: translateX(-15px); }

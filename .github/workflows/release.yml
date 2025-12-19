@@ -60,6 +60,17 @@ jobs:
           git push origin "v${{ steps.version.outputs.version }}"
           echo "✅ Tag v${{ steps.version.outputs.version }} created"
 
+      - name: Get changelog
+        if: steps.check-tag.outputs.exists == 'false'
+        id: changelog
+        run: |
+          # 提取当前版本的更新内容
+          VERSION="${{ steps.version.outputs.version }}"
+          CHANGELOG=$(awk "/### v${VERSION}/,/^### v[0-9]|^---$/" CHANGELOG.md | sed '1d;$d')
+          echo "changelog<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGELOG" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
       - name: Create Release
         if: steps.check-tag.outputs.exists == 'false'
         uses: ncipollo/release-action@v1
@@ -70,3 +81,11 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           generateReleaseNotes: true
           makeLatest: true
+          body: |
+            ## 📦 v${{ steps.version.outputs.version }}
+            
+            ${{ steps.changelog.outputs.changelog }}
+            
+            ---
+            
+            查看完整更新日志：[CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md)

@@ -32,6 +32,15 @@ export const COLORS = [
   { name: '粉色', color: 'pink' as const, bg: '#ec407a' },
 ]
 
+export const STYLES = [
+  { type: 'highlight' as const, name: '高亮', text: 'A' },
+  { type: 'underline' as const, name: '下划线', text: 'A' },
+  { type: 'outline' as const, name: '边框', text: 'A' },
+  { type: 'squiggly' as const, name: '波浪线', text: 'A' }
+]
+
+export const getColorMap = () => Object.fromEntries(COLORS.map(c => [c.color, c.bg]))
+
 const getHash=(url:string)=>{let h=0;for(let i=0;i<url.length;i++)h=((h<<5)-h+url.charCodeAt(i))|0;return Math.abs(h).toString(36)}
 const sanitizeName=(n:string|undefined|null)=>(n||'book').replace(/[<>:"/\\|?*\x00-\x1f《》【】「」『』（）()[\]{}]/g,'').replace(/\s+/g,'_').replace(/[._-]+/g,'_').replace(/^[._-]+|[._-]+$/g,'').slice(0,50)||'book'
 const getFileName=(n:string|undefined|null,h:string)=>`${sanitizeName(n)}_${h}.json`
@@ -365,7 +374,9 @@ export class MarkManager {
           const color=COLORS.find(c=>c.color===(mark.color||'yellow'))?.bg||'#ffeb3b'
           this.applyMarkStyle(span,color,mark.style)
           span.style.cursor='pointer'
-          span.onclick=()=>{
+          span.onclick=(e)=>{
+            e.stopPropagation()
+            e.preventDefault()
             const rect=span.getBoundingClientRect()
             const iframe=doc.defaultView?.frameElement as HTMLIFrameElement
             const ir=iframe?.getBoundingClientRect()
@@ -389,7 +400,7 @@ export class MarkManager {
 
   bindTxtDocEvents(doc:Document,section:number){
     if((doc as any).__txtEventsBound)return
-    doc.addEventListener('mouseup',()=>window.dispatchEvent(new CustomEvent('txt-selection',{detail:{doc}})))
+    doc.addEventListener('mouseup',(e:MouseEvent)=>window.dispatchEvent(new CustomEvent('txt-selection',{detail:{doc,event:e}})))
     this.renderTxtAnnotations(doc,section)
     ;(doc as any).__txtEventsBound=true
   }

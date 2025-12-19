@@ -145,7 +145,7 @@ onMounted(async()=>{
 </script>
 
 <style scoped lang="scss">
-.dict-mgr{display:flex;flex-direction:column;gap:20px}
+.dict-mgr{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:20px}
 .dict-group{background:var(--b3-theme-surface);border-radius:8px;padding:18px;box-shadow:0 1px 3px #0000000d}
 .dict-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
 .dict-title{font-size:15px;font-weight:600;color:var(--b3-theme-primary);margin:0}

@@ -38,14 +38,14 @@ function createFoliateView(container: HTMLElement): FoliateView {
 function configureView(view: FoliateView, settings: ReaderSettings) {
   const r = view.renderer
   if (!r) return
-  const { columnMode = 'single', pageAnimation = 'slide', layoutSettings, visualSettings, theme, customTheme } = settings || {}
+  const { viewMode = 'single', pageAnimation = 'slide', layoutSettings, visualSettings, theme, customTheme } = settings || {}
   const l = layoutSettings || { gap: 5, headerFooterMargin: 0 }
   const th = theme === 'custom' ? customTheme : (theme && PRESET_THEMES[theme]) || PRESET_THEMES.default
-  const isScroll = pageAnimation === 'scroll'
+  const isScroll = viewMode === 'scroll'
   const set = (n: string, val: string) => r.setAttribute(n, val)
   const toggle = (n: string, cond: boolean, val = '') => cond ? set(n, val) : r.removeAttribute(n)
   set('flow', isScroll ? 'scrolled' : 'paginated')
-  set('max-column-count', columnMode === 'double' ? '2' : '1')
+  set('max-column-count', viewMode === 'double' ? '2' : '1')
   toggle('animated', !isScroll && pageAnimation === 'slide')
   set('gap', `${l.gap || 5}%`)
   set('max-inline-size', '800px')
