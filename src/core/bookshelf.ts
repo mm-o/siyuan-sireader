@@ -156,7 +156,6 @@ class BookshelfManager {
     const fileName = this.getFileName(book.name, hash, 'json')
     const data = { ...book, chapters: hasFile ? [] : book.chapters, coverUrl: undefined }
     await putFile(`${STORAGE_PATH.BOOKS}${fileName}`, false, new File([JSON.stringify(data, null, 2)], fileName, { type: 'application/json' }))
-    
     this.updateIndex(book, await this.processCover(hash, book.coverUrl || '', book.name))
     await this.saveIndex()
   }
@@ -419,7 +418,7 @@ class BookshelfManager {
       addTime: book.addTime,
       lastCheckCount: book.lastCheckCount,
       format: book.format,
-      epubProgress: book.epubProgress || this.index[i]?.epubProgress
+      epubProgress: book.epubProgress
     }
     i >= 0 ? (this.index[i] = idx) : this.index.push(idx)
   }

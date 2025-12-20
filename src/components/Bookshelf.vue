@@ -78,7 +78,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { bookshelfManager, type BookIndex } from '@/core/bookshelf'
 import { showMessage } from 'siyuan'
 
@@ -119,7 +119,11 @@ const displayBooks = computed(() => {
   return list
 })
 
-const getProgress = (book: BookIndex) => book.epubProgress || 0
+const getProgress = (book: BookIndex) => {
+  if (book.epubProgress) return book.epubProgress
+  if (book.totalChapterNum > 0) return Math.round(((book.durChapterIndex + 1) / book.totalChapterNum) * 100)
+  return 0
+}
 
 const getCoverUrl = (book: BookIndex) => {
   if (TEXT_COVER_FORMATS.includes(book.format)) return ''
@@ -209,7 +213,9 @@ onMounted(async () => {
   viewMode.value = (localStorage.getItem('sr-view-mode') as any) || 'grid'
   await bookshelfManager.init()
   refreshBooks()
+  window.addEventListener('sireader:bookshelf-updated',refreshBooks)
 })
+onUnmounted(()=>window.removeEventListener('sireader:bookshelf-updated',refreshBooks))
 </script>
 
 <style scoped lang="scss">

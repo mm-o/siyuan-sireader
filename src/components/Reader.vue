@@ -1,5 +1,5 @@
 <template>
-  <div ref="containerRef" class="reader-container" tabindex="0" @click="closeAllPopups($event)" @keydown="handleKeydown">
+  <div ref="containerRef" class="reader-container" tabindex="0" @keydown="handleKeydown">
     <div v-if="loading" class="reader-loading"><div class="spinner"></div><div>{{ error || '加载中...' }}</div></div>
     
     <!-- PDF 工具栏 -->
@@ -31,55 +31,8 @@
     </div>
   </div>
   
-  <Teleport to="body">
-      <!-- 选择菜单 -->
-      <div v-if="showMenu" v-motion :initial="{opacity:0,scale:0.95}" :enter="{opacity:1,scale:1,transition:{type:'spring',stiffness:400,damping:25}}" class="sr-selection-menu" :style="menuStyle" @mousedown.stop @mouseup.stop @click.stop>
-        <button class="sr-btn b3-tooltips b3-tooltips__s" @click="openAnnotationPanel" :aria-label="i18n.mark || '标注'"><svg><use xlink:href="#iconMark"/></svg></button>
-        <button class="sr-btn b3-tooltips b3-tooltips__s" @click="copyText" :aria-label="i18n.copy || '复制'"><svg><use xlink:href="#iconCopy"/></svg></button>
-        <button class="sr-btn b3-tooltips b3-tooltips__s" @click="openDict" :aria-label="i18n.dict || '词典'"><svg><use xlink:href="#iconLanguage"/></svg></button>
-      </div>
-
-      <!-- 统一标注卡片 -->
-      <div v-if="showAnnotation" v-motion :initial="{opacity:0,y:5}" :enter="{opacity:1,y:0}" class="sr-card sr-popup" :style="annotationStyle" @click.stop>
-        <span class="sr-bar" :style="{background:colors[selectedColor]||'var(--b3-theme-primary)'}"></span>
-        <div class="sr-main">
-          <!-- 标题/文本 -->
-          <div class="sr-title" :contenteditable="isEditing" @blur="e=>currentText=e.target.textContent" v-html="currentText"></div>
-          
-          <!-- 笔记 -->
-          <textarea v-if="isEditing||noteText" ref="noteInputRef" v-model="noteText" :readonly="!isEditing" :placeholder="isEditing?'添加笔记...':''" class="sr-note-input" :class="{readonly:!isEditing}"/>
-          
-          <!-- 编辑模式：颜色和形状/样式 -->
-          <div v-if="isEditing" class="sr-options" @click.stop>
-            <div class="sr-colors">
-              <button v-for="c in COLORS" :key="c.color" class="sr-color-btn" :class="{active:selectedColor===c.color}" :style="{background:c.bg}" @click.stop="selectedColor=c.color"/>
-            </div>
-            <div class="sr-styles">
-              <template v-if="currentMark?.type==='shape'">
-                <button v-for="s in SHAPES" :key="s.type" class="sr-style-btn" :class="{active:selectedShapeType===s.type}" @click.stop="selectedShapeType=s.type">
-                  <svg class="sr-style-icon"><use :xlink:href="s.icon"/></svg>
-                </button>
-              </template>
-              <template v-else>
-                <button v-for="s in STYLES" :key="s.type" class="sr-style-btn" :class="{active:selectedStyle===s.type}" @click.stop="selectedStyle=s.type">
-                  <span class="sr-style-icon" :data-type="s.type">{{ s.text }}</span>
-                </button>
-              </template>
-            </div>
-          </div>
-          
-          <!-- 操作按钮 -->
-          <div class="sr-actions">
-            <button v-if="!isEditing" @click.stop="startEdit" class="sr-btn-icon"><svg><use xlink:href="#iconEdit"/></svg></button>
-            <button v-if="!isEditing" @click.stop="deleteMark" class="sr-btn-icon"><svg><use xlink:href="#iconTrashcan"/></svg></button>
-            <button v-if="isEditing" @click.stop="saveAnnotation" class="sr-btn-primary">保存</button>
-            <button v-if="isEditing" @click.stop="cancelEdit" class="sr-btn-secondary">取消</button>
-          </div>
-        </div>
-      </div>
-
-
-    </Teleport>
+  <!-- 统一标注弹窗 -->
+  <MarkPanel ref="markPanelRef" :manager="markManager" :i18n="i18n" @copy="handleCopyText" @dict="handleOpenDict" @copy-mark="handleCopyMark" />
 </template>
 
 <script setup lang="ts">
@@ -90,15 +43,19 @@ import type { ReaderSettings } from '@/composables/useSetting'
 import { PRESET_THEMES } from '@/composables/useSetting'
 import { openDict as openDictDialog } from '@/core/dictionary'
 import { createReader, type FoliateReader, setActiveReader, clearActiveReader } from '@/core/foliate'
-import { COLORS, STYLES, getColorMap } from '@/core/foliate/mark'
-import { createAnnotationManager, type UnifiedAnnotationManager } from '@/core/annotation'
+import { createMarkManager, type MarkManager, getColorMap } from '@/core/MarkManager'
 import { createInkToolManager, type InkToolManager } from '@/core/pdf/ink'
 import { createShapeToolManager, type ShapeToolManager } from '@/core/pdf/shape'
 import PdfToolbar from './PdfToolbar.vue'
+import MarkPanel from './MarkPanel.vue'
 
 const props = defineProps<{ file?: File; plugin: Plugin; settings?: ReaderSettings; url?: string; blockId?: string; bookInfo?: any; onReaderReady?: (r: FoliateReader) => void; i18n?: any }>()
 
 const i18n = computed(() => props.i18n || {})
+
+// 标注面板引用
+const markPanelRef = ref()
+const markManager = ref<MarkManager | null>(null)
 const colors = getColorMap()
 
 // 监听设置更新
@@ -134,22 +91,9 @@ const applyTxtSettings = (view: any, settings: ReaderSettings) => {
 
 const containerRef = ref<HTMLElement>()
 const viewerContainerRef = ref<HTMLElement>()
-const noteInputRef = ref<HTMLTextAreaElement>()
 const loading = ref(true)
 const error = ref('')
-const showMenu = ref(false)
-const showAnnotation = ref(false)
-const isEditing = ref(false)
-const menuX = ref(0)
-const menuY = ref(0)
-const noteText = ref('')
-const currentText = ref('')
 const hasBookmark = ref(false)
-const selectedColor = ref<string>('yellow')
-const selectedStyle = ref<'highlight'|'underline'|'outline'|'squiggly'>('highlight')
-const selectedShapeType = ref<'rect'|'circle'|'triangle'>('rect')
-const currentMark = ref<any>(null)
-const SHAPES=[{type:'rect',icon:'#iconSquareDashed'},{type:'circle',icon:'#iconCircleDashed'},{type:'triangle',icon:'#iconTriangleDashed'}]as const
 
 const pdfViewer = ref<any>(null)
 const pdfSearcher = ref<any>(null)
@@ -161,17 +105,15 @@ const searchQuery = ref('')
 const searchResults = ref<any[]>([])
 const searchCurrentIndex = ref(0)
 let reader: FoliateReader | null = null
-let currentSelection: { text: string; cfi?: string; section?: number } | null = null
+let currentSelection: { text: string; cfi?: string; section?: number; page?: number; rects?: any[] } | null = null
 let pdfSource: ArrayBuffer | null = null
-let annotationManager: UnifiedAnnotationManager | null = null
 let inkToolManager: InkToolManager | null = null
 let shapeToolManager: ShapeToolManager | null = null
-let justOpenedPopup = false
 
 // 工具函数 & Computed
 const clamp=(v:number,min:number,max:number)=>Math.max(min,Math.min(v,max))
 const getCoords=(rect:DOMRect,doc:Document)=>{const iframe=doc.defaultView?.frameElement as HTMLIFrameElement|null;if(!iframe)return{x:rect.left,y:rect.top};const ir=iframe.getBoundingClientRect();return{x:(rect.left>ir.width?rect.left%ir.width:rect.left)+ir.left,y:rect.top+ir.top}}
-const marks=computed(()=>reader?.marks||currentView.value?.marks)
+const marks=computed(()=>markManager.value)
 const isPdfMode=computed(()=>!!pdfViewer.value)
 const hasSearchResults=computed(()=>searchResults.value.length>0)
 const searchCount=computed(()=>{
@@ -180,10 +122,7 @@ const searchCount=computed(()=>{
     return total>0?`${searchCurrentIndex.value+1}/${total}`:'0/0'
   }
   return searchResults.value.length>0?`${searchResults.value.length}`:'0'
-})
-
-const menuStyle = computed(() => ({left:`${clamp(menuX.value,60,window.innerWidth-60)}px`,top:`${clamp(menuY.value-54,60,window.innerHeight-60)}px`,transform:'translate(-50%,0)'}))
-const annotationStyle = computed(() => ({left:`${clamp(menuX.value,170,window.innerWidth-170)}px`,top:`${clamp(menuY.value+20,20,window.innerHeight-(isEditing.value?300:150))}px`,transform:'translate(-50%,0)'}))
+});
 
 // 初始化
 const init=async()=>{
@@ -196,14 +135,13 @@ const init=async()=>{
     const format=props.bookInfo?.format||(props.bookInfo?.isEpub?'epub':props.file?.name.endsWith('.txt')?'txt':props.file?.name.endsWith('.pdf')?'pdf':'online')
     const isTxt=format==='txt'||format==='online',isPdf=format==='pdf'
     
-    const onProgress=()=>{updateBookmarkState();saveProgress();updatePageInfo()}
+    const onProgress=()=>{updateBookmarkState();markManager.value?.updateProgress();updatePageInfo()}
     
     if(isPdf){
-      const{PDFViewer,PDFAnnotator,PDFSearch}=await import('@/core/pdf')
-      const showAnn=(a:any)=>{const el=document.querySelector(`[data-id="${a.id}"]`);if(el){const r=el.getBoundingClientRect();showMarkCard(a,r.left+r.width/2,r.bottom,false)}}
+      const{PDFViewer,PDFSearch}=await import('@/core/pdf')
+      const showAnn=(a:any)=>{const el=document.querySelector(`[data-id="${a.id}"]`);if(el){const r=el.getBoundingClientRect();markPanelRef.value?.showCard(a,r.left+r.width/2,r.bottom,false)}}
       const viewer=new PDFViewer({container:viewerContainerRef.value!,scale:1.5,onPageChange:onProgress,onAnnotationClick:showAnn})
       props.settings&&viewer.applyTheme(props.settings)
-      const annotator=new PDFAnnotator(props.plugin,bookUrl,props.bookInfo?.name||props.file?.name||'book',showAnn)
       const searcher=new PDFSearch()
       pdfSource=props.file?await props.file.arrayBuffer():props.bookInfo?.filePath?await(await(await fetch('/api/file/getFile',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:props.bookInfo.filePath})})).blob()).arrayBuffer():null as any
       await viewer.open(pdfSource)
@@ -211,122 +149,81 @@ const init=async()=>{
       searcher.setPDF(viewer.getPDF()!)
       ;(window as any).__pdfDoc=viewer.getPDF()
       searcher.extractAllText().catch(()=>{})
-      // 跳转到指定页面
-      if(props.bookInfo?.epubCfi?.startsWith('#page-')){
-        const page=parseInt(props.bookInfo.epubCfi.replace('#page-',''))
-        if(page&&page>=1&&page<=viewer.getPageCount())viewer.goToPage(page)
-      }
-      await annotator.init()
+      
       const view=await viewer.createView()
-      annotator.setOutline(view.book?.toc||[])
-      annotator.setViewer(viewer)
-      currentView.value={...view,annotator,isPdf:true,marks:{
-        getBookmarks:()=>annotator.getBookmarks().map(b=>({...b,type:'bookmark'})),
-        getAnnotations:(color?:string)=>annotator.getAll().filter(a=>!color||a.color===color),
-        getNotes:()=>annotator.getAll().filter(a=>a.type==='note'),
-        getInkAnnotations:()=>annotator.getData().inkAnnotations.map((ink:any)=>({...ink,type:'ink',text:`墨迹标注 - 第${ink.page}页`})),
-        getShapeAnnotations:()=>annotator.getData().shapeAnnotations.map((shape:any)=>({...shape,type:'shape',text:shape.text||`${shape.shapeType==='rect'?'矩形':shape.shapeType==='circle'?'圆形':'三角形'}标注 - 第${shape.page}页`})),
-        goTo:(item:any)=>annotator.goTo(item),
-        toggleBookmark:(cfi?:string,progress?:number,title?:string)=>annotator.toggleBookmark(cfi,progress,title),
-        hasBookmark:()=>annotator.hasBookmark(),
-        updateMark:async(key:string,updates:any)=>{
-          if(key.startsWith('shape_')){
-            const result=await annotator.updateShape(key,updates)
-            if(result)window.dispatchEvent(new Event('sireader:marks-updated'))
-            return result
-          }
-          return await annotator.update(key,updates)
-        },
-        deleteMark:async(key:string)=>{
-          if(key.startsWith('shape_')){
-            const result=await annotator.deleteShape(key)
-            if(result){shapeToolManager?.render(pdfViewer.value?.getCurrentPage()||1);window.dispatchEvent(new Event('sireader:marks-updated'))}
-            return result
-          }
-          return await annotator.delete(key)
-        },
-        deleteBookmark:(key:string)=>annotator.deleteBookmark(key),
-        deleteInk:async(id:string)=>{
-          const data=annotator.getData()
-          const idx=data.inkAnnotations.findIndex((i:any)=>i.id===id)
-          if(idx>=0){
-            const page=data.inkAnnotations[idx].page
-            data.inkAnnotations.splice(idx,1)
-            await annotator.saveInk(data.inkAnnotations)
-            inkToolManager?.render(page)
-            window.dispatchEvent(new Event('sireader:marks-updated'))
-            return true
-          }
-          return false
-        }
-      }}
+      
+      // 创建统一标注管理器
+      markManager.value=createMarkManager({format:'pdf',plugin:props.plugin,bookUrl,bookName:props.bookInfo?.name||props.file?.name,onAnnotationClick:showAnn,pdfViewer:viewer})
+      await markManager.value.init()
+      markManager.value.setOutline(view.book?.toc||[])
+      await markManager.value.restoreProgress(props.bookInfo)
+      
+      currentView.value={...view,isPdf:true,marks:markManager.value}
       pdfViewer.value=viewer
       pdfSearcher.value=searcher
-      annotationManager=createAnnotationManager(true,annotator,undefined)
-      inkToolManager=createInkToolManager(viewerContainerRef.value!,annotator,viewer)
+      
+      // 创建 ink 和 shape 工具
+      inkToolManager=createInkToolManager(viewerContainerRef.value!,props.plugin,bookUrl,props.bookInfo?.name||props.file?.name||'book',viewer)
       const handleShapeClick=(shape:any)=>{
         const el=document.querySelector(`.pdf-shape-layer[data-page="${shape.page}"]`)
         if(!el)return
         const r=el.getBoundingClientRect()
         const[x1,y1,x2,y2]=shape.rect
-        showMarkCard(shape,r.left+(x1+x2)/2,r.top+y2+10,false)
+        markPanelRef.value?.showCard(shape,r.left+(x1+x2)/2,r.top+y2+10,false)
       }
-      shapeToolManager=createShapeToolManager(viewerContainerRef.value!,annotator,handleShapeClick)
+      shapeToolManager=createShapeToolManager(viewerContainerRef.value!,props.plugin,bookUrl,props.bookInfo?.name||props.file?.name||'book',handleShapeClick)
       await inkToolManager.init()
       await shapeToolManager.init()
+      ;(markManager.value as any).inkManager=inkToolManager
+      ;(markManager.value as any).shapeManager=shapeToolManager
       updatePageInfo()
       setActiveReader(currentView.value,null)
       ;(window as any).__sireader_active_reader=currentView.value.nav
       const handleSel=(e:MouseEvent)=>setTimeout(()=>{
         const t=e.target as HTMLElement
-        if(t.closest('.sr-card,.sr-selection-menu,[data-note-marker],.pdf-highlight'))return
+        if(t.closest('.mark-card,.mark-selection-menu,[data-note-marker],.pdf-highlight'))return
         const sel=window.getSelection()
-        if(!sel||sel.isCollapsed||!sel.toString().trim()){
-          // 不要关闭已打开的标注弹窗
-          if(showAnnotation.value)return
-          return closeAllPopups()
-        }
+        if(!sel||sel.isCollapsed||!sel.toString().trim())return
         try{
           const range=sel.getRangeAt(0),rects=Array.from(range.getClientRects())
           if(!rects.length)return
           const pg=viewer.getCurrentPage(),pageEl=document.querySelector(`[data-page="${pg}"]`)
           if(!pageEl)return
           const pr=pageEl.getBoundingClientRect()
-          currentSelection={text:sel.toString().trim(),page:pg,rects:rects.map(r=>({left:r.left-pr.left,top:r.top-pr.top,width:r.width,height:r.height}))}
-          menuX.value=rects[0].left+rects[0].width/2
-          menuY.value=rects[0].top
-          showMenu.value=true
+          const text=sel.toString().trim()
+          const rectsData=rects.map(r=>({left:r.left-pr.left,top:r.top-pr.top,width:r.width,height:r.height}))
+          currentSelection={text,page:pg,rects:rectsData}
+          markPanelRef.value?.showMenu({text,location:{format:'pdf',page:pg,rects:rectsData}},rects[0].left+rects[0].width/2,rects[0].top)
         }catch{}
       },100)
       document.addEventListener('mouseup',handleSel as any)
       const origOnChange=viewer.onChange
-      viewer.onChange=(p:number)=>{origOnChange?.(p);setTimeout(()=>{inkToolManager?.render(p);shapeToolManager?.render(p);annotator.renderPage(p)},100)}
-      setTimeout(()=>{const p=viewer.getCurrentPage();inkToolManager?.render(p);shapeToolManager?.render(p);annotator.renderPage(p)},500)
+      viewer.onChange=(p:number)=>{origOnChange?.(p);setTimeout(()=>{inkToolManager?.render(p);shapeToolManager?.render(p);markManager.value?.renderPdf(p)},100)}
+      setTimeout(()=>{const p=viewer.getCurrentPage();inkToolManager?.render(p);shapeToolManager?.render(p);markManager.value?.renderPdf(p)},500)
       currentView.value.cleanup=()=>document.removeEventListener('mouseup',handleSel)
     }else if(isTxt){
       // TXT/在线书籍
       const{createFoliateView,loadTxtBook}=await import('@/core/foliate/reader')
-      const{MarkManager}=await import('@/core/foliate/mark')
       
       const view=createFoliateView(viewerContainerRef.value!)
       currentView.value=view
       
       if(props.file&&format==='txt'){
-        await loadTxtBook(view,await props.file.text(),[],null,props.settings)
+        await loadTxtBook(view,await props.file.arrayBuffer(),[],null,props.settings)
       }else if(props.bookInfo&&format==='online'){
-        await loadTxtBook(view,'',props.bookInfo.chapters||[],props.bookInfo,props.settings)
-        if(props.bookInfo.durChapterIndex!==undefined)await view.goTo(props.bookInfo.durChapterIndex)
+        await loadTxtBook(view,'',[],props.bookInfo,props.settings)
       }else if(props.bookInfo?.filePath){
         const res=await fetch('/api/file/getFile',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:props.bookInfo.filePath})})
-        await loadTxtBook(view,await(await res.blob()).text(),[],null,props.settings)
-        if(props.bookInfo.durChapterIndex!==undefined)await view.goTo(props.bookInfo.durChapterIndex)
+        await loadTxtBook(view,await res.arrayBuffer(),[],null,props.settings)
       }
       
-      const marks=new MarkManager(view,bookUrl,props.plugin)
-      await marks.init()
-      ;(view as any).marks=marks
-      annotationManager=createAnnotationManager(false,undefined,marks)
-      view.addEventListener('relocate',()=>{closeAllPopups();onProgress()})
+      // 创建统一标注管理器
+      markManager.value=createMarkManager({format:'txt',view,plugin:props.plugin,bookUrl,bookName:props.bookInfo?.name||props.file?.name,reader:null})
+      await markManager.value.init()
+      ;(view as any).marks=markManager.value
+      await markManager.value.restoreProgress(props.bookInfo)
+      
+      view.addEventListener('relocate',()=>onProgress())
       setActiveReader(view,null)
     }else{
       // EPUB/PDF/MOBI 等
@@ -338,15 +235,19 @@ const init=async()=>{
         if(!res.ok)throw new Error('文件读取失败')
         const file=new File([await res.blob()],props.bookInfo.filePath.split('/').pop()||'book',{type:res.headers.get('content-type')||''})
         await reader.open(file)
-        if(props.bookInfo.epubCfi)await reader.goTo(props.bookInfo.epubCfi)
-        else if(props.bookInfo.durChapterIndex!==undefined)await reader.goTo(props.bookInfo.durChapterIndex)
       }else throw new Error('未提供书籍')
-      reader.on('relocate',()=>{closeAllPopups();onProgress()})
+      
+      // 创建统一标注管理器
+      markManager.value=createMarkManager({format:'epub',view:reader.getView(),plugin:props.plugin,bookUrl,bookName:props.bookInfo?.name||props.file?.name,reader})
+      await markManager.value.init()
+      ;(reader.getView() as any).marks=markManager.value
+      await markManager.value.restoreProgress(props.bookInfo)
+      
+      reader.on('relocate',()=>onProgress())
       reader.on('load',({doc}:any)=>doc?.addEventListener?.('mouseup',(e:MouseEvent)=>setTimeout(()=>checkSelection(doc,e),50)))
       setTimeout(()=>reader.getView().renderer?.getContents?.()?.forEach(({doc}:any)=>doc?.addEventListener?.('mouseup',(e:MouseEvent)=>setTimeout(()=>checkSelection(doc,e),50))),500)
       setupAnnotationListeners()
       currentView.value=reader.getView()
-      annotationManager=createAnnotationManager(false,undefined,reader.marks)
       setActiveReader(currentView.value,reader)
       props.onReaderReady?.(reader)
     }
@@ -356,7 +257,7 @@ const init=async()=>{
 }
 
 const checkSelection=(txtDoc?:Document,e?:MouseEvent)=>{
-  if(e&&(e.target as HTMLElement).closest('.sr-card,.sr-selection-menu,[data-note-marker],[data-txt-mark]'))return
+  if(e&&(e.target as HTMLElement).closest('.mark-card,.mark-selection-menu,[data-note-marker],[data-txt-mark]'))return
   const processSelection=(doc:Document,index?:number)=>{
     const sel=doc.defaultView?.getSelection()
     if(!sel||sel.isCollapsed||!sel.toString().trim())return false
@@ -364,86 +265,85 @@ const checkSelection=(txtDoc?:Document,e?:MouseEvent)=>{
       const range=sel.getRangeAt(0)
       const rect=range.getBoundingClientRect()
       const {x,y}=getCoords(rect,doc)
-      currentSelection={text:sel.toString().trim(),...(index!==undefined?{cfi:reader!.getView().getCFI(index,range)}:{section:currentView.value?.lastLocation?.section||0})}
-      menuX.value=x+(index===undefined?rect.width/2:0)
-      menuY.value=y
-      showMenu.value=true
+      const text=sel.toString().trim()
+      const cfi=index!==undefined?reader!.getView().getCFI(index,range):undefined
+      const section=index===undefined?currentView.value?.lastLocation?.section||0:undefined
+      currentSelection={text,cfi,section}
+      markPanelRef.value?.showMenu({text,location:{format:isPdfMode.value?'pdf':'epub',cfi,section}},x+(index===undefined?rect.width/2:0),y)
       return true
     }catch{return false}
   }
   if(reader){
     const contents=reader.getView().renderer?.getContents?.()
-    if(!contents)return closeAllPopups()
+    if(!contents)return
     for(const{doc,index}of contents)if(processSelection(doc,index))return
   }else if(currentView.value&&txtDoc&&processSelection(txtDoc))return
-  closeAllPopups()
 }
 
-// 弹窗控制
-const closeAllPopups=(e?:MouseEvent)=>{
-  if(justOpenedPopup)return
-  if(e){
-    const t=e.target as HTMLElement
-    // 不关闭：点击弹窗内部、选择菜单、标注元素、形状图层
-    if(t.closest('.sr-card,.sr-popup,.sr-selection-menu,[data-note-marker],[data-shape-note-marker],[data-shape-note-tooltip],.pdf-highlight,.pdf-shape-layer,[data-txt-mark]'))return
-  }
-  showMenu.value=showAnnotation.value=isEditing.value=false
-}
-const openAnnotationPanel=()=>{if(!currentSelection)return;showMenu.value=false;currentMark.value=null;currentText.value=currentSelection.text;noteText.value='';isEditing.value=showAnnotation.value=true;setTimeout(()=>noteInputRef.value?.focus(),100)}
-const startEdit=()=>{isEditing.value=true;currentText.value=currentMark.value?.text||'';noteText.value=currentMark.value?.note||'';selectedShapeType.value=currentMark.value?.shapeType||'rect';setTimeout(()=>noteInputRef.value?.focus(),50)}
-const cancelEdit=()=>currentMark.value?(isEditing.value=false,currentText.value=currentMark.value.text,noteText.value=currentMark.value.note||'',selectedShapeType.value=currentMark.value.shapeType||'rect'):(showAnnotation.value=isEditing.value=false,noteText.value='',currentSelection=currentMark.value=null)
-const copyText=async()=>{
-  if(!currentSelection)return
+// 复制文本处理
+const handleCopyText=async(text:string)=>{
   const copy=(text:string,msg='已复制')=>navigator.clipboard.writeText(text).then(()=>showMessage(msg,1000))
   
-  if(!reader){
-    copy(currentSelection.text)
-    return closeAllPopups()
+  if(!reader||!currentSelection){
+    copy(text)
+    return
   }
   
   const bookUrl=(window as any).__currentBookUrl||props.bookInfo?.bookUrl||props.url||''
   if(!bookUrl||bookUrl.startsWith('file://')){
-    copy(currentSelection.text,'本地文件无法生成跳转链接，仅复制文本')
-    return closeAllPopups()
+    copy(text,'本地文件无法生成跳转链接，仅复制文本')
+    return
   }
   
   const{formatBookLink}=await import('@/composables/useSetting')
+  const{formatAuthor,getChapterName}=await import('@/core/MarkManager')
   const book=reader.getBook(),loc=reader.getLocation(),view=reader.getView()
-  const formatAuthor=a=>Array.isArray(a)?a.map(c=>typeof c==='string'?c:c?.name).filter(Boolean).join(', '):typeof a==='string'?a:a?.name||''
-  const chapter=(()=>{
-    if(loc?.tocItem?.label||loc?.tocItem?.title)return loc.tocItem.label||loc.tocItem.title
-    if(view?.lastLocation?.tocItem?.label)return view.lastLocation.tocItem.label
-    if((view as any)?.isPdf&&loc?.page){const toc=book?.toc||[];for(let i=toc.length-1;i>=0;i--)if(toc[i].pageNumber&&toc[i].pageNumber<=loc.page)return toc[i].label}
-    return''
-  })()||'📒'
-  const link=formatBookLink(bookUrl,book?.metadata?.title||props.bookInfo?.name||'',formatAuthor(book?.metadata?.author||props.bookInfo?.author),chapter,currentSelection.cfi||'',currentSelection.text||'',props.settings?.linkFormat||'> [!NOTE] 📑 书名\n> [章节](链接) 文本')
+  const chapter=getChapterName({cfi:currentSelection.cfi,page:loc?.page,isPdf:(view as any)?.isPdf,toc:book?.toc,location:loc})||'📒'
+  const link=formatBookLink(bookUrl,book?.metadata?.title||props.bookInfo?.name||'',formatAuthor(book?.metadata?.author||props.bookInfo?.author),chapter,currentSelection.cfi||'',text,props.settings?.linkFormat||'> [!NOTE] 📑 书名\n> [章节](链接) 文本')
   copy(link)
-  closeAllPopups()
 }
-const openDict=()=>{if(currentSelection){openDictDialog(currentSelection.text,menuX.value,menuY.value+50,currentSelection);closeAllPopups()}}
 
-// 标注保存/删除
-const saveAnnotation=async()=>{
-  if(!annotationManager)return
-  try{
-    if(currentMark.value?.type==='shape'){
-      // 形状标注：更新文本、颜色、形状类型和笔记
-      await marks.value?.updateMark(currentMark.value.id,{text:currentText.value.trim(),color:selectedColor.value,shapeType:selectedShapeType.value,note:noteText.value.trim()||undefined})
-      Object.assign(currentMark.value,{text:currentText.value.trim(),color:selectedColor.value,shapeType:selectedShapeType.value,note:noteText.value.trim()||undefined})
-      // 重新渲染形状
-      shapeToolManager?.render(currentMark.value.page)
-      isEditing.value=false
-    }else{
-      // 文本标注
-      await annotationManager.save(currentSelection,currentMark.value,currentText.value.trim(),noteText.value.trim(),selectedColor.value as any,selectedStyle.value)
-      if(currentMark.value){Object.assign(currentMark.value,{text:currentText.value.trim(),color:selectedColor.value,style:selectedStyle.value,note:noteText.value.trim()||undefined});isEditing.value=false}
-      else{showAnnotation.value=isEditing.value=false;currentSelection=currentMark.value=null}
-      !isPdfMode.value&&reader?.getView().deselect()
-    }
-  }catch(e){console.error(e)}
+// 复制标注处理
+const handleCopyMark=async(mark:any)=>{
+  const copy=(text:string,msg='已复制')=>navigator.clipboard.writeText(text).then(()=>showMessage(msg,1000))
+  
+  if(!reader){
+    copy(mark.text||mark.note||'')
+    return
+  }
+  
+  const bookUrl=(window as any).__currentBookUrl||props.bookInfo?.bookUrl||props.url||''
+  if(!bookUrl||bookUrl.startsWith('file://')){
+    copy(mark.text||mark.note||'','本地文件无法生成跳转链接，仅复制文本')
+    return
+  }
+  
+  const book=reader.getBook(),view=reader.getView()
+  const isPdf=(view as any)?.isPdf
+  const page=mark.page||(mark.section!==undefined?(view as any)?.viewer?.getCurrentPage():null)
+  const cfi=mark.cfi||(isPdf&&page?`#page-${page}`:'')
+  
+  if(!cfi){
+    copy(mark.text||mark.note||'','仅复制文本')
+    return
+  }
+  
+  const{formatBookLink}=await import('@/composables/useSetting')
+  const{formatAuthor,getChapterName}=await import('@/core/MarkManager')
+  const chapter=getChapterName({cfi:mark.cfi,page,isPdf,toc:book?.toc,location:mark.cfi?reader.getLocation():undefined})||'📒'
+  
+  const tpl=props.settings?.linkFormat||'> [!NOTE] 📑 书名\n> [章节](链接) 文本\n> 截图\n> 笔记'
+  const link=formatBookLink(bookUrl,book?.metadata?.title||props.bookInfo?.name||'',formatAuthor(book?.metadata?.author||props.bookInfo?.author),chapter,cfi,mark.text||'',tpl,mark.note||'','')
+  copy(link)
 }
-const deleteMark=async()=>{if(!currentMark.value||!annotationManager)return;try{const page=currentMark.value.page;await annotationManager.delete(currentMark.value);showAnnotation.value=isEditing.value=false;currentMark.value=null;isPdfMode.value&&page&&currentView.value?.annotator?.renderPage(page)}catch(e){console.error(e)}}
-const setupAnnotationListeners=()=>{if(!reader)return;reader.getView().addEventListener('show-annotation',((e:CustomEvent)=>{const{value,range}=e.detail,mark=reader.marks.getAll().find(m=>m.cfi===value);if(!mark)return;try{const rect=range.getBoundingClientRect(),{x,y}=getCoords(rect,range.startContainer.ownerDocument);showMarkCard(mark,x,y+rect.height+10,false)}catch{}})as EventListener)}
+
+// 词典查询处理
+const handleOpenDict=(text:string,x:number,y:number)=>{
+  if(currentSelection)openDictDialog(text,x,y,currentSelection)
+}
+
+// 标注监听器
+const setupAnnotationListeners=()=>{if(!reader||!markManager.value)return;reader.getView().addEventListener('show-annotation',((e:CustomEvent)=>{const{value,range}=e.detail,mark=markManager.value?.getAll().find(m=>m.cfi===value);if(!mark)return;try{const rect=range.getBoundingClientRect(),{x,y}=getCoords(rect,range.startContainer.ownerDocument);markPanelRef.value?.showCard(mark,x,y+rect.height+10,false)}catch{}})as EventListener)}
 
 // 导航
 const handlePrev=()=>pdfViewer.value?pdfViewer.value.goToPage(Math.max(1,pdfViewer.value.getCurrentPage()-1)):reader?reader.prev():currentView.value?.prev?.()
@@ -492,19 +392,13 @@ const handleShapeUndo=async()=>{const p=pdfViewer.value?.getCurrentPage();if(p)a
 const handleShapeClear=async()=>{const p=pdfViewer.value?.getCurrentPage();if(p)await shapeToolManager?.clear(p)}
 
 // 进度保存 & 书签
-const saveProgress=()=>{isPdfMode.value?currentView.value?.annotator?.saveProgress(pdfViewer.value?.getCurrentPage()||1):marks.value?.saveProgress(reader?reader.getView().lastLocation:(currentView.value?.getLocation?.()||currentView.value?.lastLocation))}
-const updateBookmarkState=()=>{if(isPdfMode.value){const p=pdfViewer.value?.getCurrentPage()||1;currentView.value?.annotator?.setCurrentPage(p)}hasBookmark.value=!!marks.value?.hasBookmark?.()}
+const updateBookmarkState=()=>hasBookmark.value=!!markManager.value?.hasBookmark?.()
 const toggleBookmark=()=>{try{hasBookmark.value=marks.value?.toggleBookmark?.()}catch(e:any){showMessage(e.message||'操作失败',2000,'error')}}
 
 // 事件处理
-const showMarkCard=(m:any,x:number,y:number,edit=false)=>{
-  justOpenedPopup=true
-  menuX.value=x;menuY.value=y;currentMark.value=m;currentText.value=m.text||'';noteText.value=m.note||'';selectedColor.value=m.color||'yellow';selectedStyle.value=m.style||'highlight';selectedShapeType.value=m.shapeType||'rect';isEditing.value=edit;showAnnotation.value=true
-  setTimeout(()=>{justOpenedPopup=false;edit&&noteInputRef.value?.focus()},100)
-}
-const handleGlobalEdit=(e:Event)=>{const d=(e as CustomEvent).detail;d?.item&&showMarkCard(d.item,d.position?.x||menuX.value,d.position?.y||menuY.value,true)}
+const handleGlobalEdit=(e:Event)=>{const d=(e as CustomEvent).detail;d?.item&&markPanelRef.value?.showCard(d.item,d.position?.x,d.position?.y,true)}
 const handleTxtSelection=(e:Event)=>{const d=(e as CustomEvent).detail;setTimeout(()=>checkSelection(d?.doc,d?.event),50)}
-const handleTxtAnnotationClick=(e:Event)=>{const{mark,x,y}=(e as CustomEvent).detail;showMarkCard(mark,x,y,false)}
+const handleTxtAnnotationClick=(e:Event)=>{const{mark,x,y}=(e as CustomEvent).detail;markPanelRef.value?.showCard(mark,x,y,false)}
 
 // 快捷键处理
 const handlePdfZoomIn=()=>pdfViewer.value&&pdfViewer.value.setScale(pdfViewer.value.getScale()+.25)
@@ -531,8 +425,20 @@ const handleKeydown=(e:KeyboardEvent)=>{const t=e.target as HTMLElement;if(t.tag
 
 // 生命周期
 const events=[['sireader:edit-mark',handleGlobalEdit],['txt-selection',handleTxtSelection],['txt-annotation-click',handleTxtAnnotationClick],['sireaderSettingsUpdated',handleSettingsUpdate],['sireader:goto',handleGoto],['sireader:toggleBookmark',toggleBookmark],['sireader:prevPage',handlePrev],['sireader:nextPage',handleNext],['sireader:pdfZoomIn',handlePdfZoomIn],['sireader:pdfZoomOut',handlePdfZoomOut],['sireader:pdfZoomReset',handlePdfZoomReset],['sireader:pdfRotate',handlePdfRotate],['sireader:pdfSearch',handlePdfSearch],['sireader:pdfPrint',handlePrint],['sireader:pdfFirstPage',handlePdfFirstPage],['sireader:pdfLastPage',handlePdfLastPage],['sireader:pdfPageUp',handlePdfPageUp],['sireader:pdfPageDown',handlePdfPageDown]]as const
-onMounted(()=>{init();containerRef.value?.focus();events.forEach(([e,h])=>window.addEventListener(e,h as any))})
-onUnmounted(()=>{clearActiveReader();reader?.destroy();currentView.value?.cleanup?.();currentView.value?.viewer?.destroy();currentView.value?.annotator?.destroy();inkToolManager?.destroy();shapeToolManager?.destroy();events.forEach(([e,h])=>window.removeEventListener(e,h as any))})
+
+const suppressError=(e:PromiseRejectionEvent)=>/createTreeWalker|destroy/.test(e.reason?.message||'')&&e.preventDefault()
+
+onMounted(()=>{init();containerRef.value?.focus();events.forEach(([e,h])=>window.addEventListener(e,h as any));window.addEventListener('unhandledrejection',suppressError)})
+onUnmounted(async()=>{
+  clearActiveReader()
+  await markManager.value?.destroy()
+  try{reader?.destroy();currentView.value?.cleanup?.();currentView.value?.viewer?.destroy?.()}catch{}
+  inkToolManager?.destroy?.()
+  shapeToolManager?.destroy?.()
+  setTimeout(()=>viewerContainerRef.value&&(viewerContainerRef.value.innerHTML=''),50)
+  events.forEach(([e,h])=>window.removeEventListener(e,h as any))
+  window.removeEventListener('unhandledrejection',suppressError)
+})
 </script>
 
 <style scoped lang="scss">

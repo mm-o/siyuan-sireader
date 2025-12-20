@@ -109,6 +109,8 @@ const linkFormatDesc = computed(() => `${props.i18n?.linkFormatDesc || '可用�
               </div>
             </div>
 
+            <!-- 暂时屏蔽标注设置 -->
+            <!--
             <div v-motion-pop-visible class="sr-group">
               <h3 class="sr-title">{{ i18n.annotationSettings || '标注设置' }}</h3>
               <div class="sr-item">
@@ -156,6 +158,7 @@ const linkFormatDesc = computed(() => `${props.i18n?.linkFormatDesc || '可用�
                 </div>
               </Transition>
             </div>
+            -->
 
             <div v-motion-pop-visible class="sr-group">
               <h3 class="sr-title">{{ i18n.copySettings || '复制设置' }}</h3>

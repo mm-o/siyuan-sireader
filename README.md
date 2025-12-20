@@ -38,6 +38,81 @@ Drag EPUB files into SiYuan documents to create links, click links to open books
 
 ## 🚀 Latest Updates
 
+### v0.6.0 (2025.12.20)
+
+#### ✨ New Features
+
+**📄 PDF Reading Support**
+- **Complete PDF Reader** - Professional PDF reader based on PDF.js, supports zoom (25%-400%), rotation, page navigation
+- **Virtual Scrolling** - Priority queue + virtual scrolling technology, dramatically improves large file loading speed
+- **Full-Text Search** - Support PDF full-text search with highlighted results for quick content location
+- **Metadata Parsing** - Auto extract PDF title, author, page count and other metadata
+- **Toolbar Interaction** - Support toolbar collapse/expand, drag to adjust position, edge detection to prevent overflow
+
+**🖊️ Advanced PDF Annotations**
+- **Ink Annotations** - Support freehand ink annotations with 7 colors, adjustable thickness (1-10px), eraser function
+- **Shape Annotations** - Support rectangle, circle, triangle annotations with color selection, thickness adjustment, drag to resize
+- **Shape Copy** - Support copying shape annotations to SiYuan notes with auto-generated formatted links
+- **Vector Storage** - Ink and shape annotations stored as coordinate point data (JSON), no extra storage space
+- **Smart Rendering** - Low-resolution Canvas for real-time preview during reading, high-resolution images (2x DPR) generated when copying
+
+**📚 Dictionary Card Deck System**
+- **Dictionary Cards** - One-click add lookup results to card deck for review and management
+- **Reading Interface Marks** - Card deck vocabulary displayed with 🌐 icon in reading interface, click to view details
+- **Real-time Sync** - Immediately update reading interface and data file (`deck.json`) after adding/deleting cards
+
+**📝 EPUB Footnote Enhancement**
+- **Smart Footnote Recognition** - Auto recognize EPUB footnote links (`epub:type="noteref"` / `role="doc-noteref"`)
+- **Click Popup Display** - Click footnote links to show popup instead of jumping, displays footnote type, ID and full content
+- **Tooltip Display** - Hover to show tooltip preview, support scrolling for long content
+- **Interaction Optimization** - 100ms delay hide, mouse can enter tooltip for operations
+
+**🎨 Unified Tooltip System**
+- **Three Types** - Unified display style for notes (blue 📝), dictionary (purple 🌐), footnotes (red 📌)
+- **Visual Effects** - Three-layer shadows, frosted glass background, gradient header, icon glow effects
+- **Edge Detection** - Auto detect viewport edges to prevent tooltip overflow
+- **Smart Interaction** - Mouse can enter tooltip interior, support scrolling and copying content
+
+**📖 TXT Parsing Enhancement**
+- **Smart Encoding Detection** - Auto detect UTF-8/UTF-16/GBK encoding, support BOM markers
+- **Chapter Recognition** - Support multiple chapter format recognition (Chapter X, Chapter X, numeric sequence, 【Title】)
+- **Error Handling** - Auto fallback to GBK when encoding detection fails, ensure file readability
+
+#### 🔧 Interface Optimization
+
+**📋 Annotation Panel Refactor**
+- **Unified Panel** - Refactored `MarkPanel.vue`, unified PDF/EPUB/TXT annotation interactions
+- **Unified Edit UI** - Unified annotation, editing, display windows with consistent structure and style
+- **Unified Display** - Ink and shape annotations unified in annotation page, support delete, edit, click to expand details
+- **Real-time Editing** - Support real-time modification and saving of annotation text, notes, colors, styles
+- **Precise Management** - Use `data-mark-id` for precise positioning and management of each annotation and icon
+- **7 Colors 4 Styles** - Red🔴Orange🟠Yellow🟡Green🟢Pink🩷Blue🔵Purple🟣 + Highlight/Underline/Outline/Squiggly
+- **Interaction Optimization** - Optimized interaction flow for annotation selection, editing, deletion
+
+**🎯 Annotation Manager Optimization**
+- **Unified Management** - `MarkManager.ts` unified management of PDF/EPUB/TXT annotation logic
+- **Precise Operations** - Add/update/delete annotations with precise single annotation operations, no impact on others
+- **Data Sync** - Annotation data real-time sync with dictionary card deck (`deck.json`)
+
+**📚 Bookshelf Metadata Enhancement**
+- **Smart Parsing** - Optimized EPUB/MOBI/AZW3/FB2/CBZ metadata parsing logic
+- **Complete Info** - Auto extract title, author, description, chapters, cover and other complete information
+- **Cache Optimization** - Metadata caching mechanism, reduce redundant parsing for better performance
+- **Progress Refresh** - Optimized bookshelf progress display, real-time sync reading progress
+
+#### 🐛 Bug Fixes
+
+- **✅ Annotation Misalignment** - Fixed annotation position misalignment after deletion
+- **✅ Icon Residue** - Fixed icon not cleared after annotation deletion causing residue
+- **✅ Card Sync** - Fixed `deck.json` file not syncing after dictionary card deletion
+- **✅ Tooltip Edge** - Fixed tooltip overflow beyond viewport edges
+- **✅ Footnote Jump** - Fixed EPUB footnotes jumping directly instead of showing content
+- **✅ Highlight Misalignment** - Fixed text highlight style misalignment after adding/deleting annotations
+- **✅ Progress Save** - Fixed inaccurate reading progress saving, ensure real-time sync
+- **✅ Bookshelf Progress** - Fixed bookshelf progress not updating, optimized refresh mechanism
+
+---
+
 ### v0.5.1 (2025.12.12)
 
 #### 🐛 Bug Fixes

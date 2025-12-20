@@ -2,7 +2,6 @@
  * PDF 模块 - 统一导出
  */
 export{PDFViewer}from './viewer'
-export{PDFAnnotator}from './annotator'
 export{PDFSearch}from './search'
 export{printPDF}from './print'
 export{downloadPDF,exportAsImages}from './download'

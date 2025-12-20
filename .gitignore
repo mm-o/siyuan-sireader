@@ -10,3 +10,4 @@ build
 tmp
 .env
 docs
+src\components\backup

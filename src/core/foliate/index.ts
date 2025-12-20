@@ -6,7 +6,6 @@ import { ref, computed } from 'vue'
 
 // 导出所有模块
 export * from './types'
-export * from './mark'
 export * from './reader'
 
 // 全局阅读器状态

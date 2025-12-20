@@ -8,7 +8,7 @@ import type { FoliateView, Location } from './types'
 import type { ReaderSettings } from '@/composables/useSetting'
 import { PRESET_THEMES } from '@/composables/useSetting'
 import { bookSourceManager } from '@/core/book'
-import { MarkManager } from './mark'
+import { createTooltip, showTooltip, hideTooltip } from '@/core/MarkManager'
 import 'foliate-js/view.js'
 
 interface TxtChapter {
@@ -98,12 +98,7 @@ function getCurrentLocation(view: FoliateView): Location | null {
 }
 
 function destroyView(view: FoliateView) {
-  try {
-    if (view.renderer?.destroy) view.renderer.destroy()
-    view.remove()
-  } catch (e) {
-    console.error('[FoliateView] Destroy failed:', e)
-  }
+  try{view.remove()}catch{}
 }
 
 /**
@@ -116,8 +111,8 @@ export class FoliateReader {
   private bookUrl: string
   private plugin: Plugin
 
-  // 统一标记管理器
-  public marks: MarkManager
+  // 统一标记管理器（从外部设置）
+  public marks: any
 
   // 事件监听器
   private eventListeners = new Map<string, Set<Function>>()
@@ -130,9 +125,6 @@ export class FoliateReader {
 
     // 创建 View
     this.view = createFoliateView(this.container)
-
-    // 初始化统一标记管理器
-    this.marks = new MarkManager(this.view, this.bookUrl, this.plugin)
 
     // 设置事件监听
     this.setupEventListeners()
@@ -147,7 +139,7 @@ export class FoliateReader {
   async open(file: File | string | any) {
     await this.view.open(file)
     this.applySettings()
-    await this.marks.init()
+    if (this.marks) await this.marks.init()
     this.emit('loaded', { book: this.view.book })
   }
 
@@ -163,9 +155,60 @@ export class FoliateReader {
    * 设置事件监听
    */
   private setupEventListeners() {
-    ['relocate', 'load', 'external-link', 'link'].forEach(event => {
+    ['relocate', 'load', 'external-link'].forEach(event => {
       this.view.addEventListener(event, ((e: CustomEvent) => this.emit(event, e.detail)) as EventListener)
     })
+    
+    // 脚注处理
+    this.view.addEventListener('link',((e:CustomEvent)=>{
+      const{a,href}=e.detail
+      if(!a||!href){this.emit('link',e.detail);return}
+      const types=new Set(a?.getAttributeNS?.('http://www.idpf.org/2007/ops','type')?.split(' '))
+      const roles=new Set(a?.getAttribute?.('role')?.split(' '))
+      const isSuper=(el:HTMLElement)=>{const s=getComputedStyle(el);return el.matches('sup')||s.verticalAlign==='super'||s.verticalAlign==='top'||/^\d/.test(s.verticalAlign)}
+      const isRef=['doc-noteref','doc-biblioref','doc-glossref'].some(r=>roles.has(r))||['noteref','biblioref','glossref'].some(t=>types.has(t))||!types.has('backlink')&&!roles.has('doc-backlink')&&(isSuper(a)||a.children.length===1&&isSuper(a.children[0])||isSuper(a.parentElement))
+      isRef?(e.preventDefault(),this.showFootnote(a,href).catch(()=>{})):this.emit('link',e.detail)
+    })as EventListener)
+  }
+
+  private async showFootnote(a:HTMLElement,href:string){
+    try{
+      const target=await this.view.book.resolveHref(href),section=this.view.book.sections[target?.index]
+      if(!section)return
+      const doc=new DOMParser().parseFromString(await(await fetch(await section.load())).text(),'text/html'),el=target.anchor(doc)
+      if(!el)return
+      
+      // 提取脚注信息
+      const types=new Set(el?.getAttributeNS?.('http://www.idpf.org/2007/ops','type')?.split(' '))
+      const roles=new Set(el?.getAttribute?.('role')?.split(' '))
+      const noteType=roles.has('doc-endnote')||types.has('endnote')||types.has('rearnote')?'尾注':roles.has('doc-footnote')||types.has('footnote')?'脚注':roles.has('doc-biblioentry')||types.has('biblioentry')?'参考文献':roles.has('definition')||types.has('glossdef')?'术语':types.has('note')?'注释':'注'
+      const noteId=el.id||el.getAttribute('id')||''
+      
+      const range=el.startContainer?el:doc.createRange()
+      if(!el.startContainer)el.matches('li, aside')?range.selectNodeContents(el):range.selectNode(el)
+      const div=document.createElement('div')
+      div.appendChild(range.cloneContents())
+      
+      let tooltip=document.querySelector('[data-footnote-tooltip]') as HTMLDivElement
+      if(!tooltip){
+        tooltip=document.createElement('div')
+        tooltip.setAttribute('data-footnote-tooltip','true')
+        tooltip.style.cssText='position:fixed;display:none;width:340px;background:var(--b3-theme-surface);border:1px solid var(--b3-border-color);border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.12),0 4px 8px rgba(0,0,0,.08),0 0 1px rgba(0,0,0,.1);z-index:99999;pointer-events:auto;overflow:hidden;backdrop-filter:blur(10px);transform:translateY(0);transition:transform .2s cubic-bezier(.4,0,.2,1),opacity .2s cubic-bezier(.4,0,.2,1)'
+        document.body.appendChild(tooltip)
+      }
+      
+      const content=`<div style="padding:14px;font-size:13px;line-height:1.7;color:var(--b3-theme-on-surface);max-height:300px;overflow-y:auto;word-wrap:break-word;word-break:break-word;background:var(--b3-theme-surface)">${div.innerHTML}</div>`
+      tooltip.innerHTML=createTooltip({icon:'#iconMark',iconColor:'#ef4444',title:noteType,content,id:noteId?`#${noteId}`:undefined})
+      
+      const rect=a.getBoundingClientRect(),iframe=a.ownerDocument.defaultView?.frameElement as HTMLIFrameElement,ir=iframe?.getBoundingClientRect()
+      const x=(ir?.left||0)+rect.left,y=(ir?.top||0)+rect.bottom+8
+      let timer:any
+      showTooltip(tooltip,x,y)
+      a.onmouseenter=()=>{clearTimeout(timer);showTooltip(tooltip,x,y)}
+      a.onmouseleave=()=>{timer=setTimeout(()=>hideTooltip(tooltip),100)}
+      tooltip.onmouseenter=()=>clearTimeout(timer)
+      tooltip.onmouseleave=()=>hideTooltip(tooltip)
+    }catch(e){console.error('[Footnote]',e)}
   }
 
   /**
@@ -252,7 +295,7 @@ export class FoliateReader {
   /**
    * 销毁
    */
-  async destroy() { await this.marks.destroy(); this.eventListeners.clear(); destroyView(this.view) }
+  async destroy() { await this.marks?.destroy(); this.eventListeners.clear(); destroyView(this.view) }
 }
 
 /**
@@ -268,8 +311,45 @@ export { createFoliateView, configureView, applyCustomCSS, getCurrentLocation, d
 
 // ===== TXT/在线书籍支持 =====
 
-export async function loadTxtBook(view: FoliateView, content: string, chapters: TxtChapter[], bookInfo?: any, settings?: ReaderSettings) {
-  const chaps = chapters.length ? chapters : splitTxtContent(content)
+// TXT 编码检测和解码
+async function detectAndDecodeText(buffer:ArrayBuffer):Promise<string>{
+  const bytes=new Uint8Array(buffer)
+  
+  // 检测 UTF-8 BOM
+  if(bytes.length>=3&&bytes[0]===0xEF&&bytes[1]===0xBB&&bytes[2]===0xBF){
+    return new TextDecoder('utf-8').decode(bytes.slice(3))
+  }
+  
+  // 检测 UTF-16 BOM
+  if(bytes.length>=2){
+    if(bytes[0]===0xFF&&bytes[1]===0xFE)return new TextDecoder('utf-16le').decode(bytes.slice(2))
+    if(bytes[0]===0xFE&&bytes[1]===0xFF)return new TextDecoder('utf-16be').decode(bytes.slice(2))
+  }
+  
+  // 尝试 UTF-8 解码
+  try{
+    const text=new TextDecoder('utf-8',{fatal:true}).decode(bytes)
+    if(!text.includes('�'))return text
+  }catch{}
+  
+  // 降级到 GBK
+  try{
+    return new TextDecoder('gbk').decode(bytes)
+  }catch{
+    return new TextDecoder('utf-8').decode(bytes)
+  }
+}
+
+export async function loadTxtBook(view: FoliateView, content: string|ArrayBuffer, chapters: TxtChapter[], bookInfo?: any, settings?: ReaderSettings) {
+  // 处理编码
+  let text=''
+  if(content instanceof ArrayBuffer){
+    text=await detectAndDecodeText(content)
+  }else{
+    text=content
+  }
+  
+  const chaps = chapters.length ? chapters : splitTxtContent(text)
   
   const loadChapter = async (ch: TxtChapter) => {
     let html = ''
@@ -302,7 +382,9 @@ export async function loadTxtBook(view: FoliateView, content: string, chapters: 
   
   const updateLocation = (index: number, fraction = 0) => {
     const title = chaps[index]?.title || ''
-    view.lastLocation = { section: index, fraction, label: title, tocItem: { label: title, href: `#chapter-${index}` }, index }
+    const totalChapters=chaps.length
+    const overallFraction=totalChapters>0?(index+fraction)/totalChapters:0
+    view.lastLocation = { section: index, fraction: overallFraction, label: title, tocItem: { label: title, href: `#chapter-${index}` }, index }
     return view.lastLocation
   }
   
@@ -319,12 +401,16 @@ export async function loadTxtBook(view: FoliateView, content: string, chapters: 
     
     // 绑定TXT文档事件和渲染标注
     setTimeout(() => {
-      const contents = (view as any).renderer?.getContents?.()
-      const marks = (view as any).marks
-      if (contents && marks) {
-        for (const { doc } of contents) if (doc) marks.bindTxtDocEvents(doc, index)
-      }
-    }, 100)
+      try{
+        const contents = (view as any).renderer?.getContents?.()
+        const marks = (view as any).marks
+        if (contents && marks && typeof marks.bindTxtDocEvents === 'function') {
+          for (const { doc } of contents) {
+            if (doc && doc.body) marks.bindTxtDocEvents(doc, index)
+          }
+        }
+      }catch(e){console.error('[TXT] bindTxtDocEvents:',e)}
+    }, 200)
   }) as EventListener)
   
   ;(view as any).getLocation = () => {

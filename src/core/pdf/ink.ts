@@ -253,16 +253,41 @@ export class InkController{
 /** 墨迹工具管理器 - 对外统一接口 */
 export class InkToolManager{
   private controller?:InkController
+  private plugin:any
+  private bookUrl:string
+  private bookName:string
 
-  constructor(private container:HTMLElement,private annotator:any,private viewer:any){}
+  constructor(private container:HTMLElement,plugin:any,bookUrl:string,bookName:string,private viewer:any){
+    this.plugin=plugin
+    this.bookUrl=bookUrl
+    this.bookName=this.sanitize(bookName)
+  }
+
+  private sanitize(n:string){return(n||'book').replace(/[<>:"/\\|?*\x00-\x1f《》【】「」『』（）()[\]{}]/g,'').replace(/\s+/g,'_').replace(/[._-]+/g,'_').replace(/^[._-]+|[._-]+$/g,'').slice(0,50)||'book'}
+  private hash(s:string){let h=0;for(let i=0;i<s.length;i++)h=((h<<5)-h+s.charCodeAt(i))|0;return Math.abs(h).toString(36)}
+
+  private async loadData(){
+    try{
+      const data=await this.plugin.loadData(`books/${this.bookName}_${this.hash(this.bookUrl)}.json`)||{}
+      return data.inkAnnotations||[]
+    }catch{return[]}
+  }
+
+  private async saveData(inkAnnotations:any[]){
+    try{
+      const fileName=`books/${this.bookName}_${this.hash(this.bookUrl)}.json`
+      const existing=await this.plugin.loadData(fileName)||{}
+      await this.plugin.saveData(fileName,{...existing,inkAnnotations})
+    }catch(e){console.error('[InkTool]',e)}
+  }
 
   /** 初始化控制器 */
   async init(){
     if(this.controller)return this.controller
-    this.controller=new InkController(async()=>await this.annotator?.saveInk(this.controller!.toJSON()))
+    this.controller=new InkController(async()=>await this.saveData(this.controller!.toJSON()))
     this.controller.init(this.container)
-    const data=this.annotator?.getData()
-    if(data?.inkAnnotations?.length)this.controller.fromJSON(data.inkAnnotations)
+    const data=await this.loadData()
+    if(data.length)this.controller.fromJSON(data)
     return this.controller
   }
 
@@ -277,14 +302,28 @@ export class InkToolManager{
   /** 设置配置 */
   async setConfig(config:any){(await this.init()).setConfig(config)}
   /** 保存 */
-  async save(){if(this.controller)await this.annotator?.saveInk(this.controller.toJSON())}
+  async save(){if(this.controller)await this.saveData(this.controller.toJSON())}
+  /** 获取所有标注 */
+  toJSON(){return this.controller?.toJSON()||[]}
+  /** 删除墨迹标注 */
+  async deleteInk(id:string):Promise<boolean>{
+    if(!this.controller)return false
+    const data=await this.loadData()
+    const ink=data.find((i:any)=>i.id===id)
+    if(!ink)return false
+    data.splice(data.indexOf(ink),1)
+    await this.saveData(data)
+    this.controller.getManager(ink.page).deleteAnnotation(id)
+    this.render(ink.page)
+    return true
+  }
   /** 撤销 */
   async undo(){
     if(!this.controller)return false
     const page=this.viewer?.getCurrentPage()
     if(!page)return false
     const success=this.controller.undo(page)
-    if(success)await this.annotator?.saveInk(this.controller.toJSON())
+    if(success)await this.saveData(this.controller.toJSON())
     return success
   }
   /** 清空当前页 */
@@ -293,12 +332,12 @@ export class InkToolManager{
     const page=this.viewer?.getCurrentPage()
     if(!page)return
     this.controller.clear(page)
-    await this.annotator?.saveInk(this.controller.toJSON())
+    await this.saveData(this.controller.toJSON())
   }
   /** 销毁 */
   destroy(){this.controller?.destroy()}
 }
 
 /** 创建墨迹工具管理器 */
-export const createInkToolManager=(container:HTMLElement,annotator:any,viewer:any):InkToolManager=>new InkToolManager(container,annotator,viewer)
+export const createInkToolManager=(container:HTMLElement,plugin:any,bookUrl:string,bookName:string,viewer:any):InkToolManager=>new InkToolManager(container,plugin,bookUrl,bookName,viewer)
 

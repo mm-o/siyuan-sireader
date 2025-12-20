@@ -289,34 +289,81 @@ export class ShapeController{
 /** 形状工具管理器 */
 export class ShapeToolManager{
   private controller?:ShapeController
-  constructor(private container:HTMLElement,private annotator:any,private onShapeClick?:(shape:ShapeAnnotation)=>void){}
+  private plugin:any
+  private bookUrl:string
+  private bookName:string
+
+  constructor(private container:HTMLElement,plugin:any,bookUrl:string,bookName:string,private onShapeClick?:(shape:ShapeAnnotation)=>void){
+    this.plugin=plugin
+    this.bookUrl=bookUrl
+    this.bookName=this.sanitize(bookName)
+  }
+
+  private sanitize(n:string){return(n||'book').replace(/[<>:"/\\|?*\x00-\x1f《》【】「」『』（）()[\]{}]/g,'').replace(/\s+/g,'_').replace(/[._-]+/g,'_').replace(/^[._-]+|[._-]+$/g,'').slice(0,50)||'book'}
+  private hash(s:string){let h=0;for(let i=0;i<s.length;i++)h=((h<<5)-h+s.charCodeAt(i))|0;return Math.abs(h).toString(36)}
+
+  private async loadData(){
+    try{
+      const data=await this.plugin.loadData(`books/${this.bookName}_${this.hash(this.bookUrl)}.json`)||{}
+      return data.shapeAnnotations||[]
+    }catch{return[]}
+  }
+
+  private async saveData(shapeAnnotations:any[]){
+    try{
+      const fileName=`books/${this.bookName}_${this.hash(this.bookUrl)}.json`
+      const existing=await this.plugin.loadData(fileName)||{}
+      await this.plugin.saveData(fileName,{...existing,shapeAnnotations})
+    }catch(e){console.error('[ShapeTool]',e)}
+  }
+
   async init(){
     if(this.controller)return this.controller
-    this.controller=new ShapeController(async()=>await this.annotator?.saveShape(this.controller!.toJSON()),this.onShapeClick)
-    const data=this.annotator?.getData()
-    if(data?.shapeAnnotations?.length)this.controller.fromJSON(data.shapeAnnotations)
+    this.controller=new ShapeController(async()=>await this.saveData(this.controller!.toJSON()),this.onShapeClick)
+    const data=await this.loadData()
+    if(data.length)this.controller.fromJSON(data)
     this.controller.ensureClickEvents(this.container)
     return this.controller
   }
+
+  async updateShape(id:string,updates:any):Promise<boolean>{
+    if(!this.controller)return false
+    const data=await this.loadData()
+    const shape=data.find((s:any)=>s.id===id)
+    if(!shape)return false
+    Object.assign(shape,updates)
+    await this.saveData(data)
+    this.controller.getManager(shape.page).delete(id)
+    this.controller.getManager(shape.page).add(shape)
+    this.render(shape.page)
+    return true
+  }
+
+  async deleteShape(id:string):Promise<boolean>{
+    if(!this.controller)return false
+    const data=await this.loadData()
+    const shape=data.find((s:any)=>s.id===id)
+    if(!shape)return false
+    data.splice(data.indexOf(shape),1)
+    await this.saveData(data)
+    this.controller.getManager(shape.page).delete(id)
+    this.render(shape.page)
+    return true
+  }
+
   render(page:number){
     if(!this.controller)return
-    // 重新加载数据以确保显示最新的更改
-    const data=this.annotator?.getData()
-    if(data?.shapeAnnotations){
-      const pageShapes=data.shapeAnnotations.filter((s:any)=>s.page===page)
-      const manager=this.controller['getManager'](page)
-      manager.clear()
-      pageShapes.forEach((s:any)=>manager.add(s))
-    }
     const c=document.querySelector(`.pdf-shape-layer[data-page="${page}"]`)as HTMLCanvasElement
     if(c)this.controller.render(page,c)
   }
+
   async toggle(active:boolean){await(await this.init()).toggle(active,this.container)}
   async setConfig(config:any){(await this.init()).setConfig(config)}
-  async save(){if(this.controller)await this.annotator?.saveShape(this.controller.toJSON())}
+  async save(){if(this.controller)await this.saveData(this.controller.toJSON())}
+  toJSON(){return this.controller?.toJSON()||[]}
   async undo(page:number){if(!this.controller)return false;const s=this.controller.undo(page);if(s)await this.save();return s}
   async clear(page:number){if(!this.controller)return;this.controller.clear(page);await this.save()}
   destroy(){this.controller?.destroy()}
 }
 
-export const createShapeToolManager=(container:HTMLElement,annotator:any,onShapeClick?:(shape:ShapeAnnotation)=>void):ShapeToolManager=>new ShapeToolManager(container,annotator,onShapeClick)
+export const createShapeToolManager=(container:HTMLElement,plugin:any,bookUrl:string,bookName:string,onShapeClick?:(shape:ShapeAnnotation)=>void):ShapeToolManager=>new ShapeToolManager(container,plugin,bookUrl,bookName,onShapeClick)
