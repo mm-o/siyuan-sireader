@@ -206,7 +206,7 @@ export class MarkManager{
       this.marks.filter(m=>m.type==='vocab').forEach(v=>this.del(String(v.cfi||v.page||`s${v.section}`)))
       for(const c of cards){
         const note=`${c.word}\n${c.data.phonetic?`/${c.data.phonetic}/`:''}\n${c.data.meanings?.map((m:any)=>`${m.pos} ${m.text}`).join('\n')||''}`
-        const m=this.add({type:'vocab',format:this.format,cfi:c.cfi,section:c.section,text:c.word,note:note.trim(),color:'purple',style:'highlight',timestamp:c.timestamp})
+        const m=this.add({type:'vocab',format:this.format,cfi:c.cfi,section:c.section,page:c.page,rects:c.rects,text:c.word,note:note.trim(),color:'purple',style:'highlight',timestamp:c.timestamp})
         if(this.format==='pdf')this.renderPdf(m.page!)
         else if(this.format==='txt')this.refreshTxt()
         else if(m.cfi)await this.view?.addAnnotation?.({value:m.cfi,color:'purple',note:m.note}).catch(()=>{})
@@ -267,35 +267,41 @@ export class MarkManager{
     }catch(e){console.error('[Mark]',e)}
   }
 
+  // 创建笔记标记和 tooltip
+  private createNoteMarker(m:Mark,r:any,bg:string,layer:HTMLElement){
+    const marker=document.createElement('span'),tooltip=document.createElement('div')
+    marker.setAttribute('data-note-marker','true')
+    marker.textContent=getNoteIcon(m.color)
+    marker.style.cssText=`position:absolute;left:${r.x+r.w+3}px;top:${r.y-5}px;font-size:14px;cursor:pointer;user-select:none;opacity:0.85;transition:opacity .2s;pointer-events:auto;z-index:12`
+    tooltip.setAttribute('data-note-tooltip','true')
+    tooltip.style.cssText='position:fixed;display:none;min-width:280px;max-width:420px;background:var(--b3-theme-surface);border:1px solid var(--b3-border-color);border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.12),0 4px 16px rgba(0,0,0,.08),0 2px 8px rgba(0,0,0,.04);z-index:99999;overflow:hidden;backdrop-filter:blur(8px);word-wrap:break-word'
+    tooltip.innerHTML=createTooltip({icon:m.type==='vocab'?'#iconLanguage':'#iconEdit',iconColor:bg,title:m.type==='vocab'?'词汇笔记':'标注笔记',content:`<div style="padding:14px;font-size:13px;line-height:1.7;color:var(--b3-theme-on-surface);max-height:300px;overflow-y:auto;word-wrap:break-word;word-break:break-word;background:var(--b3-theme-surface)">${m.note!.split('\n').map(l=>l.trim()).filter(Boolean).join('<br>')}</div>`})
+    document.body.appendChild(tooltip)
+    let timer:any
+    marker.onmouseenter=()=>{clearTimeout(timer);marker.style.opacity='1';showTooltip(tooltip,marker.getBoundingClientRect().left,marker.getBoundingClientRect().bottom+8)}
+    marker.onmouseleave=()=>{timer=setTimeout(()=>{marker.style.opacity='0.85';hideTooltip(tooltip)},100)}
+    tooltip.onmouseenter=()=>clearTimeout(timer)
+    tooltip.onmouseleave=()=>{timer=setTimeout(()=>hideTooltip(tooltip),100)}
+    marker.onclick=()=>this.onAnnotationClick?.(m)
+    layer.appendChild(marker)
+  }
+
   // PDF 渲染
   renderPdf(page:number){
     if(this.format!=='pdf')return
     const layer=document.querySelector(`[data-page="${page}"] .pdf-annotation-layer`)
     if(!layer)return
     layer.querySelectorAll('[data-note-marker],[data-note-tooltip],.pdf-highlight').forEach(el=>el.remove())
-    this.marks.filter(m=>m.page===page&&(m.type==='highlight'||m.type==='note')).forEach(m=>{
-      const bg=COLORS.find(c=>c.color===m.color)?.bg||'#ffeb3b'
-      const style=m.style||'highlight'
+    this.marks.filter(m=>m.page===page&&(m.type==='highlight'||m.type==='note'||m.type==='vocab')).forEach(m=>{
+      const bg=COLORS.find(c=>c.color===m.color)?.bg||'#ffeb3b',style=m.style||'highlight'
       m.rects?.forEach((r,idx)=>{
-        const div=document.createElement('div')
+        const div=document.createElement('div'),base=`position:absolute;left:${r.x}px;top:${r.y}px;width:${r.w}px;height:${r.h}px;pointer-events:auto;cursor:pointer`
         div.className=`pdf-highlight pdf-${style}`
         div.dataset.id=m.id
-        const base=`position:absolute;left:${r.x}px;top:${r.y}px;width:${r.w}px;height:${r.h}px;pointer-events:auto;cursor:pointer`
-        if(style==='highlight')div.style.cssText=`${base};background:${bg};opacity:0.3`
-        else if(style==='underline')div.style.cssText=`${base};border-bottom:2px solid ${bg};opacity:0.8`
-        else if(style==='outline')div.style.cssText=`${base};border:2px solid ${bg};opacity:0.8`
-        else div.style.cssText=`${base};border-bottom:2px wavy ${bg};opacity:0.8`
+        div.style.cssText=style==='highlight'?`${base};background:${bg};opacity:0.3`:style==='underline'?`${base};border-bottom:2px solid ${bg};opacity:0.8`:style==='outline'?`${base};border:2px solid ${bg};opacity:0.8`:`${base};border-bottom:2px wavy ${bg};opacity:0.8`
         div.onclick=()=>this.onAnnotationClick?.(m)
         layer.appendChild(div)
-        if(m.note&&idx===m.rects!.length-1){
-          const icon=getNoteIcon(m.color)
-          const marker=document.createElement('span')
-          marker.setAttribute('data-note-marker','true')
-          marker.textContent=icon
-          marker.style.cssText=`position:absolute;left:${r.x+r.w+3}px;top:${r.y-5}px;font-size:14px;cursor:pointer;opacity:0.85;pointer-events:auto`
-          marker.onclick=()=>this.onAnnotationClick?.(m)
-          layer.appendChild(marker)
-        }
+        if(m.note&&idx===m.rects!.length-1)this.createNoteMarker(m,r,bg,layer)
       })
     })
   }

@@ -260,5 +260,5 @@
   "viewDetail": "View Details",
   "copySettings": "Copy Settings",
   "linkFormat": "Link Format",
-  "linkFormatDesc": "Available variables: title author chapter location url text"
+  "linkFormatDesc": "Available variables: title author chapter location url text note image"
 }

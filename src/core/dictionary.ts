@@ -10,7 +10,7 @@ export interface OfflineDict{id:string;name:string;type:'stardict'|'dictd';enabl
 export interface OnlineDict{id:string;name:string;icon:string;enabled:boolean;url?:string;desc?:string}
 export interface DictConfig{dicts:{id:string;name:string;type:string;enabled:boolean;files:any}[];online?:{id:string;enabled:boolean}[]}
 export interface DictCardData{word:string;phonetic?:string;phonetics?:{text:string;audio?:string}[];badges?:{text:string;gradient:boolean}[];meanings?:{pos:string;text:string}[];defs?:string[];examples?:{en:string;zh:string}[];extras?:{label:string;text:string}[];meta?:string}
-export interface DeckCard{id:string;word:string;dictId:string;data:DictCardData;timestamp:number;cfi?:string;section?:number;bookUrl?:string}
+export interface DeckCard{id:string;word:string;dictId:string;data:DictCardData;timestamp:number;cfi?:string;section?:number;bookUrl?:string;page?:number;rects?:any[]}
 
 const DICT_NAMES:Record<string,string>={ai:'AI','ai-free':'AI(免费)',cambridge:'剑桥',youdao:'有道',haici:'海词',mxnzp:'汉字',ciyu:'词语',zdic:'汉典',offline:'离线',bing:'必应'}
 export const getDictName=(id:string)=>DICT_NAMES[id]||id
@@ -208,10 +208,10 @@ const loadDeck=async()=>{if(deckLoaded||!plugin)return;try{const data=await plug
 const saveDeck=async()=>plugin&&plugin.saveData('dictionaries/deck.json',{cards:deckCards}).catch(e=>console.error('[Deck] Save:',e))
 const notifyDeckUpdate=()=>window.dispatchEvent(new Event('sireader:deck-updated'))
 
-export const addToDeck=async(word:string,dictId:string,data:DictCardData,cfi?:string,section?:number,bookUrl?:string)=>{
+export const addToDeck=async(word:string,dictId:string,data:DictCardData,cfi?:string,section?:number,bookUrl?:string,page?:number,rects?:any[])=>{
   await loadDeck()
   if(deckCards.some(c=>c.word===word&&c.dictId===dictId))return false
-  deckCards.push({id:`${dictId}-${word}-${Date.now()}`,word,dictId,data,timestamp:Date.now(),cfi,section,bookUrl})
+  deckCards.push({id:`${dictId}-${word}-${Date.now()}`,word,dictId,data,timestamp:Date.now(),cfi,section,bookUrl,page,rects})
   await saveDeck()
   notifyDeckUpdate()
   return true
@@ -435,9 +435,9 @@ import{Dialog,showMessage}from'siyuan'
 
 let dialog:Dialog|null=null
 let state:{word:string;dictId:string;data?:DictCardData}={word:'',dictId:''}
-let selectionInfo:{cfi?:string;section?:number;text:string}|null=null
+let selectionInfo:{cfi?:string;section?:number;page?:number;rects?:any[];text:string}|null=null
 
-export async function openDict(word:string,_x?:number,_y?:number,selection?:{cfi?:string;section?:number;text:string}){
+export async function openDict(word:string,_x?:number,_y?:number,selection?:{cfi?:string;section?:number;page?:number;rects?:any[];text:string}){
   state={word,dictId:'',data:undefined}
   selectionInfo=selection||null
   dialog?.destroy()
@@ -452,7 +452,7 @@ export async function openDict(word:string,_x?:number,_y?:number,selection?:{cfi
   
   dialog.element.querySelectorAll('[data-id]').forEach(btn=>btn.addEventListener('click',()=>switchDict((btn as HTMLElement).dataset.id!)))
   dialog.element.querySelector('#dict-deck-btn')?.addEventListener('click',async()=>{
-    if(state.data&&selectionInfo&&await addToDeck(state.word,state.dictId,state.data,selectionInfo.cfi,selectionInfo.section,(window as any).__currentBookUrl||'')){
+    if(state.data&&selectionInfo&&await addToDeck(state.word,state.dictId,state.data,selectionInfo.cfi,selectionInfo.section,(window as any).__currentBookUrl||'',selectionInfo.page,selectionInfo.rects)){
       const btn=dialog?.element.querySelector('#dict-deck-btn')as HTMLButtonElement
       btn&&(btn.innerHTML='<svg style="width:14px;height:14px"><use xlink:href="#iconCheck"/></svg> 已加入',btn.disabled=true,btn.style.opacity='0.6')
       showMessage('已加入卡包',1500,'info')

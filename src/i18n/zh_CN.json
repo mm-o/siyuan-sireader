@@ -262,5 +262,5 @@
   "viewDetail": "查看详情",
   "copySettings": "复制设置",
   "linkFormat": "链接格式",
-  "linkFormatDesc": "可用变量：书名 作者 章节 位置 链接 文本"
+  "linkFormatDesc": "可用变量：书名 作者 章节 位置 链接 文本 笔记 截图"
 }

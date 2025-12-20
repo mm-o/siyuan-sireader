@@ -346,7 +346,7 @@ const copyMark=async(item:any)=>{
   copy(link)
 }
 
-const goToDeckLocation=(item:any)=>item.cfi||item.section!==undefined?(item.cfi?goToLocation(item.cfi):activeView.value?.goTo(item.section)):showMsg('未保存位置信息')
+const goToDeckLocation=(item:any)=>item.page?goToPage(item.page):item.cfi?goToLocation(item.cfi):item.section!==undefined?activeView.value?.goTo(item.section):showMsg('未保存位置信息')
 const removeDeckCard=async(id:string)=>{await removeFromDeck(id);showMsg('已删除')}
 const toggleScroll=()=>contentRef.value?.scrollTo({top:contentRef.value.scrollTop<50?contentRef.value.scrollHeight:0,behavior:'smooth'})
 const onScroll=(e:Event)=>isAtTop.value=(e.target as HTMLElement).scrollTop<50

@@ -38,6 +38,32 @@ Drag EPUB files into SiYuan documents to create links, click links to open books
 
 ## 🚀 Latest Updates
 
+### v0.6.1 (2025.12.21)
+
+#### 🐛 Bug Fixes
+
+- **✅ PDF Annotation Position** - Fixed PDF text selection annotation position misalignment, unified coordinate system using `x/y/w/h` format
+- **✅ Card Deck Highlight** - Fixed missing purple highlight after adding PDF words to card deck, extended card deck data structure to support `page` and `rects` fields
+- **✅ Note Tooltip** - Unified tooltip display logic for annotation notes and shape annotation notes, hover to show full note content
+- **✅ Card Deck Location** - Fixed "location info not saved" error when clicking card deck page location, support PDF format `page` field positioning
+- **✅ Link Format Description** - Added "note" and "image" variable descriptions in i18n files, improved available variables prompt in copy settings
+
+#### ⚡ Performance Optimization
+
+**PDF Loading Optimization**
+- Enabled font rendering and WebGL hardware acceleration, dramatically improved rendering speed
+- Optimized Canvas context and rendering resolution, reduced pixel calculations
+- Asynchronous text layer loading, non-blocking page rendering
+- Reduced preload range, lower memory usage
+
+**PDF Search Optimization**
+- Text caching mechanism, 80% faster second search
+- Prioritize rendered text layers, avoid redundant parsing
+- Smart highlight algorithm, correctly handle cross-span matches
+- Auto scroll to match position, improved interaction experience
+
+---
+
 ### v0.6.0 (2025.12.20)
 
 #### ✨ New Features

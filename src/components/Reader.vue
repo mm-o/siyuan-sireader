@@ -191,7 +191,7 @@ const init=async()=>{
           if(!pageEl)return
           const pr=pageEl.getBoundingClientRect()
           const text=sel.toString().trim()
-          const rectsData=rects.map(r=>({left:r.left-pr.left,top:r.top-pr.top,width:r.width,height:r.height}))
+          const rectsData=rects.map(r=>({x:r.left-pr.left,y:r.top-pr.top,w:r.width,h:r.height}))
           currentSelection={text,page:pg,rects:rectsData}
           markPanelRef.value?.showMenu({text,location:{format:'pdf',page:pg,rects:rectsData}},rects[0].left+rects[0].width/2,rects[0].top)
         }catch{}
@@ -464,7 +464,8 @@ onUnmounted(async()=>{
 
 <style>
 /* PDF 搜索高亮 */
-.textLayer mark.pdf-search-hl{background:#ff06;border-radius:2px;color:inherit}
+.textLayer mark.pdf-search-hl{background:#ff06;border-radius:2px;color:inherit;transition:background .2s}
+.textLayer mark.pdf-search-current{background:#ff9800;color:#fff;box-shadow:0 0 0 2px #ff9800}
 
 /* PDF 标注样式 */
 .pdf-highlight{pointer-events:auto!important}

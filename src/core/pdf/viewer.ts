@@ -52,8 +52,13 @@ export class PDFViewer{
       cMapUrl:'https://cdn.jsdelivr.net/npm/pdfjs-dist@5.4.449/cmaps/',
       cMapPacked:true,
       standardFontDataUrl:'https://cdn.jsdelivr.net/npm/pdfjs-dist@5.4.449/standard_fonts/',
-      useSystemFonts:true,
-      disableFontFace:true
+      useSystemFonts:false,
+      disableFontFace:false,
+      useWorkerFetch:true,
+      isEvalSupported:false,
+      maxImageSize:16777216,
+      cMapUrl:'https://cdn.jsdelivr.net/npm/pdfjs-dist@5.4.449/cmaps/',
+      cMapPacked:true
     }).promise)as any
     this.pages.set(1,markRaw(await this.pdf.getPage(1)))
     await this.fitWidth()
@@ -81,7 +86,7 @@ export class PDFViewer{
   }
 
   private setupLazyLoad(){
-    this.observer=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){const n=+(e.target as HTMLElement).dataset.page!;n&&!this.rendered.has(n)&&this.queueRender(n)}}),{rootMargin:'500px'})
+    this.observer=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){const n=+(e.target as HTMLElement).dataset.page!;n&&!this.rendered.has(n)&&this.queueRender(n)}}),{rootMargin:'300px'})
     this.container.querySelectorAll('.pdf-page').forEach(el=>this.observer!.observe(el))
   }
 
@@ -98,39 +103,44 @@ export class PDFViewer{
     const bg=getComputedStyle(w).getPropertyValue('--pdf-page-bg')||'#fff'
     w.style.background=bg
     const vp=p.getViewport({scale:this.scale,rotation:this.rotation})
-    const dpr=Math.max(window.devicePixelRatio||1,2)
+    const dpr=window.devicePixelRatio||1
     try{
-      const c=document.createElement('canvas'),ctx=c.getContext('2d',{alpha:false,desynchronized:true})!
-      c.width=Math.round(vp.width*dpr)
-      c.height=Math.round(vp.height*dpr)
+      const c=document.createElement('canvas'),ctx=c.getContext('2d',{alpha:false,willReadFrequently:false})!
+      c.width=Math.floor(vp.width*dpr)
+      c.height=Math.floor(vp.height*dpr)
       c.style.cssText=`width:${vp.width}px;height:${vp.height}px`
-      await p.render({canvasContext:ctx,viewport:vp,transform:[dpr,0,0,dpr,0,0],background:bg}).promise
+      await p.render({canvasContext:ctx,viewport:vp,transform:[dpr,0,0,dpr,0,0],background:bg,enableWebGL:true}).promise
       w.appendChild(c)
     }catch(e:any){console.error(`[PDF] 渲染失败 ${n}:`,e);w.style.background='#fee';w.innerHTML=`<div style="padding:20px;color:#c00">渲染失败</div>`;return}
-    // 立即渲染文本层（用于搜索）
-    const txt=document.createElement('div')
-    txt.className='textLayer'
-    txt.style.cssText='position:absolute;inset:0'
-    txt.dataset.extracted='true'
-    w.appendChild(txt)
-    const textVp=p.getViewport({scale:this.scale,rotation:this.rotation})
-    const textContent=await p.getTextContent({disableNormalization:true})
-    textContent.items.forEach((it:any)=>{
-      if(!it.str)return
-      const tx=pdfjsLib.Util.transform(textVp.transform,it.transform),s=document.createElement('span')
-      s.textContent=it.str
-      const a=Math.atan2(tx[1],tx[0]),h=Math.hypot(tx[2],tx[3])
-      s.style.cssText=`position:absolute;left:${tx[4]}px;top:${tx[5]-h*.8}px;font-size:${h}px;transform:rotate(${a}rad);transform-origin:0 0;white-space:pre;color:transparent;cursor:text`
-      txt.appendChild(s)
+    // 延迟渲染文本层
+    requestIdleCallback(()=>{
+      const txt=document.createElement('div')
+      txt.className='textLayer'
+      txt.style.cssText='position:absolute;inset:0;opacity:0;pointer-events:none'
+      txt.dataset.extracted='true'
+      w.appendChild(txt)
+      p.getTextContent({disableNormalization:true}).then(textContent=>{
+        const textVp=p.getViewport({scale:this.scale,rotation:this.rotation})
+        textContent.items.forEach((it:any)=>{
+          if(!it.str)return
+          const tx=pdfjsLib.Util.transform(textVp.transform,it.transform),s=document.createElement('span')
+          s.textContent=it.str
+          const a=Math.atan2(tx[1],tx[0]),h=Math.hypot(tx[2],tx[3])
+          s.style.cssText=`position:absolute;left:${tx[4]}px;top:${tx[5]-h*.8}px;font-size:${h}px;transform:rotate(${a}rad);transform-origin:0 0;white-space:pre;color:transparent;cursor:text`
+          txt.appendChild(s)
+        })
+        txt.style.opacity='1'
+        txt.style.pointerEvents='auto'
+      })
     })
-    // 延迟渲染链接层和墨迹层（非关键）
+    // 延迟渲染链接层和墨迹层
     requestIdleCallback(async()=>{
       const ann=document.createElement('div')
       ann.className='pdf-annotation-layer'
       ann.style.cssText='position:absolute;inset:0;pointer-events:none'
       w.appendChild(ann)
-      await this.renderLinks(n,w,p,textVp)
-      this.createInkLayer(n,w,textVp)
+      await this.renderLinks(n,w,p,vp)
+      this.createInkLayer(n,w,vp)
     })
   }
 
