@@ -2,6 +2,7 @@
  * PDF 墨迹标注核心模块
  * 支持鼠标/触摸绘制、平滑曲线、撤销/清除等功能
  */
+import{loadBookData,saveBookData}from'../bookshelf'
 
 // 类型定义
 export interface InkPoint{x:number;y:number;pressure?:number}
@@ -256,29 +257,22 @@ export class InkToolManager{
   private plugin:any
   private bookUrl:string
   private bookName:string
+  private initialized=false
 
   constructor(private container:HTMLElement,plugin:any,bookUrl:string,bookName:string,private viewer:any){
     this.plugin=plugin
     this.bookUrl=bookUrl
-    this.bookName=this.sanitize(bookName)
+    this.bookName=bookName||'book'
   }
 
-  private sanitize(n:string){return(n||'book').replace(/[<>:"/\\|?*\x00-\x1f《》【】「」『』（）()[\]{}]/g,'').replace(/\s+/g,'_').replace(/[._-]+/g,'_').replace(/^[._-]+|[._-]+$/g,'').slice(0,50)||'book'}
-  private hash(s:string){let h=0;for(let i=0;i<s.length;i++)h=((h<<5)-h+s.charCodeAt(i))|0;return Math.abs(h).toString(36)}
-
   private async loadData(){
-    try{
-      const data=await this.plugin.loadData(`books/${this.bookName}_${this.hash(this.bookUrl)}.json`)||{}
-      return data.inkAnnotations||[]
-    }catch{return[]}
+    const data=await loadBookData(this.bookUrl,this.bookName)
+    return data?.inkAnnotations||[]
   }
 
   private async saveData(inkAnnotations:any[]){
-    try{
-      const fileName=`books/${this.bookName}_${this.hash(this.bookUrl)}.json`
-      const existing=await this.plugin.loadData(fileName)||{}
-      await this.plugin.saveData(fileName,{...existing,inkAnnotations})
-    }catch(e){console.error('[InkTool]',e)}
+    if(!this.initialized)return
+    await saveBookData(this.bookUrl,{inkAnnotations},this.bookName)
   }
 
   /** 初始化控制器 */
@@ -288,6 +282,7 @@ export class InkToolManager{
     this.controller.init(this.container)
     const data=await this.loadData()
     if(data.length)this.controller.fromJSON(data)
+    this.initialized=true
     return this.controller
   }
 

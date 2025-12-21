@@ -425,3 +425,36 @@ class BookshelfManager {
 }
 
 export const bookshelfManager = new BookshelfManager()
+
+// ===== 统一书籍数据管理 =====
+let plugin: any
+
+export const initBookDataPlugin = (p: any) => plugin = p
+
+const hash = (s: string) => { let h = 0; for (let i = 0; i < s.length; i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0; return Math.abs(h).toString(36) }
+const sanitize = (n: string) => (n || 'book').replace(/[<>:"/\\|?*\x00-\x1f《》【】「」『』（）()[\]{}]/g, '').replace(/\s+/g, '_').replace(/[._-]+/g, '_').replace(/^[._-]+|[._-]+$/g, '').slice(0, 50) || 'book'
+
+export const loadBookData = async (bookUrl: string, bookName?: string) => {
+  if (!plugin) return {}
+  try {
+    if (!bookName) {
+      const book = await bookshelfManager.getBook(bookUrl)
+      if (book?.name) bookName = book.name
+    }
+    const fileName = `${sanitize(bookName || 'book')}_${hash(bookUrl)}.json`
+    return await plugin.loadData(`books/${fileName}`) || {}
+  } catch { return {} }
+}
+
+export const saveBookData = async (bookUrl: string, data: any, bookName?: string) => {
+  if (!plugin) return
+  try {
+    if (!bookName) {
+      const book = await bookshelfManager.getBook(bookUrl)
+      if (book?.name) bookName = book.name
+    }
+    const fileName = `${sanitize(bookName || 'book')}_${hash(bookUrl)}.json`
+    const existing = await plugin.loadData(`books/${fileName}`) || {}
+    await plugin.saveData(`books/${fileName}`, { ...existing, ...data })
+  } catch (e) { console.error('[BookData]', e) }
+}

@@ -2,6 +2,7 @@
  * PDF 形状标注模块
  * 支持矩形、圆形、三角形等形状标注，可添加文字笔记
  */
+import{loadBookData,saveBookData}from'../bookshelf'
 
 // 类型定义
 export type ShapeType='rect'|'circle'|'triangle'
@@ -292,29 +293,22 @@ export class ShapeToolManager{
   private plugin:any
   private bookUrl:string
   private bookName:string
+  private initialized=false
 
   constructor(private container:HTMLElement,plugin:any,bookUrl:string,bookName:string,private onShapeClick?:(shape:ShapeAnnotation)=>void){
     this.plugin=plugin
     this.bookUrl=bookUrl
-    this.bookName=this.sanitize(bookName)
+    this.bookName=bookName||'book'
   }
 
-  private sanitize(n:string){return(n||'book').replace(/[<>:"/\\|?*\x00-\x1f《》【】「」『』（）()[\]{}]/g,'').replace(/\s+/g,'_').replace(/[._-]+/g,'_').replace(/^[._-]+|[._-]+$/g,'').slice(0,50)||'book'}
-  private hash(s:string){let h=0;for(let i=0;i<s.length;i++)h=((h<<5)-h+s.charCodeAt(i))|0;return Math.abs(h).toString(36)}
-
   private async loadData(){
-    try{
-      const data=await this.plugin.loadData(`books/${this.bookName}_${this.hash(this.bookUrl)}.json`)||{}
-      return data.shapeAnnotations||[]
-    }catch{return[]}
+    const data=await loadBookData(this.bookUrl,this.bookName)
+    return data?.shapeAnnotations||[]
   }
 
   private async saveData(shapeAnnotations:any[]){
-    try{
-      const fileName=`books/${this.bookName}_${this.hash(this.bookUrl)}.json`
-      const existing=await this.plugin.loadData(fileName)||{}
-      await this.plugin.saveData(fileName,{...existing,shapeAnnotations})
-    }catch(e){console.error('[ShapeTool]',e)}
+    if(!this.initialized)return
+    await saveBookData(this.bookUrl,{shapeAnnotations},this.bookName)
   }
 
   async init(){
@@ -323,6 +317,7 @@ export class ShapeToolManager{
     const data=await this.loadData()
     if(data.length)this.controller.fromJSON(data)
     this.controller.ensureClickEvents(this.container)
+    this.initialized=true
     return this.controller
   }
 

@@ -38,6 +38,36 @@ Drag EPUB files into SiYuan documents to create links, click links to open books
 
 ## 🚀 Latest Updates
 
+### v0.6.2 (2025.12.21)
+
+#### 🐛 Bug Fixes
+
+- **✅ Book Data Files** - Fixed duplicate creation of book data files when books close abnormally
+- **✅ Tab Response** - Added responsive switching of TOC, bookmarks, annotations, and notes when switching tabs
+- **✅ File Loading** - Unified PDF/EPUB/TXT file loading logic, using `arrayBuffer()` instead of `blob()` to avoid large file loading failures
+- **✅ Image Error Handling** - Auto-hide failed EPUB images, no broken image icons displayed
+- **✅ Mobile z-index** - Fixed mobile reader container z-index too high blocking SiYuan top bar (back button and menu)
+- **✅ Control Bar Display** - Optimized bottom control bar display logic, ensuring close button shows even on loading failure
+- **✅ Annotation Overlay** - Lowered annotation overlay and card z-index, ensuring control bar always on top and clickable
+- **✅ Component Unmount** - Fixed error accessing null reference during component unmount
+
+#### ✨ Mobile Support (Experimental)
+
+- **📱 Mobile Reading** - Initial mobile reading support, PDF works normally, EPUB/TXT may have issues
+- **👆 Gesture Navigation** - Support left/right swipe for page turning, minimum swipe distance 50px, auto-filter vertical swipes
+- **💾 Position Memory** - Auto-save and restore reading position on mobile (CFI or page number)
+- **🔙 Back Support** - Listen to browser back button, auto-trigger reader close event
+- **📱 Sidebar Entry** - Added SiReader icon entry in mobile sidebar, click to open settings panel
+
+#### ⚡ Code Optimization
+
+- **🔄 Position Management** - Unified reading position save and restore logic, cleaner code
+- **📂 File Loading** - Unified file loading process for all formats, improved stability
+- **🏷️ Tab Switching** - Optimized tab switching listener mechanism
+- **🎯 Overall Simplification** - Removed redundant code, improved performance and maintainability
+
+---
+
 ### v0.6.1 (2025.12.21)
 
 #### 🐛 Bug Fixes

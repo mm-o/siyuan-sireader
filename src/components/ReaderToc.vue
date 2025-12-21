@@ -164,14 +164,17 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
-import { useReaderState } from '@/core/foliate'
 import { showMessage, Dialog } from 'siyuan'
 import { loadDeckCards, getDeckCards, removeFromDeck, renderDictCard, getDictName } from '@/core/dictionary'
 import { COLORS, STYLES, getColorMap } from '@/core/MarkManager'
+import { useReaderState } from '@/core/foliate'
 
 const props = withDefaults(defineProps<{ mode: 'toc'|'bookmark'|'mark'|'note'|'deck'; i18n?: any }>(), { i18n: () => ({}) })
 const emit = defineEmits(['update:mode'])
-const { activeView, activeReaderInstance, goToLocation } = useReaderState()
+
+// 响应式状态
+const { activeView, activeReader } = useReaderState()
+const goToLocation = async (location: string | number) => activeView.value?.goTo(location)
 
 // ===== 状态 =====
 const tocRef=ref<HTMLElement>(),contentRef=ref<HTMLElement>(),editNoteRef=ref<HTMLTextAreaElement>(),thumbContainer=ref<HTMLElement>()
@@ -191,7 +194,7 @@ const placeholders={toc:'搜索目录...',bookmark:'搜索书签...',mark:'搜�
 
 // ===== Computed =====
 const colorMenu=computed(()=>[{label:'全部',value:'',active:!filterColor.value},...Object.entries(colors).map(([k,v])=>({label:k,value:k,color:v,active:filterColor.value===k}))])
-const marks=computed(()=>activeReaderInstance.value?.marks||(activeView.value as any)?.marks)
+const marks=computed(()=>activeReader.value?.marks||(activeView.value as any)?.marks)
 const isPdfMode=computed(()=>(activeView.value as any)?.isPdf||false)
 const pageCount=computed(()=>(activeView.value as any)?.pageCount||0)
 const data=computed(()=>{
@@ -226,28 +229,30 @@ const initToc=async()=>{
   if(props.mode!=='toc'||!tocRef.value)return
   cleanupToc()
   
+  const view=activeView.value
   // PDF 无大纲时自动切换到缩略图
-  if(!activeView.value?.book?.toc||activeView.value.book.toc.length===0){
+  if(!view?.book?.toc||view.book.toc.length===0){
     if(isPdfMode.value)showThumbnail.value=true
     return
   }
   
   try{
     const{createTOCView}=await import('foliate-js/ui/tree.js')
-    tocView=createTOCView(activeView.value.book.toc,goToLocation)
+    tocView=createTOCView(view.book.toc,goToLocation)
     tocRef.value.innerHTML=''
     tocRef.value.appendChild(tocView.element)
-    if(activeView.value&&typeof activeView.value.addEventListener==='function'){
+    if(view&&typeof view.addEventListener==='function'){
       relocateHandler=(e:any)=>tocView?.setCurrentHref?.(e.detail?.tocItem?.href)
-      activeView.value.addEventListener('relocate',relocateHandler)
+      view.addEventListener('relocate',relocateHandler)
     }
-    requestAnimationFrame(()=>{tocView?.setCurrentHref?.(activeView.value?.lastLocation?.tocItem?.href);addBookmarkButtons()})
+    requestAnimationFrame(()=>{tocView?.setCurrentHref?.(view?.lastLocation?.tocItem?.href);addBookmarkButtons()})
   }catch(e){console.error('[TOC]',e)}
 }
 
 const cleanupToc=()=>{
-  if(relocateHandler&&activeView.value&&typeof activeView.value.removeEventListener==='function'){
-    activeView.value.removeEventListener('relocate',relocateHandler)
+  const view=activeView.value
+  if(relocateHandler&&view&&typeof view.removeEventListener==='function'){
+    view.removeEventListener('relocate',relocateHandler)
   }
   relocateHandler=null
   if(tocRef.value)tocRef.value.innerHTML=''
@@ -276,10 +281,11 @@ const addBookmarkButtons=()=>{
 }
 
 const toggleBookmark=async(btn:HTMLButtonElement,href:string,label:string)=>{
-  if(!marks.value||!activeView.value)return showMessage('书签功能未初始化',2000,'error')
+  const view=activeView.value
+  if(!marks.value||!view)return showMessage('书签功能未初始化',2000,'error')
   try{
     btn.style.transform='translateY(-50%) scale(1.3)'
-    await activeView.value.goTo(href)
+    await view.goTo(href)
     await new Promise(resolve=>setTimeout(resolve,200))
     const added=marks.value.toggleBookmark(undefined,undefined,label)
     btn.classList.toggle('has-bookmark',added)
@@ -305,12 +311,13 @@ const cancelEdit=()=>editingId.value=null
 const saveEdit=async(item:any)=>{if(!marks.value)return showMsg('标记系统未初始化','error');if(item.type==='shape-group'||item.type==='ink-group')return showMsg('请编辑具体的标注项','error');try{const updates:any={color:editColor.value,note:editNote.value.trim()||undefined};if(item.type==='shape')updates.shapeType=editShapeType.value;else{updates.text=editText.value.trim();updates.style=editStyle.value}await marks.value.updateMark(item,updates);showMsg('已更新');editingId.value=null;refreshKey.value++}catch(e){console.error(e);showMsg('保存失败','error')}}
 const deleteMark=async(item:any)=>{if(!marks.value)return showMsg('标记系统未初始化','error');try{if(item.type==='shape-group'){for(const s of item.shapes||[])await marks.value.deleteMark(s);showMsg('已删除');refreshKey.value++;return}if(item.type==='ink-group'){for(const i of item.inks||[])await marks.value.deleteMark(i);showMsg('已删除');refreshKey.value++;return}if(await marks.value.deleteMark(item)){showMsg('已删除');refreshKey.value++}}catch{showMsg('删除失败','error')}}
 const goTo=(item:any)=>{
-  const isPdf=(activeView.value as any)?.isPdf
+  const view=activeView.value
+  const isPdf=(view as any)?.isPdf
   if(isPdf&&item.page)return goToPage(item.page)
   if(marks.value?.goTo)return marks.value.goTo(item)
-  if(isPdf&&activeView.value?.goTo)return activeView.value.goTo(item.page||item)
+  if(isPdf&&view?.goTo)return view.goTo(item.page||item)
   if(item.cfi)return goToLocation(item.cfi)
-  if(item.section!==undefined)return activeView.value?.goTo(item.section)
+  if(item.section!==undefined)return view?.goTo(item.section)
 }
 const goToPage=(page:number)=>(activeView.value as any)?.viewer?.goToPage(page)
 const preloadPage=(page:number)=>{const viewer=(activeView.value as any)?.viewer;if(viewer?.renderPage)viewer.renderPage(page)}
@@ -319,16 +326,16 @@ const isExpanded=(item:any)=>expandedGroup.value===item.groupId
 const formatTime=(ts:number)=>{const d=new Date(ts);return`${d.getFullYear()}-${(d.getMonth()+1).toString().padStart(2,'0')}-${d.getDate().toString().padStart(2,'0')}`}
 const copyMark=async(item:any)=>{
   const copy=(text:string,msg='已复制')=>navigator.clipboard.writeText(text).then(()=>showMsg(msg))
-  const reader=activeReaderInstance.value,book=reader?.getBook()
+  const reader=activeReader.value,book=reader?.getBook(),view=activeView.value
   const bookUrl=(window as any).__currentBookUrl||''
   if(!bookUrl||bookUrl.startsWith('file://')){copy(item.text||item.note||'','本地文件仅复制文本');return}
-  const isPdf=(activeView.value as any)?.isPdf,page=item.page||(item.section!==undefined?(activeView.value as any)?.viewer?.getCurrentPage():null)
+  const isPdf=(view as any)?.isPdf,page=item.page||(item.section!==undefined?(view as any)?.viewer?.getCurrentPage():null)
   const cfi=item.cfi||(isPdf&&page?`#page-${page}`:'')
   if(!cfi){copy(item.text||item.note||'','仅复制文本');return}
   const{formatBookLink}=await import('@/composables/useSetting')
   const{formatAuthor,getChapterName}=await import('@/core/MarkManager')
   const chapter=getChapterName({cfi:item.cfi,page,isPdf,toc:book?.toc,location:reader?.getLocation()})||'📒'
-  const tpl=activeView.value?.settings?.linkFormat||'> [!NOTE] 📑 书名\n> [章节](链接) 文本\n> 截图\n> 笔记'
+  const tpl=view?.settings?.linkFormat||'> [!NOTE] 📑 书名\n> [章节](链接) 文本\n> 截图\n> 笔记'
   let img=''
   if(item.shapeType){
     const hdKey=`${item.id}_${item.shapeType}_hd`
@@ -414,11 +421,12 @@ watch(showThumbnail,v=>v&&nextTick(()=>{
 }))
 
 // ===== 生命周期 =====
-const refresh=async()=>{refreshKey.value++;props.mode==='deck'&&(deckCards.value=await loadDeckCards())}
+const refresh=()=>{refreshKey.value++;props.mode==='deck'&&loadDeckCards().then(v=>deckCards.value=v)}
+const handleSwitch=()=>{props.mode==='toc'?requestAnimationFrame(initToc):refresh()}
 watch(()=>activeView.value?.book,book=>book?.toc&&props.mode==='toc'?requestAnimationFrame(initToc):cleanupToc(),{immediate:true})
-watch(()=>props.mode,()=>props.mode==='toc'?requestAnimationFrame(initToc):props.mode==='deck'&&loadDeckCards().then(v=>deckCards.value=v))
-onMounted(()=>{window.addEventListener('sireader:marks-updated',refresh);props.mode==='deck'&&loadDeckCards().then(v=>deckCards.value=v)})
-onUnmounted(()=>{cleanupToc();obs?.disconnect();window.removeEventListener('sireader:marks-updated',refresh)})
+watch(()=>props.mode,handleSwitch)
+onMounted(()=>{['sireader:marks-updated','sireader:tab-switched'].forEach(e=>window.addEventListener(e,handleSwitch));props.mode==='deck'&&refresh()})
+onUnmounted(()=>{cleanupToc();obs?.disconnect();['sireader:marks-updated','sireader:tab-switched'].forEach(e=>window.removeEventListener(e,handleSwitch))})
 </script>
 
 <style scoped lang="scss">

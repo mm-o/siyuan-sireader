@@ -81,6 +81,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { bookshelfManager, type BookIndex } from '@/core/bookshelf'
 import { showMessage } from 'siyuan'
+import { isMobile } from '@/core/mobile'
 
 const props = defineProps<{ i18n: any }>()
 const emit = defineEmits(['read'])
@@ -149,7 +150,14 @@ const loadCover = async (path: string) => {
 
 const readBook = async (book: BookIndex) => {
   const full = await bookshelfManager.getBook(book.bookUrl)
-  full ? emit('read', full) : showMessage('加载失败', 3000, 'error')
+  if (!full) return showMessage('加载失败', 3000, 'error')
+  
+  // 移动端直接触发事件，桌面端通过 emit
+  if (isMobile()) {
+    window.dispatchEvent(new CustomEvent('reader:open', { detail: { book: full } }))
+  } else {
+    emit('read', full)
+  }
 }
 
 const checkAllUpdates = async () => {

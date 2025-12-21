@@ -4,7 +4,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import { createApp, type Component } from 'vue'
 import { MotionPlugin } from '@vueuse/motion'
 import { openTab, showMessage } from 'siyuan'
@@ -12,6 +12,7 @@ import { usePlugin, setOpenSettingHandler, registerCleanup } from '@/main'
 import { useSetting } from '@/composables/useSetting'
 import { useStats } from '@/composables/useStats'
 import { bookSourceManager } from '@/core/book'
+import { isMobile } from '@/core/mobile'
 import Settings from '@/components/Settings.vue'
 import Reader from '@/components/Reader.vue'
 
@@ -19,6 +20,7 @@ const plugin = usePlugin()
 const { settings, isLoaded } = useSetting(plugin)
 
 let settingsApp: any = null
+let mobileReaderApp: any = null
 
 const openSetting = () => {
   document.querySelector('.dock__item[aria-label*="思阅"]')?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
@@ -392,10 +394,52 @@ plugin.addTopBar({ icon: `<svg><use xlink:href="#${iconId}"/></svg>`, title: '�
 // 暂时停用底部右下角的阅读统计功能
 // useStats(plugin).init()
 
+// 移动端 Reader 处理
+const handleMobileReaderOpen = async (e: CustomEvent) => {
+  const { book } = e.detail
+  
+  mobileReaderApp?.unmount()
+  mobileReaderApp = null
+  
+  let container = document.getElementById('sireader-mobile-container')
+  if (!container) {
+    container = document.createElement('div')
+    container.id = 'sireader-mobile-container'
+    container.style.cssText = 'position:fixed;inset:0;z-index:100;background:var(--b3-theme-background)'
+    document.body.appendChild(container)
+  }
+  
+  container.style.display = 'block'
+  
+  const { toRaw } = await import('vue')
+  mobileReaderApp = createApp(Reader as Component, {
+    bookInfo: book,
+    plugin,
+    settings: JSON.parse(JSON.stringify(toRaw(settings.value))),
+    i18n: plugin.i18n
+  })
+  mobileReaderApp.mount(container)
+}
+
+const handleMobileReaderClose = () => {
+  mobileReaderApp?.unmount()
+  mobileReaderApp = null
+  document.getElementById('sireader-mobile-container')?.style.setProperty('display', 'none')
+}
+
 onMounted(async () => {
   await bookSourceManager.loadSources()
   window.addEventListener('click', handleEbookLink, true)
   registerCleanup(() => window.removeEventListener('click', handleEbookLink, true))
+  
+  if (isMobile()) {
+    window.addEventListener('reader:open', handleMobileReaderOpen as any)
+    window.addEventListener('reader:close', handleMobileReaderClose)
+    registerCleanup(() => {
+      window.removeEventListener('reader:open', handleMobileReaderOpen as any)
+      window.removeEventListener('reader:close', handleMobileReaderClose)
+    })
+  }
 })
 </script>
 

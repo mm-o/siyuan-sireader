@@ -159,6 +159,15 @@ export class FoliateReader {
       this.view.addEventListener(event, ((e: CustomEvent) => this.emit(event, e.detail)) as EventListener)
     })
     
+    // 图片加载错误处理
+    this.view.addEventListener('load',((e:CustomEvent)=>{
+      const{doc}=e.detail||{}
+      if(!doc)return
+      doc.querySelectorAll('img').forEach((img:HTMLImageElement)=>{
+        img.onerror=()=>{img.style.display='none'}
+      })
+    })as EventListener)
+    
     // 脚注处理
     this.view.addEventListener('link',((e:CustomEvent)=>{
       const{a,href}=e.detail

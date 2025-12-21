@@ -9,7 +9,7 @@
     
     <!-- 搜索面板 -->
     <Transition name="search-slide">
-      <div v-if="showSearch" class="reader-search" @click.stop>
+      <div v-if="showSearch&&!loading" class="reader-search" @click.stop>
         <input v-model="searchQuery" class="search-input" :placeholder="i18n.searchPlaceholder||'搜索...'" @keydown.enter="handleSearch" @keydown.esc="showSearch=false" ref="searchInputRef">
         <button class="toolbar-btn b3-tooltips b3-tooltips__n" @click="handleSearch" aria-label="搜索"><svg><use xlink:href="#iconSearch"/></svg></button>
         <button class="toolbar-btn b3-tooltips b3-tooltips__n" @click="handleSearchPrev" :disabled="!hasSearchResults" aria-label="上一个"><svg><use xlink:href="#iconUp"/></svg></button>
@@ -19,15 +19,17 @@
       </div>
     </Transition>
     
+    <!-- 底部控制栏 - 始终显示 -->
     <div class="reader-toolbar">
-      <button class="toolbar-btn b3-tooltips b3-tooltips__n" @click.stop="handlePrev" :aria-label="i18n.prevChapter||'上一章'"><svg><use xlink:href="#iconLeft"/></svg></button>
-      <div v-if="isPdfMode" class="toolbar-page-nav" @click.stop>
+      <button v-if="!loading" class="toolbar-btn b3-tooltips b3-tooltips__n" @click.stop="handlePrev" :aria-label="i18n.prevChapter||'上一章'"><svg><use xlink:href="#iconLeft"/></svg></button>
+      <div v-if="isPdfMode&&!loading" class="toolbar-page-nav" @click.stop>
         <input v-model.number="pageInput" @keydown.enter="handlePageJump" type="number" :min="1" :max="totalPages" class="toolbar-page-input">
         <span class="toolbar-page-total">/ {{totalPages}}</span>
       </div>
-      <button class="toolbar-btn b3-tooltips b3-tooltips__n" @click.stop="handleNext" :aria-label="i18n.nextChapter||'下一章'"><svg><use xlink:href="#iconRight"/></svg></button>
-      <button class="toolbar-btn b3-tooltips b3-tooltips__n" :class="{active:hasBookmark}" @click.stop="toggleBookmark" :aria-label="hasBookmark?(i18n.removeBookmark||'删除书签'):(i18n.addBookmark||'添加书签')"><svg><use xlink:href="#iconBookmark"/></svg></button>
-      <button class="toolbar-btn b3-tooltips b3-tooltips__n" :class="{active:showSearch}" @click.stop="toggleSearch" :aria-label="i18n.search||'搜索'"><svg><use xlink:href="#iconSearch"/></svg></button>
+      <button v-if="!loading" class="toolbar-btn b3-tooltips b3-tooltips__n" @click.stop="handleNext" :aria-label="i18n.nextChapter||'下一章'"><svg><use xlink:href="#iconRight"/></svg></button>
+      <button v-if="!loading" class="toolbar-btn b3-tooltips b3-tooltips__n" :class="{active:hasBookmark}" @click.stop="toggleBookmark" :aria-label="hasBookmark?(i18n.removeBookmark||'删除书签'):(i18n.addBookmark||'添加书签')"><svg><use xlink:href="#iconBookmark"/></svg></button>
+      <button v-if="!loading" class="toolbar-btn b3-tooltips b3-tooltips__n" :class="{active:showSearch}" @click.stop="toggleSearch" :aria-label="i18n.search||'搜索'"><svg><use xlink:href="#iconSearch"/></svg></button>
+      <button v-if="isMobile()" class="toolbar-btn b3-tooltips b3-tooltips__n" @click.stop="handleClose" aria-label="关闭"><svg><use xlink:href="#iconClose"/></svg></button>
     </div>
   </div>
   
@@ -46,6 +48,7 @@ import { createReader, type FoliateReader, setActiveReader, clearActiveReader } 
 import { createMarkManager, type MarkManager, getColorMap } from '@/core/MarkManager'
 import { createInkToolManager, type InkToolManager } from '@/core/pdf/ink'
 import { createShapeToolManager, type ShapeToolManager } from '@/core/pdf/shape'
+import { saveMobilePosition, getMobilePosition, isMobile } from '@/core/mobile'
 import PdfToolbar from './PdfToolbar.vue'
 import MarkPanel from './MarkPanel.vue'
 
@@ -95,6 +98,11 @@ const loading = ref(true)
 const error = ref('')
 const hasBookmark = ref(false)
 
+// 触摸滑动翻页
+let touchStartX=0,touchStartY=0
+const handleTouchStart=(e:TouchEvent)=>{if(!isMobile()||e.touches.length!==1)return;touchStartX=e.touches[0].clientX;touchStartY=e.touches[0].clientY}
+const handleTouchEnd=(e:TouchEvent)=>{if(!isMobile()||!touchStartX)return;const dx=e.changedTouches[0].clientX-touchStartX,dy=e.changedTouches[0].clientY-touchStartY;if(Math.abs(dy)>Math.abs(dx)||Math.abs(dx)<50)return;dx>0?handlePrev():handleNext();touchStartX=0;touchStartY=0}
+
 const pdfViewer = ref<any>(null)
 const pdfSearcher = ref<any>(null)
 const currentView = ref<any>(null)
@@ -137,13 +145,27 @@ const init=async()=>{
     
     const onProgress=()=>{updateBookmarkState();markManager.value?.updateProgress();updatePageInfo()}
     
+    // 统一文件加载
+    const loadFile=async()=>{
+      if(props.file)return props.file
+      if(!props.bookInfo?.filePath)return null
+      const res=await fetch('/api/file/getFile',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:props.bookInfo.filePath})})
+      if(!res.ok)throw new Error('文件读取失败')
+      const buffer=await res.arrayBuffer()
+      const fileName=props.bookInfo.filePath.split('/').pop()||'book'
+      const type=res.headers.get('content-type')||'application/octet-stream'
+      return new File([buffer],fileName,{type})
+    }
+    
     if(isPdf){
       const{PDFViewer,PDFSearch}=await import('@/core/pdf')
       const showAnn=(a:any)=>{const el=document.querySelector(`[data-id="${a.id}"]`);if(el){const r=el.getBoundingClientRect();markPanelRef.value?.showCard(a,r.left+r.width/2,r.bottom,false)}}
       const viewer=new PDFViewer({container:viewerContainerRef.value!,scale:1.5,onPageChange:onProgress,onAnnotationClick:showAnn})
       props.settings&&viewer.applyTheme(props.settings)
       const searcher=new PDFSearch()
-      pdfSource=props.file?await props.file.arrayBuffer():props.bookInfo?.filePath?await(await(await fetch('/api/file/getFile',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:props.bookInfo.filePath})})).blob()).arrayBuffer():null as any
+      const file=await loadFile()
+      pdfSource=file?await file.arrayBuffer():null as any
+      if(!pdfSource)throw new Error('未提供PDF文件')
       await viewer.open(pdfSource)
       await viewer.fitWidth()
       searcher.setPDF(viewer.getPDF()!)
@@ -152,8 +174,7 @@ const init=async()=>{
       
       const view=await viewer.createView()
       
-      // 创建统一标注管理器
-      markManager.value=createMarkManager({format:'pdf',plugin:props.plugin,bookUrl,bookName:props.bookInfo?.name||props.file?.name,onAnnotationClick:showAnn,pdfViewer:viewer})
+      markManager.value=createMarkManager({format:'pdf',plugin:props.plugin,bookUrl,bookName:props.bookInfo?.name||props.file?.name||'book',onAnnotationClick:showAnn,pdfViewer:viewer})
       await markManager.value.init()
       markManager.value.setOutline(view.book?.toc||[])
       await markManager.value.restoreProgress(props.bookInfo)
@@ -162,7 +183,6 @@ const init=async()=>{
       pdfViewer.value=viewer
       pdfSearcher.value=searcher
       
-      // 创建 ink 和 shape 工具
       inkToolManager=createInkToolManager(viewerContainerRef.value!,props.plugin,bookUrl,props.bookInfo?.name||props.file?.name||'book',viewer)
       const handleShapeClick=(shape:any)=>{
         const el=document.querySelector(`.pdf-shape-layer[data-page="${shape.page}"]`)
@@ -178,7 +198,6 @@ const init=async()=>{
       ;(markManager.value as any).shapeManager=shapeToolManager
       updatePageInfo()
       setActiveReader(currentView.value,null)
-      ;(window as any).__sireader_active_reader=currentView.value.nav
       const handleSel=(e:MouseEvent)=>setTimeout(()=>{
         const t=e.target as HTMLElement
         if(t.closest('.mark-card,.mark-selection-menu,[data-note-marker],.pdf-highlight'))return
@@ -202,23 +221,19 @@ const init=async()=>{
       setTimeout(()=>{const p=viewer.getCurrentPage();inkToolManager?.render(p);shapeToolManager?.render(p);markManager.value?.renderPdf(p)},500)
       currentView.value.cleanup=()=>document.removeEventListener('mouseup',handleSel)
     }else if(isTxt){
-      // TXT/在线书籍
       const{createFoliateView,loadTxtBook}=await import('@/core/foliate/reader')
-      
       const view=createFoliateView(viewerContainerRef.value!)
       currentView.value=view
       
-      if(props.file&&format==='txt'){
-        await loadTxtBook(view,await props.file.arrayBuffer(),[],null,props.settings)
-      }else if(props.bookInfo&&format==='online'){
+      if(format==='online'&&props.bookInfo){
         await loadTxtBook(view,'',[],props.bookInfo,props.settings)
-      }else if(props.bookInfo?.filePath){
-        const res=await fetch('/api/file/getFile',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:props.bookInfo.filePath})})
-        await loadTxtBook(view,await res.arrayBuffer(),[],null,props.settings)
+      }else{
+        const file=await loadFile()
+        if(!file)throw new Error('未提供TXT文件')
+        await loadTxtBook(view,await file.arrayBuffer(),[],null,props.settings)
       }
       
-      // 创建统一标注管理器
-      markManager.value=createMarkManager({format:'txt',view,plugin:props.plugin,bookUrl,bookName:props.bookInfo?.name||props.file?.name,reader:null})
+      markManager.value=createMarkManager({format:'txt',view,plugin:props.plugin,bookUrl,bookName:props.bookInfo?.name||props.file?.name||'book',reader:null})
       await markManager.value.init()
       ;(view as any).marks=markManager.value
       await markManager.value.restoreProgress(props.bookInfo)
@@ -226,19 +241,19 @@ const init=async()=>{
       view.addEventListener('relocate',()=>onProgress())
       setActiveReader(view,null)
     }else{
-      // EPUB/PDF/MOBI 等
       reader=createReader({container:viewerContainerRef.value!,settings:props.settings!,bookUrl,plugin:props.plugin})
-      if(props.file)await reader.open(props.file)
-      else if(props.url)await reader.open(props.url)
-      else if(props.bookInfo?.filePath){
-        const res=await fetch('/api/file/getFile',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:props.bookInfo.filePath})})
-        if(!res.ok)throw new Error('文件读取失败')
-        const file=new File([await res.blob()],props.bookInfo.filePath.split('/').pop()||'book',{type:res.headers.get('content-type')||''})
-        await reader.open(file)
-      }else throw new Error('未提供书籍')
       
-      // 创建统一标注管理器
-      markManager.value=createMarkManager({format:'epub',view:reader.getView(),plugin:props.plugin,bookUrl,bookName:props.bookInfo?.name||props.file?.name,reader})
+      if(props.file){
+        await reader.open(props.file)
+      }else if(props.url){
+        await reader.open(props.url)
+      }else{
+        const file=await loadFile()
+        if(!file)throw new Error('未提供书籍')
+        await reader.open(file)
+      }
+      
+      markManager.value=createMarkManager({format:'epub',view:reader.getView(),plugin:props.plugin,bookUrl,bookName:props.bookInfo?.name||props.file?.name||'book',reader})
       await markManager.value.init()
       ;(reader.getView() as any).marks=markManager.value
       await markManager.value.restoreProgress(props.bookInfo)
@@ -253,7 +268,11 @@ const init=async()=>{
     }
   }catch(e){
     error.value=e instanceof Error?e.message:'加载失败'
-  }finally{loading.value=false}
+    markPanelRef.value?.closeAll()
+  }finally{
+    loading.value=false
+    await restorePosition()
+  }
 }
 
 const checkSelection=(txtDoc?:Document,e?:MouseEvent)=>{
@@ -395,6 +414,15 @@ const handleShapeClear=async()=>{const p=pdfViewer.value?.getCurrentPage();if(p)
 const updateBookmarkState=()=>hasBookmark.value=!!markManager.value?.hasBookmark?.()
 const toggleBookmark=()=>{try{hasBookmark.value=marks.value?.toggleBookmark?.()}catch(e:any){showMessage(e.message||'操作失败',2000,'error')}}
 
+// 位置管理
+const getBookUrl=()=>(window as any).__currentBookUrl||props.bookInfo?.bookUrl||props.url||''
+const getCurrentPosition=()=>isPdfMode.value?{page:pdfViewer.value?.getCurrentPage()}:{cfi:reader?.getLocation()?.cfi}
+const restorePosition=async()=>{if(!isMobile())return;const url=getBookUrl();if(!url)return;const pos=await getMobilePosition(url);if(pos?.cfi&&reader)reader.goTo(pos.cfi);else if(pos?.page&&pdfViewer.value)pdfViewer.value.goToPage(pos.page)}
+const savePosition=()=>{if(!isMobile())return;const url=getBookUrl();if(url)saveMobilePosition(url,getCurrentPosition())}
+
+// 关闭
+const handleClose=()=>{savePosition();window.dispatchEvent(new CustomEvent('reader:close'))}
+
 // 事件处理
 const handleGlobalEdit=(e:Event)=>{const d=(e as CustomEvent).detail;d?.item&&markPanelRef.value?.showCard(d.item,d.position?.x,d.position?.y,true)}
 const handleTxtSelection=(e:Event)=>{const d=(e as CustomEvent).detail;setTimeout(()=>checkSelection(d?.doc,d?.event),50)}
@@ -428,26 +456,21 @@ const events=[['sireader:edit-mark',handleGlobalEdit],['txt-selection',handleTxt
 
 const suppressError=(e:PromiseRejectionEvent)=>/createTreeWalker|destroy/.test(e.reason?.message||'')&&e.preventDefault()
 
-onMounted(()=>{init();containerRef.value?.focus();events.forEach(([e,h])=>window.addEventListener(e,h as any));window.addEventListener('unhandledrejection',suppressError)})
-onUnmounted(async()=>{
-  clearActiveReader()
-  await markManager.value?.destroy()
-  try{reader?.destroy();currentView.value?.cleanup?.();currentView.value?.viewer?.destroy?.()}catch{}
-  inkToolManager?.destroy?.()
-  shapeToolManager?.destroy?.()
-  setTimeout(()=>viewerContainerRef.value&&(viewerContainerRef.value.innerHTML=''),50)
-  events.forEach(([e,h])=>window.removeEventListener(e,h as any))
-  window.removeEventListener('unhandledrejection',suppressError)
-})
+// 标签切换监听
+const setupTabObserver=()=>{if(isMobile())return;let el=containerRef.value?.parentElement;while(el){if(el.hasAttribute('data-id')){const h=document.querySelector(`li[data-type="tab-header"][data-id="${el.getAttribute('data-id')}"]`);if(h){const obs=new MutationObserver(ms=>ms.forEach(m=>m.type==='attributes'&&m.attributeName==='class'&&(m.target as HTMLElement).classList.contains('item--focus')&&(setActiveReader(currentView.value,reader),window.dispatchEvent(new CustomEvent('sireader:tab-switched')))));obs.observe(h,{attributes:true,attributeFilter:['class']});(containerRef.value as any).__observer=obs}break}el=el.parentElement}}
+
+onMounted(()=>{init();containerRef.value?.focus();events.forEach(([e,h])=>window.addEventListener(e,h as any));window.addEventListener('unhandledrejection',suppressError);setupTabObserver();if(isMobile()&&containerRef.value){containerRef.value.addEventListener('touchstart',handleTouchStart);containerRef.value.addEventListener('touchend',handleTouchEnd)}})
+
+onUnmounted(async()=>{savePosition();clearActiveReader();await markManager.value?.destroy();try{reader?.destroy();currentView.value?.cleanup?.();currentView.value?.viewer?.destroy?.()}catch{};inkToolManager?.destroy?.();shapeToolManager?.destroy?.();setTimeout(()=>viewerContainerRef.value&&(viewerContainerRef.value.innerHTML=''),50);events.forEach(([e,h])=>window.removeEventListener(e,h as any));window.removeEventListener('unhandledrejection',suppressError);containerRef.value&&(containerRef.value as any).__observer?.disconnect();if(isMobile()&&containerRef.value){containerRef.value.removeEventListener('touchstart',handleTouchStart);containerRef.value.removeEventListener('touchend',handleTouchEnd)}})
 </script>
 
 <style scoped lang="scss">
 .reader-container{position:relative;width:100%;height:100%;outline:none;user-select:text;-webkit-user-select:text;isolation:isolate;display:flex;flex-direction:column}
-.viewer-container{position:absolute;inset:0;overflow:auto;}
-.reader-loading{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:16px;color:var(--b3-theme-on-background);z-index:10}
+.viewer-container{position:absolute;inset:0;overflow:auto}
+.reader-loading{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:16px;color:var(--b3-theme-on-background);z-index:10;pointer-events:none}
 .spinner{width:48px;height:48px;border:4px solid var(--b3-theme-primary-lighter);border-top-color:var(--b3-theme-primary);border-radius:50%;animation:spin 1s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
-.reader-toolbar{position:absolute;bottom:16px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:2px;padding:3px;background:var(--b3-theme-surface);border:1px solid var(--b3-border-color);border-radius:6px;box-shadow:0 2px 8px #0002;z-index:1000;opacity:.3;transition:opacity .2s;&:hover{opacity:1}}
+.reader-toolbar{position:absolute;bottom:16px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:2px;padding:3px;background:var(--b3-theme-surface);border:1px solid var(--b3-border-color);border-radius:6px;box-shadow:0 2px 8px #0002;z-index:1001;opacity:.3;transition:opacity .2s;&:hover{opacity:1}}
 .toolbar-btn{width:28px;height:28px;display:flex;align-items:center;justify-content:center;border:none;background:transparent;border-radius:4px;cursor:pointer;transition:all .15s;svg{width:14px;height:14px}&:hover{background:var(--b3-list-hover)}}
 .toolbar-page-nav{display:flex;align-items:center;gap:3px;padding:0 4px;font-size:11px;color:var(--b3-theme-on-surface)}
 .toolbar-page-input{width:36px;height:22px;padding:0 3px;border:none;background:var(--b3-theme-background-light);color:var(--b3-theme-on-surface);font-size:11px;text-align:center;border-radius:3px;transition:background .15s;&:focus{outline:none;background:var(--b3-theme-background)}&::-webkit-inner-spin-button,&::-webkit-outer-spin-button{display:none}}

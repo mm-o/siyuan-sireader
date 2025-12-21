@@ -3,6 +3,7 @@
  */
 import type{Plugin}from'siyuan'
 import{Overlayer}from'foliate-js/overlayer.js'
+import{loadBookData,saveBookData}from'./bookshelf'
 
 type Format='pdf'|'epub'|'txt'
 type HighlightColor='yellow'|'red'|'green'|'blue'|'purple'|'orange'|'pink'
@@ -48,8 +49,7 @@ export const getChapterName=(params:{cfi?:string;page?:number;isPdf?:boolean;toc
   return''
 }
 
-const hash=(s:string)=>{let h=0;for(let i=0;i<s.length;i++)h=((h<<5)-h+s.charCodeAt(i))|0;return Math.abs(h).toString(36)}
-const sanitize=(n:string)=>(n||'book').replace(/[<>:"/\\|?*\x00-\x1f《》【】「」『』（）()[\]{}]/g,'').replace(/\s+/g,'_').replace(/[._-]+/g,'_').replace(/^[._-]+|[._-]+$/g,'').slice(0,50)||'book'
+
 
 export interface MarkManagerConfig{format:Format;view?:any;plugin:Plugin;bookUrl:string;bookName?:string;onAnnotationClick?:(mark:Mark)=>void;pdfViewer?:any;reader?:any}
 
@@ -69,13 +69,14 @@ export class MarkManager{
   private onAnnotationClick?:(mark:Mark)=>void
   private pdfViewer:any
   private reader:any
+  private initialized=false
 
   constructor(cfg:MarkManagerConfig){
     this.format=cfg.format
     this.view=cfg.view
     this.plugin=cfg.plugin
     this.bookUrl=cfg.bookUrl
-    this.bookName=sanitize(cfg.bookName||cfg.bookUrl.split('/').pop()?.split('.')[0]||'book')
+    this.bookName=cfg.bookName||'book'
     this.onAnnotationClick=cfg.onAnnotationClick
     this.pdfViewer=cfg.pdfViewer
     this.reader=cfg.reader
@@ -85,6 +86,7 @@ export class MarkManager{
 
   async init(){
     await this.load()
+    this.initialized=true
     if(this.format!=='pdf')await this.loadCalibre()
     await this.loadDeck()
     window.addEventListener('sireader:deck-updated',()=>this.loadDeck())
@@ -114,11 +116,8 @@ export class MarkManager{
 
   private async load(){
     try{
-      const{bookshelfManager}=await import('@/core/bookshelf')
-      const book=await bookshelfManager.getBook(this.bookUrl)
-      if(book?.name)this.bookName=book.name
-      const data=await this.plugin.loadData(`books/${sanitize(this.bookName)}_${hash(this.bookUrl)}.json`)
-      if(!data)return
+      const data=await loadBookData(this.bookUrl,this.bookName)
+      if(!data||!Object.keys(data).length)return
       
       this.marks=[]
       const addBookmarks=(list:any[],fmt:Format)=>{
@@ -146,23 +145,17 @@ export class MarkManager{
   }
   
   private async saveNow(){
+    if(!this.initialized)return
     try{
-      const fileName=`${sanitize(this.bookName)}_${hash(this.bookUrl)}.json`
-      const data=await this.plugin.loadData(`books/${fileName}`)||{}
-      
       const bookmarks=this.marks.filter(m=>m.type==='bookmark')
       const annotations=this.marks.filter(m=>m.type==='highlight'||m.type==='note')
-      
-      const saveData={
+      await saveBookData(this.bookUrl,{
         epubBookmarks:bookmarks.filter(m=>m.cfi).map(m=>({cfi:m.cfi,title:m.title,progress:m.progress,time:m.timestamp})),
         txtBookmarks:bookmarks.filter(m=>m.section!==undefined).map(m=>({section:m.section,page:m.page,title:m.title,progress:m.progress,time:m.timestamp})),
         annotations:this.format==='pdf'?annotations.map(m=>({id:m.id,page:m.page,type:m.type,rects:m.rects,text:m.text,color:m.color,style:m.style,note:m.note,timestamp:m.timestamp})):annotations.map(m=>({value:m.cfi,cfi:m.cfi,section:m.section,text:m.text,color:m.color,style:m.style,note:m.note,timestamp:m.timestamp})),
         durChapterIndex:this.currentPage,
         epubProgress:this.currentProgress
-      }
-      
-      Object.assign(data,saveData)
-      await this.plugin.saveData(`books/${fileName}`,data)
+      },this.bookName)
       window.dispatchEvent(new Event('sireader:marks-updated'))
     }catch(e){console.error('[Mark]',e)}
   }
