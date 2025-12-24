@@ -6,17 +6,89 @@ import{loadBookData,saveBookData}from'../bookshelf'
 
 // 类型定义
 export type ShapeType='rect'|'circle'|'triangle'
-export interface ShapeAnnotation{id:string;type:'shape';shapeType:ShapeType;page:number;rect:[number,number,number,number];color:string;width:number;opacity:number;text?:string;note?:string;timestamp:number}
-export interface ShapeConfig{shapeType:ShapeType;color:string;width:number;opacity:number}
+export interface ShapeAnnotation{id:string;type:'shape';shapeType:ShapeType;page:number;rect:[number,number,number,number];color:string;width:number;opacity:number;filled?:boolean;text?:string;note?:string;timestamp:number}
+export interface ShapeConfig{shapeType:ShapeType;color:string;width:number;opacity:number;filled:boolean}
 
 const getCoord=(e:MouseEvent|TouchEvent,r:DOMRect)=>({x:(e instanceof MouseEvent?e.clientX:e.touches[0].clientX)-r.left,y:(e instanceof MouseEvent?e.clientY:e.touches[0].clientY)-r.top})
+
+// ===== 渲染工具函数 =====
+
+/** 绘制形状标注到 Canvas（用于预览/缩略图） */
+export const drawShape=(
+  canvas:HTMLCanvasElement,
+  shape:ShapeAnnotation,
+  activeView:any,
+  shapeCache:Map<string,string>,
+  preloadPage:(page:number)=>void,
+  retry=0,
+  highRes=false
+)=>{
+  if(!shape)return
+  const ctx=canvas.getContext('2d')!,key=`${shape.id}_${shape.shapeType}${highRes?'_hd':''}`
+  if(shapeCache.has(key)){
+    const img=new Image()
+    img.onload=()=>ctx.drawImage(img,0,0,canvas.width,canvas.height)
+    img.src=shapeCache.get(key)!
+    return
+  }
+  const pageEl=document.querySelector(`[data-page="${shape.page}"]`)
+  const pdfCanvas=pageEl&&(Array.from(pageEl.querySelectorAll('canvas')).find(c=>!c.className)||pageEl.querySelector('canvas'))as HTMLCanvasElement
+  if(!pdfCanvas){
+    if(retry<3){
+      preloadPage(shape.page)
+      setTimeout(()=>drawShape(canvas,shape,activeView,shapeCache,preloadPage,retry+1,highRes),200)
+    }
+    return
+  }
+  const vp=activeView?.viewer?.getPages().get(shape.page)?.getViewport({scale:activeView.viewer.getScale(),rotation:activeView.viewer.getRotation()})
+  if(!vp)return
+  const[px1,py1,px2,py2]=shape.rect,[vx1,vy1]=vp.convertToViewportRectangle([px1,py1,px1,py1]),[vx2,vy2]=vp.convertToViewportRectangle([px2,py2,px2,py2])
+  const w=Math.abs(vx2-vx1),h=Math.abs(vy2-vy1)
+  if(w<10||h<10)return
+  const maxW=highRes?1200:240
+  canvas.width=maxW
+  canvas.height=h*maxW/w
+  const dpr=pdfCanvas.width/(parseFloat(pdfCanvas.style.width)||pdfCanvas.width)
+  ctx.drawImage(pdfCanvas,Math.min(vx1,vx2)*dpr,Math.min(vy1,vy2)*dpr,w*dpr,h*dpr,0,0,canvas.width,canvas.height)
+  ctx.globalAlpha=shape.opacity||0.8
+  ctx.beginPath()
+  if(shape.shapeType==='circle')ctx.arc(canvas.width/2,canvas.height/2,Math.min(canvas.width,canvas.height)/2,0,Math.PI*2)
+  else if(shape.shapeType==='triangle'){ctx.moveTo(canvas.width/2,0);ctx.lineTo(canvas.width,canvas.height);ctx.lineTo(0,canvas.height);ctx.closePath()}
+  else ctx.rect(0,0,canvas.width,canvas.height)
+  if(shape.filled){
+    ctx.fillStyle=shape.color||'#ff0000'
+    ctx.fill()
+  }else{
+    ctx.strokeStyle=shape.color||'#ff0000'
+    ctx.lineWidth=Math.max(highRes?4:2,shape.width||2)
+    ctx.stroke()
+  }
+  shapeCache.set(key,canvas.toDataURL('image/png'))
+}
+
+/** 渲染形状 Canvas（批量渲染） */
+export const renderShapeCanvas=(
+  list:any[],
+  activeView:any,
+  shapeCache:Map<string,string>,
+  preloadPage:(page:number)=>void
+)=>{
+  document.querySelectorAll('[data-shape-id]').forEach(el=>{
+    const c=el as HTMLCanvasElement,id=c.dataset.shapeId
+    const g=list.find((i:any)=>i.type==='shape-group'&&i.shapes?.some((s:any)=>s.id===id))
+    const shape=g?.shapes?.find((s:any)=>s.id===id)
+    if(shape)drawShape(c,shape,activeView,shapeCache,preloadPage)
+  })
+}
 
 /** 形状绘制器 */
 export class ShapeDrawer{
   private ctx:CanvasRenderingContext2D
   private config:ShapeConfig
+  public canvas:HTMLCanvasElement
 
-  constructor(private canvas:HTMLCanvasElement,config:ShapeConfig){
+  constructor(canvas:HTMLCanvasElement,config:ShapeConfig){
+    this.canvas=canvas
     this.ctx=canvas.getContext('2d')!
     this.config=config
   }
@@ -27,9 +99,7 @@ export class ShapeDrawer{
   drawShape(shape:ShapeAnnotation,preview=false){
     const[x1,y1,x2,y2]=shape.rect
     const w=x2-x1,h=y2-y1
-    this.ctx.strokeStyle=shape.color
     this.ctx.globalAlpha=shape.opacity
-    this.ctx.lineWidth=shape.width
     this.ctx.setLineDash(preview?[5,5]:[])
     this.ctx.beginPath()
     
@@ -48,11 +118,20 @@ export class ShapeDrawer{
         this.ctx.closePath()
         break
     }
-    this.ctx.stroke()
+    
+    // 填充或描边
+    if(shape.filled){
+      this.ctx.fillStyle=shape.color
+      this.ctx.fill()
+    }else{
+      this.ctx.strokeStyle=shape.color
+      this.ctx.lineWidth=shape.width
+      this.ctx.stroke()
+    }
     this.ctx.setLineDash([])
     
     // 添加点击区域（不可见）
-    if(!preview){
+    if(!preview&&!shape.filled){
       this.ctx.fillStyle='rgba(0,0,0,0.01)'
       this.ctx.fill()
     }
@@ -82,18 +161,25 @@ export class ShapeManager{
 export class ShapeController{
   private managers=new Map<number,ShapeManager>()
   private drawers=new Map<number,ShapeDrawer>()
-  private config:ShapeConfig={shapeType:'rect',color:'#ff0000',width:2,opacity:0.8}
+  private config:ShapeConfig={shapeType:'rect',color:'#ff0000',width:2,opacity:0.8,filled:false}
   private startPos:{x:number;y:number}|null=null
   private currentPage=0
   private previewShape:ShapeAnnotation|null=null
+  private pdfViewer:any=null
 
   constructor(private onSave:()=>Promise<void>,private onShapeClick?:(shape:ShapeAnnotation)=>void){}
+
+  setPdfViewer(viewer:any){this.pdfViewer=viewer}
 
   setConfig(c:Partial<ShapeConfig>){this.config={...this.config,...c};this.drawers.forEach(d=>d.setConfig(this.config))}
 
   private getDrawer(page:number,canvas:HTMLCanvasElement):ShapeDrawer{
     let d=this.drawers.get(page)
-    if(!d){d=new ShapeDrawer(canvas,this.config);this.drawers.set(page,d)}
+    // 检查canvas是否改变（缩放后会重新创建canvas）
+    if(!d||d.canvas!==canvas){
+      d=new ShapeDrawer(canvas,this.config)
+      this.drawers.set(page,d)
+    }
     return d
   }
 
@@ -110,45 +196,102 @@ export class ShapeController{
     this.startPos={x,y}
   }
 
+  /** 转换PDF坐标到屏幕坐标 */
+  private toScreenRect(rect:[number,number,number,number],viewport:any):[number,number,number,number]{
+    const[x1,y1,x2,y2]=rect
+    const b1=viewport.convertToViewportRectangle([x1,y1,x1,y1])
+    const b2=viewport.convertToViewportRectangle([x2,y2,x2,y2])
+    return[b1[0],b1[1],b2[0],b2[1]]
+  }
+
   /** 绘制中（预览） */
   draw(e:MouseEvent|TouchEvent){
     if(!this.currentPage||!this.startPos)return
     const cv=document.querySelector(`.pdf-shape-layer[data-page="${this.currentPage}"]`)as HTMLCanvasElement
     if(!cv)return
-    const{x,y}=getCoord(e,cv.getBoundingClientRect()),d=this.getDrawer(this.currentPage,cv)
+    const{x,y}=getCoord(e,cv.getBoundingClientRect())
+    const d=this.getDrawer(this.currentPage,cv)
     d.clear()
-    this.getManager(this.currentPage).getAll().forEach(s=>d.drawShape(s))
+    
+    // 重新渲染已有形状
+    const viewport=this.pdfViewer?.getPages().get(this.currentPage)?.getViewport({scale:this.pdfViewer.getScale(),rotation:this.pdfViewer.getRotation()})
+    this.getManager(this.currentPage).getAll().forEach(s=>d.drawShape({...s,rect:viewport?this.toScreenRect(s.rect,viewport):s.rect}))
+    
+    // 绘制预览
     this.previewShape={id:'preview',type:'shape',shapeType:this.config.shapeType,page:this.currentPage,rect:[this.startPos.x,this.startPos.y,x,y],color:this.config.color,width:this.config.width,opacity:this.config.opacity,timestamp:Date.now()}
     d.drawShape(this.previewShape,true)
   }
 
   /** 结束绘制 */
-  async endDrawing(){
+  async endDrawing(pdfViewer?:any){
     if(!this.currentPage||!this.startPos||!this.previewShape)return
     const[x1,y1,x2,y2]=this.previewShape.rect
-    if(Math.abs(x2-x1)<10||Math.abs(y2-y1)<10){this.startPos=this.previewShape=null;this.currentPage=0;return}
-    const shape:ShapeAnnotation={...this.previewShape,id:`shape_${Date.now()}_${Math.random().toString(36).slice(2,9)}`}
-    const page=this.currentPage
-    this.getManager(page).add(shape)
+    if(Math.abs(x2-x1)<10||Math.abs(y2-y1)<10){
+      this.startPos=this.previewShape=null
+      this.currentPage=0
+      return
+    }
+    
+    // 转换为PDF坐标
+    let rect:[number,number,number,number]=[x1,y1,x2,y2]
+    const viewport=pdfViewer?.getPages().get(this.currentPage)?.getViewport({scale:pdfViewer.getScale(),rotation:pdfViewer.getRotation()})
+    if(viewport){
+      const[px1,py1]=viewport.convertToPdfPoint(x1,y1)
+      const[px2,py2]=viewport.convertToPdfPoint(x2,y2)
+      rect=[px1,py1,px2,py2]
+    }
+    
+    const shape:ShapeAnnotation={...this.previewShape,id:`shape_${Date.now()}_${Math.random().toString(36).slice(2,9)}`,rect,filled:this.config.filled}
+    this.getManager(this.currentPage).add(shape)
     await this.onSave()
-    const cv=document.querySelector(`.pdf-shape-layer[data-page="${page}"]`)as HTMLCanvasElement
-    if(cv)this.render(page,cv)
+    const cv=document.querySelector(`.pdf-shape-layer[data-page="${this.currentPage}"]`)as HTMLCanvasElement
+    if(cv)this.render(this.currentPage,cv,pdfViewer)
+    
+    // 自动弹出编辑窗口
+    if(this.onShapeClick&&cv){
+      const r=cv.getBoundingClientRect()
+      const screenX=r.left+(x1+x2)/2
+      const screenY=r.top+Math.max(y1,y2)+10
+      setTimeout(()=>{
+        const event=new CustomEvent('shape-created',{detail:{shape,x:screenX,y:screenY,edit:true}})
+        window.dispatchEvent(event)
+      },50)
+    }
+    
     this.startPos=this.previewShape=null
     this.currentPage=0
   }
 
   /** 渲染页面 */
-  render(page:number,canvas:HTMLCanvasElement){
-    const m=this.managers.get(page)
-    if(!m)return
+  render(page:number,canvas:HTMLCanvasElement,pdfViewer?:any){
+    const shapes=this.managers.get(page)?.getAll()
+    if(!shapes?.length)return
+    
     const d=this.getDrawer(page,canvas)
     d.clear()
-    // 清除旧的笔记标记
     canvas.parentElement?.querySelectorAll('[data-shape-note-marker],[data-shape-note-tooltip]').forEach(el=>el.remove())
-    m.getAll().forEach(s=>{
-      d.drawShape(s)
-      if(s.note)this.renderNoteMarker(s,canvas)
+    
+    const viewport=pdfViewer?.getPages().get(page)?.getViewport({scale:pdfViewer.getScale(),rotation:pdfViewer.getRotation()})
+    shapes.forEach(s=>{
+      const rect=viewport?this.toScreenRect(s.rect,viewport):s.rect
+      d.drawShape({...s,rect})
+      if(s.note)this.renderNoteMarker({...s,rect},canvas)
     })
+  }
+  
+  /** 处理点击 */
+  handleClick(e:MouseEvent|TouchEvent,canvas:HTMLCanvasElement,page:number,pdfViewer?:any):boolean{
+    const{x,y}=getCoord(e,canvas.getBoundingClientRect())
+    const viewport=pdfViewer?.getPages().get(page)?.getViewport({scale:pdfViewer.getScale(),rotation:pdfViewer.getRotation()})
+    
+    for(const s of this.getManager(page).getAll()){
+      const rect=viewport?this.toScreenRect(s.rect,viewport):s.rect
+      if(this.isPointInShape(x,y,{...s,rect})){
+        this.onShapeClick?.(s)
+        return true
+      }
+    }
+    return false
   }
   
   /** 渲染笔记标记 */
@@ -189,7 +332,7 @@ export class ShapeController{
     const m=this.managers.get(page)
     if(!m||!m.undo())return false
     const cv=document.querySelector(`.pdf-shape-layer[data-page="${page}"]`)as HTMLCanvasElement
-    if(cv)this.render(page,cv)
+    if(cv)this.render(page,cv,this.pdfViewer)
     return true
   }
 
@@ -209,26 +352,13 @@ export class ShapeController{
   private bindEvents(c:HTMLElement){
     const start=(e:MouseEvent|TouchEvent)=>{const t=e.target as HTMLElement;if(!t.classList.contains('pdf-shape-layer'))return;const cv=t as HTMLCanvasElement,p=+(cv.dataset.page||0);if(!p)return;this.startDrawing(e,cv,p);e.preventDefault()}
     const move=(e:MouseEvent|TouchEvent)=>{this.draw(e);e.preventDefault()}
-    const end=async()=>await this.endDrawing()
+    const end=async()=>await this.endDrawing(this.pdfViewer)
     c.addEventListener('mousedown',start);c.addEventListener('mousemove',move);c.addEventListener('mouseup',end)
     c.addEventListener('touchstart',start);c.addEventListener('touchmove',move);c.addEventListener('touchend',end)
     this.listeners=[{el:c,type:'mousedown',handler:start},{el:c,type:'mousemove',handler:move},{el:c,type:'mouseup',handler:end},{el:c,type:'touchstart',handler:start},{el:c,type:'touchmove',handler:move},{el:c,type:'touchend',handler:end}]
   }
   
 
-  
-  /** 处理点击（检测是否点击了形状） */
-  private handleClick(e:MouseEvent|TouchEvent,canvas:HTMLCanvasElement,page:number):boolean{
-    const{x,y}=getCoord(e,canvas.getBoundingClientRect())
-    const shapes=this.getManager(page).getAll()
-    for(const shape of shapes){
-      if(this.isPointInShape(x,y,shape)){
-        this.onShapeClick?.(shape)
-        return true
-      }
-    }
-    return false
-  }
   
   /** 判断点是否在形状内 */
   private isPointInShape(x:number,y:number,shape:ShapeAnnotation):boolean{
@@ -258,19 +388,10 @@ export class ShapeController{
       // 查找该页面的canvas
       const canvas=pageEl.querySelector('.pdf-shape-layer') as HTMLCanvasElement
       if(!canvas)return
-      // 计算相对于canvas的坐标
-      const rect=canvas.getBoundingClientRect()
-      const x=e.clientX-rect.left
-      const y=e.clientY-rect.top
-      // 检查是否点击了形状
-      const shapes=this.getManager(page).getAll()
-      for(const shape of shapes){
-        if(this.isPointInShape(x,y,shape)){
-          this.onShapeClick?.(shape)
-          e.stopPropagation()
-          e.preventDefault()
-          return
-        }
+      // 使用新的handleClick方法
+      if(this.handleClick(e,canvas,page,this.pdfViewer)){
+        e.stopPropagation()
+        e.preventDefault()
       }
     }
     container.addEventListener('click',this.containerClickHandler)
@@ -290,15 +411,20 @@ export class ShapeController{
 /** 形状工具管理器 */
 export class ShapeToolManager{
   private controller?:ShapeController
-  private plugin:any
   private bookUrl:string
   private bookName:string
   private initialized=false
+  private pdfViewer:any
 
-  constructor(private container:HTMLElement,plugin:any,bookUrl:string,bookName:string,private onShapeClick?:(shape:ShapeAnnotation)=>void){
-    this.plugin=plugin
+  constructor(private container:HTMLElement,_plugin:any,bookUrl:string,bookName:string,private onShapeClick?:(shape:ShapeAnnotation)=>void,pdfViewer?:any){
     this.bookUrl=bookUrl
     this.bookName=bookName||'book'
+    this.pdfViewer=pdfViewer
+  }
+
+  setPdfViewer(viewer:any){
+    this.pdfViewer=viewer
+    if(this.controller)this.controller.setPdfViewer(viewer)
   }
 
   private async loadData(){
@@ -314,6 +440,7 @@ export class ShapeToolManager{
   async init(){
     if(this.controller)return this.controller
     this.controller=new ShapeController(async()=>await this.saveData(this.controller!.toJSON()),this.onShapeClick)
+    if(this.pdfViewer)this.controller.setPdfViewer(this.pdfViewer)
     const data=await this.loadData()
     if(data.length)this.controller.fromJSON(data)
     this.controller.ensureClickEvents(this.container)
@@ -349,7 +476,7 @@ export class ShapeToolManager{
   render(page:number){
     if(!this.controller)return
     const c=document.querySelector(`.pdf-shape-layer[data-page="${page}"]`)as HTMLCanvasElement
-    if(c)this.controller.render(page,c)
+    if(c)this.controller.render(page,c,this.pdfViewer)
   }
 
   async toggle(active:boolean){await(await this.init()).toggle(active,this.container)}
@@ -361,4 +488,4 @@ export class ShapeToolManager{
   destroy(){this.controller?.destroy()}
 }
 
-export const createShapeToolManager=(container:HTMLElement,plugin:any,bookUrl:string,bookName:string,onShapeClick?:(shape:ShapeAnnotation)=>void):ShapeToolManager=>new ShapeToolManager(container,plugin,bookUrl,bookName,onShapeClick)
+export const createShapeToolManager=(container:HTMLElement,plugin:any,bookUrl:string,bookName:string,onShapeClick?:(shape:ShapeAnnotation)=>void,pdfViewer?:any):ShapeToolManager=>new ShapeToolManager(container,plugin,bookUrl,bookName,onShapeClick,pdfViewer)

@@ -42,6 +42,7 @@
       <span class="toolbar-divider"/>
       <button v-for="c in colors" :key="c" class="ink-color b3-tooltips b3-tooltips__s" :class="{active:shapeColor===c}" :style="{background:c}" :aria-label="`颜色 ${c}`" @click.stop="shapeColor=c"/>
       <span class="toolbar-divider"/>
+      <button class="toolbar-btn b3-tooltips b3-tooltips__s" :class="{active:shapeFilled}" aria-label="填充" @click.stop="shapeFilled=!shapeFilled"><svg><use xlink:href="#lucide-paint-bucket"/></svg></button>
       <div class="ink-width-control">
         <input v-model.number="shapeWidth" type="range" min="1" max="10" class="ink-slider" @mousedown.stop/>
         <span class="ink-width-value">{{ shapeWidth }}</span>
@@ -90,13 +91,13 @@ import type{PDFSearch}from '@/core/pdf/search'
 import type{PDFMetadata}from '@/core/pdf'
 
 const props=defineProps<{viewer:PDFViewer;searcher:PDFSearch;fileSize?:number}>()
-const emit=defineEmits(['print','download','export-images','ink-toggle','ink-color','ink-width','ink-undo','ink-clear','ink-save','ink-eraser','shape-toggle','shape-type','shape-color','shape-width','shape-undo','shape-clear'])
+const emit=defineEmits(['print','download','export-images','ink-toggle','ink-color','ink-width','ink-undo','ink-clear','ink-save','ink-eraser','shape-toggle','shape-type','shape-color','shape-width','shape-filled','shape-undo','shape-clear'])
 
 const expanded=ref(false),scale=ref(props.viewer.getScale()),rotation=ref(0),zoomMode=ref<'custom'|'fit-width'|'fit-page'>('fit-width'),showMore=ref(false)
 const toolMode=ref<'text'|'hand'>('text')
 const colors=['#ff0000','#00ff00','#0000ff','#ffff00','#ff00ff','#00ffff','#000000']
 const inkActive=ref(false),inkEraser=ref(false),inkColor=ref('#ff0000'),inkWidth=ref(2)
-const shapeActive=ref(false),shapeType=ref<'rect'|'circle'|'triangle'>('rect'),shapeColor=ref('#ff0000'),shapeWidth=ref(2)
+const shapeActive=ref(false),shapeType=ref<'rect'|'circle'|'triangle'>('rect'),shapeColor=ref('#ff0000'),shapeWidth=ref(2),shapeFilled=ref(false)
 const shapes=[{type:'rect',label:'矩形',icon:'#iconSquareDashed'},{type:'circle',label:'圆形',icon:'#iconCircleDashed'},{type:'triangle',label:'三角形',icon:'#iconTriangleDashed'}]
 const showMetadata=ref(false),metadata=ref<PDFMetadata|null>(null)
 const toolbarRef=ref<HTMLElement>(),pos=ref({x:16,y:52})
@@ -167,6 +168,8 @@ watch(inkWidth,v=>emit('ink-width',v))
 watch(shapeType,v=>emit('shape-type',v))
 watch(shapeColor,v=>emit('shape-color',v))
 watch(shapeWidth,v=>emit('shape-width',v))
+watch(shapeFilled,v=>emit('shape-filled',v))
+watch(expanded,v=>{if(!v){inkActive.value&&emit('ink-toggle',false);shapeActive.value&&emit('shape-toggle',false);inkActive.value=false;shapeActive.value=false}})
 watch(showMetadata,async v=>{if(v&&!metadata.value){const{getMetadata}=await import('@/core/pdf');metadata.value=await getMetadata(props.viewer.getPDF()!,props.fileSize)}})
 </script>
 

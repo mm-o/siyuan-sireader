@@ -4296,7 +4296,16 @@ export default class PluginSnippets extends Plugin {
                         oldLog = lines.slice(1).join("\n");
                     }
                     // E 2025/07/24 21:13:19 错误消息
-                    const newLog = oldLog + "E " + new Date().toLocaleString() + " " + message + "\n";
+                    const now = new Date();
+                    const pad = (n: number) => n.toString().padStart(2, "0"); // 补齐两位数
+                    const year = now.getFullYear();
+                    const month = pad(now.getMonth() + 1); // 月份从 0 开始，需要加 1
+                    const day = pad(now.getDate());
+                    const hour = pad(now.getHours());
+                    const minute = pad(now.getMinutes());
+                    const second = pad(now.getSeconds());
+                    const timestamp = `${year}/${month}/${day} ${hour}:${minute}:${second}`;
+                    const newLog = oldLog + "E " + timestamp + " " + message + "\n";
                     const response = await this.putFile(TEMP_PLUGIN_PATH + LOG_NAME, newLog);
                     if (!response || (response as any).code !== 0) {
                         // 写入失败

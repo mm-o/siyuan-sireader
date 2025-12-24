@@ -141,6 +141,10 @@ export class PDFViewer{
       w.appendChild(ann)
       await this.renderLinks(n,w,p,vp)
       this.createInkLayer(n,w,vp)
+      // 触发canvas层创建完成事件
+      requestAnimationFrame(()=>{
+        window.dispatchEvent(new CustomEvent('pdf:layer-ready',{detail:{page:n}}))
+      })
     })
   }
 
@@ -150,7 +154,7 @@ export class PDFViewer{
     inkCanvas.dataset.page=String(pageNum)
     inkCanvas.width=vp.width
     inkCanvas.height=vp.height
-    inkCanvas.style.cssText=`position:absolute;inset:0;z-index:10;pointer-events:none`
+    inkCanvas.style.cssText=`position:absolute;inset:0;width:${vp.width}px;height:${vp.height}px;z-index:10;pointer-events:none`
     pageEl.appendChild(inkCanvas)
     
     const shapeCanvas=document.createElement('canvas')
@@ -158,7 +162,7 @@ export class PDFViewer{
     shapeCanvas.dataset.page=String(pageNum)
     shapeCanvas.width=vp.width
     shapeCanvas.height=vp.height
-    shapeCanvas.style.cssText=`position:absolute;inset:0;z-index:11;pointer-events:none`
+    shapeCanvas.style.cssText=`position:absolute;inset:0;width:${vp.width}px;height:${vp.height}px;z-index:11;pointer-events:none`
     pageEl.appendChild(shapeCanvas)
   }
 

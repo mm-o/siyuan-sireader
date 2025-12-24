@@ -34,6 +34,10 @@
               <button v-for="s in SHAPES" :key="s.type" class="sr-style-btn" :class="{active:state.shapeType===s.type}" @click.stop="state.shapeType=s.type" :title="s.name">
                 <svg style="width:16px;height:16px"><use :xlink:href="s.icon"/></svg>
               </button>
+              <span class="toolbar-divider"/>
+              <button class="sr-style-btn" :class="{active:state.shapeFilled}" @click.stop="state.shapeFilled=!state.shapeFilled" title="填充">
+                <svg style="width:16px;height:16px"><use xlink:href="#lucide-paint-bucket"/></svg>
+              </button>
             </div>
             <div v-else class="sr-styles">
               <button v-for="s in STYLES" :key="s.type" class="sr-style-btn" :class="{active:state.style===s.type}" @click.stop="state.style=s.type">
@@ -118,6 +122,7 @@ const state = reactive({
   color: 'yellow' as HighlightColor,
   style: 'highlight' as 'highlight' | 'underline' | 'outline' | 'squiggly',
   shapeType: 'rect' as 'rect' | 'circle' | 'triangle',
+  shapeFilled: false,
   markType: 'text' as 'text' | 'shape'
 })
 
@@ -126,31 +131,17 @@ const state = reactive({
 const currentColor = computed(() => colors[state.color] || '#ffeb3b')
 
 const menuPosition = computed(() => {
-  const menuWidth = 140 // 菜单宽度约 140px
-  const x = Math.max(menuWidth / 2 + 10, Math.min(state.x, window.innerWidth - menuWidth / 2 - 10))
-  const y = Math.max(60, Math.min(state.y - 54, window.innerHeight - 60))
-  return {
-    left: `${x}px`,
-    top: `${y}px`,
-    transform: 'translate(-50%, 0)'
-  }
+  const w=140
+  return{left:`${Math.max(w/2+10,Math.min(state.x,window.innerWidth-w/2-10))}px`,top:`${Math.max(60,Math.min(state.y-54,window.innerHeight-60))}px`,transform:'translate(-50%, 0)'}
 })
 
 const cardPosition = computed(() => {
-  const cardWidth = 340 // 卡片宽度约 340px
-  const cardHeight = state.isEditing ? 420 : 180
-  const x = Math.max(cardWidth / 2 + 10, Math.min(state.x, window.innerWidth - cardWidth / 2 - 10))
-  const y = Math.max(20, Math.min(state.y + 10, window.innerHeight - cardHeight - 20))
-  return {
-    left: `${x}px`,
-    top: `${y}px`,
-    transform: 'translate(-50%, 0)'
-  }
+  const w=340,h=state.isEditing?420:180
+  const x=Math.max(w/2+10,Math.min(state.x,window.innerWidth-w/2-10))
+  let y=state.y+10
+  if(y+h>window.innerHeight-20)y=Math.max(20,state.y-h-10)
+  return{left:`${x}px`,top:`${y}px`,transform:'translate(-50%, 0)'}
 })
-
-// ==================== 工具函数 ====================
-
-const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(v, max))
 
 // ==================== 公开方法 ====================
 
@@ -175,6 +166,7 @@ const showCard = (mark: Mark, x: number, y: number, edit = false) => {
   state.color = mark.color || 'yellow'
   state.style = mark.style || 'highlight'
   state.shapeType = mark.shapeType || 'rect'
+  state.shapeFilled = mark.filled || false
   state.markType = mark.type === 'shape' ? 'shape' : 'text'
   
   state.x = x
@@ -260,6 +252,7 @@ const handleSave = async () => {
       // 形状标注更新 shapeType
       if (state.currentMark.type === 'shape') {
         updates.shapeType = state.shapeType
+        updates.filled = state.shapeFilled
       } else {
         updates.text = state.text.trim()
         updates.style = state.style
@@ -317,18 +310,8 @@ const handleCancel = () => {
   }
 }
 
-const handleCopyText = () => {
-  emit('copy', state.text)
-  showMessage(props.i18n?.copied || '已复制', 1000)
-}
-
 const handleCopyMark = () => {
-  if (state.currentMark) {
-    emit('copyMark', state.currentMark)
-  } else {
-    emit('copy', state.text)
-    showMessage(props.i18n?.copied || '已复制', 1000)
-  }
+  state.currentMark?emit('copyMark',state.currentMark):emit('copy',state.text)
 }
 
 // 处理遮罩层点击
@@ -353,7 +336,7 @@ const handleOverlayClick = (e: MouseEvent) => {
 .sr-options{margin-bottom:12px}
 .sr-colors{display:flex;gap:6px;margin-bottom:8px}
 .sr-color-btn{width:28px;height:28px;border:2px solid transparent;border-radius:50%;cursor:pointer;transition:all .15s;padding:0;&.active{border-color:var(--b3-theme-on-surface);transform:scale(1.1);box-shadow:0 2px 8px rgba(0,0,0,.2)}&:hover{transform:scale(1.05)}}
-.sr-styles{display:flex;gap:4px}
+.sr-styles{display:flex;gap:4px;.toolbar-divider{width:1px;height:24px;background:var(--b3-border-color);margin:0 4px}}
 .sr-style-btn{width:36px;height:32px;display:flex;align-items:center;justify-content:center;border:1px solid var(--b3-border-color);background:transparent;border-radius:4px;cursor:pointer;transition:all .15s;color:var(--b3-theme-on-surface);.sr-style-icon{font-size:14px;font-weight:500;&[data-type="highlight"]{background:#ffeb3b;padding:0 4px}&[data-type="underline"]{text-decoration:underline;text-decoration-thickness:2px}&[data-type="outline"]{border:2px solid currentColor;padding:0 2px}&[data-type="squiggly"]{text-decoration:underline wavy;text-decoration-thickness:2px}}&.active{background:var(--b3-theme-primary-lightest);border-color:var(--b3-theme-primary);color:var(--b3-theme-primary)}&:hover{background:var(--b3-list-hover)}}
 .sr-actions{display:flex;gap:8px;button{flex:1;padding:8px 16px;border:none;border-radius:4px;cursor:pointer;transition:all .15s;font-size:13px;font-weight:500;&:hover{transform:translateY(-1px)}}}
 .sr-btn-primary{background:var(--b3-theme-primary);color:white;&:hover{background:var(--b3-theme-primary-light)}&:active{background:var(--b3-theme-primary-dark)}}

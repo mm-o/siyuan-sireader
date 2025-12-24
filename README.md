@@ -38,6 +38,34 @@ Drag EPUB files into SiYuan documents to create links, click links to open books
 
 ## 🚀 Latest Updates
 
+### v0.6.3 (2025.12.24)
+
+#### 📚 Bookshelf Enhancements
+
+- **✅ Text Overflow Fix** - Fixed text overflow in bookshelf list and compact views, ensuring complete display of book titles and author information
+- **📊 New Sort Options** - Added "Recently Added", "Recently Read", and "Reading Progress" sort options for quick book finding
+- **💾 State Persistence** - Bookshelf sort method, filter tags, and view mode auto-save to local storage, maintaining settings on next open
+
+#### 🖊️ PDF Shape Annotation Enhancements
+
+- **🎨 Fill Function** - Added shape annotation fill function, supports color fill for rectangles, circles, triangles (solid/hollow toggle)
+- **📝 Auto Popup** - Shape annotation automatically opens edit note window after completion for immediate note addition
+- **🎯 Smart Interaction** - Optimized ink and shape annotation interaction logic, clicking toolbar collapse button auto-exits edit mode
+
+#### 🔗 PDF Link & Navigation Optimization
+
+- **📍 Precise Positioning** - Modified PDF link format using page number and rectangle coordinates for accurate positioning and more precise navigation
+- **✨ Flash Indicator** - Added highlight flash effect after navigation for clearer target position identification
+- **🔄 Unified Logic** - Unified navigation highlight logic and copy methods, consistent behavior between reading and annotation interfaces
+
+#### ⚡ PDF Rendering Optimization
+
+- **🎯 Rewritten Rendering** - Rewrote PDF rendering method, fixed delayed rendering and annotation misalignment issues
+- **📐 Coordinate Conversion** - Optimized PDF coordinate system conversion logic, ensuring accurate annotation positions after zoom and rotation
+- **🖼️ Canvas Management** - Improved Canvas layer management, auto-recreates drawers after zoom to avoid coordinate misalignment
+
+---
+
 ### v0.6.2 (2025.12.21)
 
 #### 🐛 Bug Fixes

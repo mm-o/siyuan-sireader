@@ -3,7 +3,7 @@
     <div v-if="loading" class="reader-loading"><div class="spinner"></div><div>{{ error || '加载中...' }}</div></div>
     
     <!-- PDF 工具栏 -->
-    <PdfToolbar v-if="isPdfMode&&pdfViewer&&pdfSearcher" :viewer="pdfViewer" :searcher="pdfSearcher" :file-size="pdfSource?.byteLength" @print="handlePrint" @download="handleDownload" @export-images="handleExportImages" @ink-toggle="handleInkToggle" @ink-color="handleInkColor" @ink-width="handleInkWidth" @ink-undo="handleInkUndo" @ink-clear="handleInkClear" @ink-save="handleInkSave" @ink-eraser="handleInkEraser" @shape-toggle="handleShapeToggle" @shape-type="handleShapeType" @shape-color="handleShapeColor" @shape-width="handleShapeWidth" @shape-undo="handleShapeUndo" @shape-clear="handleShapeClear"/>
+    <PdfToolbar v-if="isPdfMode&&pdfViewer&&pdfSearcher" :viewer="pdfViewer" :searcher="pdfSearcher" :file-size="pdfSource?.byteLength" @print="handlePrint" @download="handleDownload" @export-images="handleExportImages" @ink-toggle="handleInkToggle" @ink-color="handleInkColor" @ink-width="handleInkWidth" @ink-undo="handleInkUndo" @ink-clear="handleInkClear" @ink-save="handleInkSave" @ink-eraser="handleInkEraser" @shape-toggle="handleShapeToggle" @shape-type="handleShapeType" @shape-color="handleShapeColor" @shape-width="handleShapeWidth" @shape-filled="handleShapeFilled" @shape-undo="handleShapeUndo" @shape-clear="handleShapeClear"/>
     
     <div ref="viewerContainerRef" class="viewer-container" :class="{'has-pdf-toolbar':isPdfMode}"></div>
     
@@ -51,6 +51,8 @@ import { createShapeToolManager, type ShapeToolManager } from '@/core/pdf/shape'
 import { saveMobilePosition, getMobilePosition, isMobile } from '@/core/mobile'
 import PdfToolbar from './PdfToolbar.vue'
 import MarkPanel from './MarkPanel.vue'
+import { gotoPDF, gotoEPUB, restorePosition as restorePos, initJump } from '@/utils/jump'
+import { copyMark as copyMarkUtil } from '@/utils/copy'
 
 const props = defineProps<{ file?: File; plugin: Plugin; settings?: ReaderSettings; url?: string; blockId?: string; bookInfo?: any; onReaderReady?: (r: FoliateReader) => void; i18n?: any }>()
 
@@ -191,7 +193,7 @@ const init=async()=>{
         const[x1,y1,x2,y2]=shape.rect
         markPanelRef.value?.showCard(shape,r.left+(x1+x2)/2,r.top+y2+10,false)
       }
-      shapeToolManager=createShapeToolManager(viewerContainerRef.value!,props.plugin,bookUrl,props.bookInfo?.name||props.file?.name||'book',handleShapeClick)
+      shapeToolManager=createShapeToolManager(viewerContainerRef.value!,props.plugin,bookUrl,props.bookInfo?.name||props.file?.name||'book',handleShapeClick,viewer)
       await inkToolManager.init()
       await shapeToolManager.init()
       ;(markManager.value as any).inkManager=inkToolManager
@@ -208,18 +210,35 @@ const init=async()=>{
           if(!rects.length)return
           const pg=viewer.getCurrentPage(),pageEl=document.querySelector(`[data-page="${pg}"]`)
           if(!pageEl)return
-          const pr=pageEl.getBoundingClientRect()
+          const page=viewer.getPages().get(pg)
+          if(!page)return
+          const pr=pageEl.getBoundingClientRect(),viewport=page.getViewport({scale:viewer.getScale(),rotation:viewer.getRotation()})
           const text=sel.toString().trim()
-          const rectsData=rects.map(r=>({x:r.left-pr.left,y:r.top-pr.top,w:r.width,h:r.height}))
+          const rectsData=rects.map(r=>{
+            const[x1,y1]=viewport.convertToPdfPoint(r.left-pr.left,r.top-pr.top)
+            const[x2,y2]=viewport.convertToPdfPoint(r.right-pr.left,r.bottom-pr.top)
+            return{x:x1,y:y1,w:x2-x1,h:y2-y1}
+          })
           currentSelection={text,page:pg,rects:rectsData}
           markPanelRef.value?.showMenu({text,location:{format:'pdf',page:pg,rects:rectsData}},rects[0].left+rects[0].width/2,rects[0].top)
         }catch{}
       },100)
       document.addEventListener('mouseup',handleSel as any)
+      // 监听canvas层创建完成，自动渲染标注
+      const handleLayerReady=(e:CustomEvent)=>{
+        const p=e.detail.page
+        markManager.value?.renderPdf(p)
+        shapeToolManager?.render(p)
+        inkToolManager?.render(p)
+      }
+      window.addEventListener('pdf:layer-ready',handleLayerReady as any)
+      // 监听页面切换
       const origOnChange=viewer.onChange
-      viewer.onChange=(p:number)=>{origOnChange?.(p);setTimeout(()=>{inkToolManager?.render(p);shapeToolManager?.render(p);markManager.value?.renderPdf(p)},100)}
-      setTimeout(()=>{const p=viewer.getCurrentPage();inkToolManager?.render(p);shapeToolManager?.render(p);markManager.value?.renderPdf(p)},500)
-      currentView.value.cleanup=()=>document.removeEventListener('mouseup',handleSel)
+      viewer.onChange=(p:number)=>{origOnChange?.(p);setTimeout(()=>handleLayerReady({detail:{page:p}}as any),50)}
+      currentView.value.cleanup=()=>{
+        document.removeEventListener('mouseup',handleSel)
+        window.removeEventListener('pdf:layer-ready',handleLayerReady as any)
+      }
     }else if(isTxt){
       const{createFoliateView,loadTxtBook}=await import('@/core/foliate/reader')
       const view=createFoliateView(viewerContainerRef.value!)
@@ -271,7 +290,9 @@ const init=async()=>{
     markPanelRef.value?.closeAll()
   }finally{
     loading.value=false
-    await restorePosition()
+    await restorePos(getBookUrl(),reader,pdfViewer.value,getMobilePosition)
+    // 初始化跳转
+    if(props.bookInfo?.epubCfi)initJump(props.bookInfo.epubCfi,isPdfMode.value)
   }
 }
 
@@ -301,60 +322,34 @@ const checkSelection=(txtDoc?:Document,e?:MouseEvent)=>{
 
 // 复制文本处理
 const handleCopyText=async(text:string)=>{
-  const copy=(text:string,msg='已复制')=>navigator.clipboard.writeText(text).then(()=>showMessage(msg,1000))
-  
-  if(!reader||!currentSelection){
-    copy(text)
-    return
-  }
-  
+  const copy=(t:string,msg='已复制')=>navigator.clipboard.writeText(t).then(()=>showMessage(msg,1000))
   const bookUrl=(window as any).__currentBookUrl||props.bookInfo?.bookUrl||props.url||''
-  if(!bookUrl||bookUrl.startsWith('file://')){
-    copy(text,'本地文件无法生成跳转链接，仅复制文本')
-    return
-  }
+  if(!bookUrl||bookUrl.startsWith('file://'))return copy(text,'本地文件无法生成跳转链接，仅复制文本')
+  if(!currentSelection)return copy(text)
   
   const{formatBookLink}=await import('@/composables/useSetting')
   const{formatAuthor,getChapterName}=await import('@/core/MarkManager')
-  const book=reader.getBook(),loc=reader.getLocation(),view=reader.getView()
-  const chapter=getChapterName({cfi:currentSelection.cfi,page:loc?.page,isPdf:(view as any)?.isPdf,toc:book?.toc,location:loc})||'📒'
-  const link=formatBookLink(bookUrl,book?.metadata?.title||props.bookInfo?.name||'',formatAuthor(book?.metadata?.author||props.bookInfo?.author),chapter,currentSelection.cfi||'',text,props.settings?.linkFormat||'> [!NOTE] 📑 书名\n> [章节](链接) 文本')
+  const isPdf=isPdfMode.value
+  const book=isPdf?null:reader?.getBook()
+  const loc=isPdf?null:reader?.getLocation()
+  const toc=isPdf?pdfViewer.value?.getPDF?.()?.toc:book?.toc
+  const page=currentSelection.page||(isPdf?pdfViewer.value?.getCurrentPage():loc?.page)
+  const cfi=currentSelection.cfi||(isPdf&&page?`#page-${page}`:'')
+  const chapter=getChapterName({cfi:currentSelection.cfi,page,isPdf,toc,location:loc})||'📒'
+  const link=formatBookLink(bookUrl,book?.metadata?.title||props.bookInfo?.name||'',formatAuthor(book?.metadata?.author||props.bookInfo?.author),chapter,cfi,text,props.settings?.linkFormat||'> [!NOTE] 📑 书名\n> [章节](链接) 文本')
   copy(link)
 }
 
 // 复制标注处理
-const handleCopyMark=async(mark:any)=>{
-  const copy=(text:string,msg='已复制')=>navigator.clipboard.writeText(text).then(()=>showMessage(msg,1000))
-  
-  if(!reader){
-    copy(mark.text||mark.note||'')
-    return
-  }
-  
-  const bookUrl=(window as any).__currentBookUrl||props.bookInfo?.bookUrl||props.url||''
-  if(!bookUrl||bookUrl.startsWith('file://')){
-    copy(mark.text||mark.note||'','本地文件无法生成跳转链接，仅复制文本')
-    return
-  }
-  
-  const book=reader.getBook(),view=reader.getView()
-  const isPdf=(view as any)?.isPdf
-  const page=mark.page||(mark.section!==undefined?(view as any)?.viewer?.getCurrentPage():null)
-  const cfi=mark.cfi||(isPdf&&page?`#page-${page}`:'')
-  
-  if(!cfi){
-    copy(mark.text||mark.note||'','仅复制文本')
-    return
-  }
-  
-  const{formatBookLink}=await import('@/composables/useSetting')
-  const{formatAuthor,getChapterName}=await import('@/core/MarkManager')
-  const chapter=getChapterName({cfi:mark.cfi,page,isPdf,toc:book?.toc,location:mark.cfi?reader.getLocation():undefined})||'📒'
-  
-  const tpl=props.settings?.linkFormat||'> [!NOTE] 📑 书名\n> [章节](链接) 文本\n> 截图\n> 笔记'
-  const link=formatBookLink(bookUrl,book?.metadata?.title||props.bookInfo?.name||'',formatAuthor(book?.metadata?.author||props.bookInfo?.author),chapter,cfi,mark.text||'',tpl,mark.note||'','')
-  copy(link)
-}
+const handleCopyMark=(mark:any)=>copyMarkUtil(mark,{
+  bookUrl:(window as any).__currentBookUrl||props.bookInfo?.bookUrl||props.url||'',
+  bookInfo:props.bookInfo,
+  settings:props.settings,
+  isPdf:isPdfMode.value,
+  reader,
+  pdfViewer:pdfViewer.value,
+  showMsg:(msg:string)=>showMessage(msg,1000)
+})
 
 // 词典查询处理
 const handleOpenDict=(text:string,x:number,y:number)=>{
@@ -407,6 +402,7 @@ const handleShapeToggle=async(a:boolean)=>{if(a)await inkToolManager?.toggle(fal
 const handleShapeType=async(t:string)=>await shapeToolManager?.setConfig({shapeType:t})
 const handleShapeColor=async(c:string)=>await shapeToolManager?.setConfig({color:c})
 const handleShapeWidth=async(w:number)=>await shapeToolManager?.setConfig({width:w})
+const handleShapeFilled=async(f:boolean)=>await shapeToolManager?.setConfig({filled:f})
 const handleShapeUndo=async()=>{const p=pdfViewer.value?.getCurrentPage();if(p)await shapeToolManager?.undo(p)}
 const handleShapeClear=async()=>{const p=pdfViewer.value?.getCurrentPage();if(p)await shapeToolManager?.clear(p)}
 
@@ -417,7 +413,6 @@ const toggleBookmark=()=>{try{hasBookmark.value=marks.value?.toggleBookmark?.()}
 // 位置管理
 const getBookUrl=()=>(window as any).__currentBookUrl||props.bookInfo?.bookUrl||props.url||''
 const getCurrentPosition=()=>isPdfMode.value?{page:pdfViewer.value?.getCurrentPage()}:{cfi:reader?.getLocation()?.cfi}
-const restorePosition=async()=>{if(!isMobile())return;const url=getBookUrl();if(!url)return;const pos=await getMobilePosition(url);if(pos?.cfi&&reader)reader.goTo(pos.cfi);else if(pos?.page&&pdfViewer.value)pdfViewer.value.goToPage(pos.page)}
 const savePosition=()=>{if(!isMobile())return;const url=getBookUrl();if(url)saveMobilePosition(url,getCurrentPosition())}
 
 // 关闭
@@ -429,10 +424,10 @@ const handleTxtSelection=(e:Event)=>{const d=(e as CustomEvent).detail;setTimeou
 const handleTxtAnnotationClick=(e:Event)=>{const{mark,x,y}=(e as CustomEvent).detail;markPanelRef.value?.showCard(mark,x,y,false)}
 
 // 快捷键处理
-const handlePdfZoomIn=()=>pdfViewer.value&&pdfViewer.value.setScale(pdfViewer.value.getScale()+.25)
-const handlePdfZoomOut=()=>pdfViewer.value&&pdfViewer.value.setScale(pdfViewer.value.getScale()-.25)
+const handlePdfZoomIn=()=>pdfViewer.value?.setScale(pdfViewer.value.getScale()+.25)
+const handlePdfZoomOut=()=>pdfViewer.value?.setScale(pdfViewer.value.getScale()-.25)
 const handlePdfZoomReset=()=>pdfViewer.value?.setScale(1.5)
-const handlePdfRotate=()=>pdfViewer.value&&pdfViewer.value.setRotation(((pdfViewer.value.getRotation()+90)%360)as 0|90|180|270)
+const handlePdfRotate=()=>pdfViewer.value?.setRotation(((pdfViewer.value.getRotation()+90)%360)as 0|90|180|270)
 const handlePdfSearch=()=>window.dispatchEvent(new CustomEvent('pdf:toggle-search'))
 const handlePdfFirstPage=()=>pdfViewer.value?.goToPage(1)
 const handlePdfLastPage=()=>pdfViewer.value?.goToPage(pdfViewer.value.getPageCount())
@@ -440,12 +435,15 @@ const handlePdfPageUp=()=>handlePrev()
 const handlePdfPageDown=()=>handleNext()
 
 const handleGoto=(e:CustomEvent)=>{
-  if(!e.detail.cfi)return
-  if(isPdfMode.value&&e.detail.cfi.startsWith('#page-')){
-    const page=parseInt(e.detail.cfi.replace('#page-',''))
-    if(page&&pdfViewer.value)return pdfViewer.value.goToPage(page)
+  const{cfi,id}=e.detail
+  if(!cfi)return
+  
+  if(isPdfMode.value&&cfi.startsWith('#page-')){
+    const p=parseInt(cfi.slice(6))
+    if(p)gotoPDF(p,id,pdfViewer.value,markManager.value,shapeToolManager)
+  }else{
+    gotoEPUB(cfi,id,reader,markManager.value)
   }
-  reader&&requestAnimationFrame(()=>reader.goTo(e.detail.cfi))
 }
 
 // 快捷键
@@ -459,9 +457,17 @@ const suppressError=(e:PromiseRejectionEvent)=>/createTreeWalker|destroy/.test(e
 // 标签切换监听
 const setupTabObserver=()=>{if(isMobile())return;let el=containerRef.value?.parentElement;while(el){if(el.hasAttribute('data-id')){const h=document.querySelector(`li[data-type="tab-header"][data-id="${el.getAttribute('data-id')}"]`);if(h){const obs=new MutationObserver(ms=>ms.forEach(m=>m.type==='attributes'&&m.attributeName==='class'&&(m.target as HTMLElement).classList.contains('item--focus')&&(setActiveReader(currentView.value,reader),window.dispatchEvent(new CustomEvent('sireader:tab-switched')))));obs.observe(h,{attributes:true,attributeFilter:['class']});(containerRef.value as any).__observer=obs}break}el=el.parentElement}}
 
-onMounted(()=>{init();containerRef.value?.focus();events.forEach(([e,h])=>window.addEventListener(e,h as any));window.addEventListener('unhandledrejection',suppressError);setupTabObserver();if(isMobile()&&containerRef.value){containerRef.value.addEventListener('touchstart',handleTouchStart);containerRef.value.addEventListener('touchend',handleTouchEnd)}})
+// 形状创建后自动显示编辑窗口
+const handleShapeCreated=(e:CustomEvent)=>{
+  const{shape,x,y,edit}=e.detail
+  if(markPanelRef.value&&edit){
+    markPanelRef.value.showCard(shape,x,y,true)
+  }
+}
 
-onUnmounted(async()=>{savePosition();clearActiveReader();await markManager.value?.destroy();try{reader?.destroy();currentView.value?.cleanup?.();currentView.value?.viewer?.destroy?.()}catch{};inkToolManager?.destroy?.();shapeToolManager?.destroy?.();setTimeout(()=>viewerContainerRef.value&&(viewerContainerRef.value.innerHTML=''),50);events.forEach(([e,h])=>window.removeEventListener(e,h as any));window.removeEventListener('unhandledrejection',suppressError);containerRef.value&&(containerRef.value as any).__observer?.disconnect();if(isMobile()&&containerRef.value){containerRef.value.removeEventListener('touchstart',handleTouchStart);containerRef.value.removeEventListener('touchend',handleTouchEnd)}})
+onMounted(()=>{init();containerRef.value?.focus();events.forEach(([e,h])=>window.addEventListener(e,h as any));window.addEventListener('unhandledrejection',suppressError);window.addEventListener('shape-created',handleShapeCreated as any);setupTabObserver();if(isMobile()&&containerRef.value){containerRef.value.addEventListener('touchstart',handleTouchStart);containerRef.value.addEventListener('touchend',handleTouchEnd)}})
+
+onUnmounted(async()=>{savePosition();clearActiveReader();await markManager.value?.destroy();try{reader?.destroy();currentView.value?.cleanup?.();currentView.value?.viewer?.destroy?.()}catch{};inkToolManager?.destroy?.();shapeToolManager?.destroy?.();setTimeout(()=>viewerContainerRef.value&&(viewerContainerRef.value.innerHTML=''),50);events.forEach(([e,h])=>window.removeEventListener(e,h as any));window.removeEventListener('unhandledrejection',suppressError);window.removeEventListener('shape-created',handleShapeCreated as any);containerRef.value&&(containerRef.value as any).__observer?.disconnect();if(isMobile()&&containerRef.value){containerRef.value.removeEventListener('touchstart',handleTouchStart);containerRef.value.removeEventListener('touchend',handleTouchEnd)}})
 </script>
 
 <style scoped lang="scss">
@@ -490,9 +496,20 @@ onUnmounted(async()=>{savePosition();clearActiveReader();await markManager.value
 .textLayer mark.pdf-search-hl{background:#ff06;border-radius:2px;color:inherit;transition:background .2s}
 .textLayer mark.pdf-search-current{background:#ff9800;color:#fff;box-shadow:0 0 0 2px #ff9800}
 
-/* PDF 标注样式 */
-.pdf-highlight{pointer-events:auto!important}
-.pdf-underline{pointer-events:auto!important;background:transparent!important}
-.pdf-outline{pointer-events:auto!important;background:transparent!important}
-.pdf-squiggly{pointer-events:auto!important;background:transparent!important;border-bottom-style:wavy!important}
+/* 标注样式 */
+.pdf-highlight,.pdf-underline,.pdf-outline,.pdf-squiggly{pointer-events:auto!important}
+.pdf-underline,.pdf-outline{background:transparent!important}
+.pdf-squiggly{background:transparent!important;border-bottom-style:wavy!important}
+
+/* 闪烁动画 - 2次闪烁 */
+.pdf-highlight--flash,.epub-highlight--flash{animation:flash 1.2s ease-in-out 1}
+.pdf-shape--flash{animation:flash-shape 1.2s ease-in-out 1}
+@keyframes flash{
+  0%,100%{opacity:1;transform:scale(1);box-shadow:0 0 0 transparent}
+  50%{opacity:.3;transform:scale(1.1);box-shadow:0 0 20px currentColor}
+}
+@keyframes flash-shape{
+  0%,100%{opacity:1;filter:drop-shadow(0 0 0 transparent)}
+  50%{opacity:.4;filter:drop-shadow(0 0 20px rgba(255,0,0,.8))}
+}
 </style>

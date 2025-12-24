@@ -13,6 +13,56 @@ export interface InkConfig{color:string;width:number;opacity:number;smoothing:bo
 // 工具函数：获取鼠标/触摸坐标
 const getCoord=(e:MouseEvent|TouchEvent,r:DOMRect)=>({x:(e instanceof MouseEvent?e.clientX:e.touches[0].clientX)-r.left,y:(e instanceof MouseEvent?e.clientY:e.touches[0].clientY)-r.top})
 
+// ===== 渲染工具函数 =====
+
+/** 绘制墨迹标注到 Canvas（用于预览/缩略图） */
+export const drawInk=(canvas:HTMLCanvasElement,paths:InkPath[],rect:[number,number,number,number])=>{
+  const ctx=canvas.getContext('2d')
+  if(!ctx)return
+  ctx.clearRect(0,0,canvas.width,canvas.height)
+  const[x1,y1,x2,y2]=rect,w=x2-x1,h=y2-y1,s=Math.min(canvas.width/(w+10),canvas.height/(h+10))
+  const ox=(canvas.width-w*s)/2-x1*s,oy=(canvas.height-h*s)/2-y1*s
+  ctx.lineCap=ctx.lineJoin='round'
+  paths.forEach(p=>{
+    if(p.points.length<2)return
+    ctx.strokeStyle=p.color
+    ctx.globalAlpha=p.opacity
+    ctx.lineWidth=p.width*s
+    ctx.beginPath()
+    ctx.moveTo(p.points[0].x*s+ox,p.points[0].y*s+oy)
+    p.points.forEach(pt=>ctx.lineTo(pt.x*s+ox,pt.y*s+oy))
+    ctx.stroke()
+  })
+}
+
+/** 渲染墨迹 Canvas（批量渲染） */
+export const renderInkCanvas=(list:any[],inkCache:Map<string,number>)=>{
+  document.querySelectorAll('[data-page].sr-group-preview').forEach(el=>{
+    const c=el as HTMLCanvasElement,p=+(c.dataset.page||0),k=`g${p}`
+    if(inkCache.has(k))return
+    const g=list.find((i:any)=>i.type==='ink-group'&&i.page===p)
+    if(!g?.inks)return
+    let x1=Infinity,y1=Infinity,x2=-Infinity,y2=-Infinity,paths:InkPath[]=[]
+    g.inks.forEach((ink:any)=>{
+      const[a,b,c,d]=ink.rect||[0,0,0,0]
+      x1=Math.min(x1,a);y1=Math.min(y1,b);x2=Math.max(x2,c);y2=Math.max(y2,d)
+      paths.push(...ink.paths)
+    })
+    drawInk(c,paths,[x1,y1,x2,y2])
+    inkCache.set(k,1)
+  })
+  document.querySelectorAll('[data-ink-id]').forEach(el=>{
+    const c=el as HTMLCanvasElement,id=c.dataset.inkId
+    if(!id||inkCache.has(id))return
+    const g=list.find((i:any)=>i.type==='ink-group'&&i.inks?.some((ink:any)=>ink.id===id))
+    const ink=g?.inks?.find((i:any)=>i.id===id)
+    if(ink){
+      drawInk(c,ink.paths,ink.rect)
+      inkCache.set(id,1)
+    }
+  })
+}
+
 /** 墨迹绘制器 - 负责单个 Canvas 的绘制操作 */
 export class InkDrawer{
   private ctx:CanvasRenderingContext2D
@@ -154,7 +204,7 @@ export class InkController{
     return d
   }
 
-  private getManager(page:number):InkManager{
+  getManager(page:number):InkManager{
     let m=this.managers.get(page)
     if(!m){m=new InkManager(page);this.managers.set(page,m)}
     return m

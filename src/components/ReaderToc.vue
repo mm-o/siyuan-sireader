@@ -166,8 +166,12 @@
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { showMessage, Dialog } from 'siyuan'
 import { loadDeckCards, getDeckCards, removeFromDeck, renderDictCard, getDictName } from '@/core/dictionary'
-import { COLORS, STYLES, getColorMap } from '@/core/MarkManager'
+import { COLORS, STYLES, getColorMap, formatTime } from '@/core/MarkManager'
 import { useReaderState } from '@/core/foliate'
+import { jump } from '@/utils/jump'
+import { copyMark as copyMarkUtil } from '@/utils/copy'
+import { drawInk, renderInkCanvas as renderInkUtil } from '@/core/pdf/ink'
+import { drawShape as drawShapeUtil, renderShapeCanvas as renderShapeUtil } from '@/core/pdf/shape'
 
 const props = withDefaults(defineProps<{ mode: 'toc'|'bookmark'|'mark'|'note'|'deck'; i18n?: any }>(), { i18n: () => ({}) })
 const emit = defineEmits(['update:mode'])
@@ -199,7 +203,7 @@ const isPdfMode=computed(()=>(activeView.value as any)?.isPdf||false)
 const pageCount=computed(()=>(activeView.value as any)?.pageCount||0)
 const data=computed(()=>{
   refreshKey.value
-  if(!marks.value)return{bookmarks:[],marks:[],notes:[],deck:[],inks:[],shapes:[]}
+  if(!marks.value)return{bookmarks:[],marks:[],notes:[],deck:[]}
   const inks=marks.value.getInkAnnotations?.()||[]
   const inksByPage=inks.reduce((acc:any,ink:any)=>{
     if(!acc[ink.page])acc[ink.page]={page:ink.page,type:'ink-group',inks:[],timestamp:ink.timestamp,text:`墨迹标注 - 第${ink.page}页`}
@@ -216,7 +220,7 @@ const data=computed(()=>{
     return acc
   },{})
   const shapeGroups=Object.values(shapesByPage).map((g:any)=>({...g,groupId:`shape-${g.page}`,shapes:[...g.shapes]}))
-  return{bookmarks:marks.value.getBookmarks(),marks:[...marks.value.getAnnotations(filterColor.value as any),...inkGroups,...shapeGroups],notes:marks.value.getNotes(),deck:deckCards.value,inks,shapes}
+  return{bookmarks:marks.value.getBookmarks(),marks:[...marks.value.getAnnotations(filterColor.value as any),...inkGroups,...shapeGroups],notes:marks.value.getNotes(),deck:deckCards.value}
 })
 const list=computed(()=>{const kw=keyword.value.toLowerCase(),modeMap={bookmark:'bookmarks',mark:'marks',note:'notes',deck:'deck'},items=(data.value[modeMap[props.mode]]||[]).filter((item:any)=>!kw||(item.title||item.text||item.note||item.word||'').toLowerCase().includes(kw));return isReverse.value?[...items].reverse():items})
 const emptyText=computed(()=>keyword.value?`未找到${placeholders[props.mode].replace(/搜索|\.\.\./g,'')}`:`暂无${placeholders[props.mode].replace(/搜索|\.\.\./g,'')}`)
@@ -310,100 +314,32 @@ const startEdit=(item:any)=>{editingId.value=getKey(item);editText.value=item.te
 const cancelEdit=()=>editingId.value=null
 const saveEdit=async(item:any)=>{if(!marks.value)return showMsg('标记系统未初始化','error');if(item.type==='shape-group'||item.type==='ink-group')return showMsg('请编辑具体的标注项','error');try{const updates:any={color:editColor.value,note:editNote.value.trim()||undefined};if(item.type==='shape')updates.shapeType=editShapeType.value;else{updates.text=editText.value.trim();updates.style=editStyle.value}await marks.value.updateMark(item,updates);showMsg('已更新');editingId.value=null;refreshKey.value++}catch(e){console.error(e);showMsg('保存失败','error')}}
 const deleteMark=async(item:any)=>{if(!marks.value)return showMsg('标记系统未初始化','error');try{if(item.type==='shape-group'){for(const s of item.shapes||[])await marks.value.deleteMark(s);showMsg('已删除');refreshKey.value++;return}if(item.type==='ink-group'){for(const i of item.inks||[])await marks.value.deleteMark(i);showMsg('已删除');refreshKey.value++;return}if(await marks.value.deleteMark(item)){showMsg('已删除');refreshKey.value++}}catch{showMsg('删除失败','error')}}
-const goTo=(item:any)=>{
-  const view=activeView.value
-  const isPdf=(view as any)?.isPdf
-  if(isPdf&&item.page)return goToPage(item.page)
-  if(marks.value?.goTo)return marks.value.goTo(item)
-  if(isPdf&&view?.goTo)return view.goTo(item.page||item)
-  if(item.cfi)return goToLocation(item.cfi)
-  if(item.section!==undefined)return view?.goTo(item.section)
-}
-const goToPage=(page:number)=>(activeView.value as any)?.viewer?.goToPage(page)
+
+// 统一跳转 - 完全由jump.ts负责
+const goTo=(item:any)=>jump(item,activeView.value,activeReader.value,marks.value)
+const goToPage=(page:number)=>jump(page,activeView.value,activeReader.value,marks.value)
+const goToDeckLocation=(item:any)=>item.page||item.cfi||item.section!==undefined?goTo(item):showMsg('未保存位置信息')
 const preloadPage=(page:number)=>{const viewer=(activeView.value as any)?.viewer;if(viewer?.renderPage)viewer.renderPage(page)}
 const toggleExpand=(item:any)=>{const id=item.groupId;expandedGroup.value=expandedGroup.value===id?null:id;if(expandedGroup.value){preloadPage(item.page);setTimeout(()=>{renderInkCanvas();renderShapeCanvas()},100)}}
 const isExpanded=(item:any)=>expandedGroup.value===item.groupId
-const formatTime=(ts:number)=>{const d=new Date(ts);return`${d.getFullYear()}-${(d.getMonth()+1).toString().padStart(2,'0')}-${d.getDate().toString().padStart(2,'0')}`}
-const copyMark=async(item:any)=>{
-  const copy=(text:string,msg='已复制')=>navigator.clipboard.writeText(text).then(()=>showMsg(msg))
-  const reader=activeReader.value,book=reader?.getBook(),view=activeView.value
-  const bookUrl=(window as any).__currentBookUrl||''
-  if(!bookUrl||bookUrl.startsWith('file://')){copy(item.text||item.note||'','本地文件仅复制文本');return}
-  const isPdf=(view as any)?.isPdf,page=item.page||(item.section!==undefined?(view as any)?.viewer?.getCurrentPage():null)
-  const cfi=item.cfi||(isPdf&&page?`#page-${page}`:'')
-  if(!cfi){copy(item.text||item.note||'','仅复制文本');return}
-  const{formatBookLink}=await import('@/composables/useSetting')
-  const{formatAuthor,getChapterName}=await import('@/core/MarkManager')
-  const chapter=getChapterName({cfi:item.cfi,page,isPdf,toc:book?.toc,location:reader?.getLocation()})||'📒'
-  const tpl=view?.settings?.linkFormat||'> [!NOTE] 📑 书名\n> [章节](链接) 文本\n> 截图\n> 笔记'
-  let img=''
-  if(item.shapeType){
-    const hdKey=`${item.id}_${item.shapeType}_hd`
-    if(!shapeCache.has(hdKey)){preloadPage(page);await new Promise(r=>setTimeout(r,300));const c=document.createElement('canvas');drawShape(c,item,0,true);await new Promise(r=>setTimeout(r,100))}
-    if(shapeCache.has(hdKey)){
-      const base64=shapeCache.get(hdKey)!
-      const blob=await fetch(base64).then(r=>r.blob())
-      const file=new File([blob],`shape_${item.id}.png`,{type:'image/png'})
-      const{upload}=await import('@/api')
-      const res=await upload('/assets/',[file])
-      img=res.succMap?.[file.name]?`![](${res.succMap[file.name]})`:''
-    }
-  }
-  const link=formatBookLink(bookUrl,book?.metadata?.title||'',formatAuthor(book?.metadata?.author),chapter,cfi,item.text||'',tpl,item.note||'',img)
-  copy(link)
-}
-
-const goToDeckLocation=(item:any)=>item.page?goToPage(item.page):item.cfi?goToLocation(item.cfi):item.section!==undefined?activeView.value?.goTo(item.section):showMsg('未保存位置信息')
 const removeDeckCard=async(id:string)=>{await removeFromDeck(id);showMsg('已删除')}
 const toggleScroll=()=>contentRef.value?.scrollTo({top:contentRef.value.scrollTop<50?contentRef.value.scrollHeight:0,behavior:'smooth'})
 const onScroll=(e:Event)=>isAtTop.value=(e.target as HTMLElement).scrollTop<50
 
 // ===== Canvas渲染 =====
 const inkCache=new Map(),shapeCache=shapePreviewCache
-const drawCanvas=(c:HTMLCanvasElement,draw:()=>void)=>{const ctx=c.getContext('2d');if(ctx){ctx.clearRect(0,0,c.width,c.height);draw()}}
-const drawInk=(c:HTMLCanvasElement,paths:any[],rect:any)=>drawCanvas(c,()=>{
-  const ctx=c.getContext('2d')!,[x1,y1,x2,y2]=rect,w=x2-x1,h=y2-y1,s=Math.min(c.width/(w+10),c.height/(h+10)),ox=(c.width-w*s)/2-x1*s,oy=(c.height-h*s)/2-y1*s
-  ctx.lineCap=ctx.lineJoin='round'
-  paths.forEach(p=>{if(p.points.length<2)return;ctx.strokeStyle=p.color;ctx.globalAlpha=p.opacity;ctx.lineWidth=p.width*s;ctx.beginPath();ctx.moveTo(p.points[0].x*s+ox,p.points[0].y*s+oy);p.points.forEach(pt=>ctx.lineTo(pt.x*s+ox,pt.y*s+oy));ctx.stroke()})
+const drawShape=(c:HTMLCanvasElement,shape:any,retry=0,highRes=false)=>drawShapeUtil(c,shape,activeView.value,shapeCache,preloadPage,retry,highRes)
+const copyMark=(item:any)=>copyMarkUtil(item,{
+  bookUrl:(window as any).__currentBookUrl||'',
+  isPdf:(activeView.value as any)?.isPdf||false,
+  reader:activeReader.value,
+  pdfViewer:(activeView.value as any)?.viewer,
+  settings:activeView.value?.settings,
+  shapeCache,
+  showMsg
 })
-const drawShape=(c:HTMLCanvasElement,shape:any,retry=0,highRes=false)=>{
-  if(!shape)return
-  const ctx=c.getContext('2d')!
-  const cacheKey=`${shape.id}_${shape.shapeType}${highRes?'_hd':''}`
-  if(shapeCache.has(cacheKey)){const img=new Image();img.onload=()=>ctx.drawImage(img,0,0,c.width,c.height);img.src=shapeCache.get(cacheKey)!;return}
-  const[x1,y1,x2,y2]=shape.rect,w=Math.abs(x2-x1),h=Math.abs(y2-y1)
-  if(w<10||h<10)return
-  const maxW=highRes?1200:240,scale=maxW/w;c.width=maxW;c.height=h*scale
-  const pageEl=document.querySelector(`[data-page="${shape.page}"]`)
-  const pdfCanvas=pageEl&&(Array.from(pageEl.querySelectorAll('canvas')).find(c=>!c.className)||pageEl.querySelector('canvas'))as HTMLCanvasElement
-  if(!pdfCanvas){if(retry<3){preloadPage(shape.page);setTimeout(()=>drawShape(c,shape,retry+1,highRes),200)}return}
-  const dpr=pdfCanvas.width/(parseFloat(pdfCanvas.style.width)||pdfCanvas.width)
-  ctx.drawImage(pdfCanvas,Math.min(x1,x2)*dpr,Math.min(y1,y2)*dpr,w*dpr,h*dpr,0,0,c.width,c.height)
-  ctx.strokeStyle=shape.color||'#ff0000';ctx.lineWidth=Math.max(highRes?4:2,shape.width||2);ctx.globalAlpha=shape.opacity||0.8;ctx.beginPath()
-  if(shape.shapeType==='circle')ctx.arc(c.width/2,c.height/2,Math.min(c.width,c.height)/2,0,Math.PI*2)
-  else if(shape.shapeType==='triangle'){ctx.moveTo(c.width/2,0);ctx.lineTo(c.width,c.height);ctx.lineTo(0,c.height);ctx.closePath()}
-  else ctx.rect(0,0,c.width,c.height)
-  ctx.stroke();shapeCache.set(cacheKey,c.toDataURL('image/png'))
-}
-
-const renderInkCanvas=()=>nextTick(()=>{
-  document.querySelectorAll('[data-page].sr-group-preview').forEach(el=>{
-    const c=el as HTMLCanvasElement,p=+(c.dataset.page||0),k=`g${p}`
-    if(inkCache.has(k))return
-    const g=list.value.find((i:any)=>i.type==='ink-group'&&i.page===p)
-    if(!g?.inks)return
-    let x1=Infinity,y1=Infinity,x2=-Infinity,y2=-Infinity,paths:any[]=[]
-    g.inks.forEach((ink:any)=>{const[a,b,c,d]=ink.rect||[0,0,0,0];x1=Math.min(x1,a);y1=Math.min(y1,b);x2=Math.max(x2,c);y2=Math.max(y2,d);paths.push(...ink.paths)})
-    drawInk(c,paths,[x1,y1,x2,y2]);inkCache.set(k,1)
-  })
-  document.querySelectorAll('[data-ink-id]').forEach(el=>{
-    const c=el as HTMLCanvasElement,id=c.dataset.inkId
-    if(!id||inkCache.has(id))return
-    const ink=data.value.inks.find((i:any)=>i.id===id)
-    if(ink){drawInk(c,ink.paths,ink.rect);inkCache.set(id,1)}
-  })
-})
-const renderShapeCanvas=()=>nextTick(()=>document.querySelectorAll('[data-shape-id]').forEach(el=>drawShape(el as HTMLCanvasElement,data.value.shapes.find((s:any)=>s.id===(el as HTMLCanvasElement).dataset.shapeId))))
+const renderInkCanvas=()=>nextTick(()=>renderInkUtil(list.value,inkCache,drawInk))
+const renderShapeCanvas=()=>nextTick(()=>renderShapeUtil(list.value,activeView.value,shapeCache,preloadPage))
 watch([list,expandedGroup],()=>{inkCache.clear();renderInkCanvas();renderShapeCanvas()},{immediate:true})
 
 // ===== 缩略图懒加载 =====

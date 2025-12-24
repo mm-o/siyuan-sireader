@@ -302,10 +302,11 @@ class BookshelfManager {
 
   async addLocalBook(file: File) {
     const format = this.getFormatFromPath(file.name)
-    const bookUrl = `${format}://${Date.now()}_${file.name}`
-    const meta = await this.extractMetadata(file, format, file.name.replace(/\.[^.]+$/, ''))
+    const tempName = file.name.replace(/\.[^.]+$/, '')
+    const meta = await this.extractMetadata(file, format, tempName)
     
-    const name = meta.title || file.name.replace(/\.[^.]+$/, '')
+    const name = meta.title || tempName
+    const bookUrl = `${format}://${file.name}_${file.size}`
     const hash = this.getHash(bookUrl)
     const fileName = this.getFileName(name, hash, format)
     const filePath = `${STORAGE_PATH.BOOKS}${fileName}`
@@ -434,27 +435,28 @@ export const initBookDataPlugin = (p: any) => plugin = p
 const hash = (s: string) => { let h = 0; for (let i = 0; i < s.length; i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0; return Math.abs(h).toString(36) }
 const sanitize = (n: string) => (n || 'book').replace(/[<>:"/\\|?*\x00-\x1f《》【】「」『』（）()[\]{}]/g, '').replace(/\s+/g, '_').replace(/[._-]+/g, '_').replace(/^[._-]+|[._-]+$/g, '').slice(0, 50) || 'book'
 
+const cache = new Map<string, any>()
+
 export const loadBookData = async (bookUrl: string, bookName?: string) => {
   if (!plugin) return {}
   try {
-    if (!bookName) {
-      const book = await bookshelfManager.getBook(bookUrl)
-      if (book?.name) bookName = book.name
-    }
+    if (!bookName) bookName = (await bookshelfManager.getBook(bookUrl))?.name
     const fileName = `${sanitize(bookName || 'book')}_${hash(bookUrl)}.json`
-    return await plugin.loadData(`books/${fileName}`) || {}
+    if (cache.has(fileName)) return JSON.parse(JSON.stringify(cache.get(fileName)))
+    const data = await plugin.loadData(`books/${fileName}`) || {}
+    cache.set(fileName, data)
+    return JSON.parse(JSON.stringify(data))
   } catch { return {} }
 }
 
 export const saveBookData = async (bookUrl: string, data: any, bookName?: string) => {
   if (!plugin) return
   try {
-    if (!bookName) {
-      const book = await bookshelfManager.getBook(bookUrl)
-      if (book?.name) bookName = book.name
-    }
+    bookName = bookName || (await bookshelfManager.getBook(bookUrl))?.name
     const fileName = `${sanitize(bookName || 'book')}_${hash(bookUrl)}.json`
-    const existing = await plugin.loadData(`books/${fileName}`) || {}
-    await plugin.saveData(`books/${fileName}`, { ...existing, ...data })
-  } catch (e) { console.error('[BookData]', e) }
+    const existing = cache.has(fileName) ? JSON.parse(JSON.stringify(cache.get(fileName))) : await plugin.loadData(`books/${fileName}`) || {}
+    Object.entries(data).forEach(([k, v]) => v !== undefined && (existing[k] = v))
+    await plugin.saveData(`books/${fileName}`, existing)
+    cache.set(fileName, JSON.parse(JSON.stringify(existing)))
+  } catch (e) { console.error('[Data]', e) }
 }

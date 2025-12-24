@@ -105,11 +105,18 @@ const handleEbookLink = async (e: MouseEvent) => {
     if (!parsed.bookUrl) return showMessage('无效的书籍链接', 3000, 'error')
     const { bookshelfManager } = await import('@/core/bookshelf')
     await bookshelfManager.init()
-    const book = await bookshelfManager.getBook(parsed.bookUrl)
+    // 先尝试精确匹配
+    let book = await bookshelfManager.getBook(parsed.bookUrl)
+    // 如果找不到，尝试模糊匹配（忽略文件大小）
+    if (!book) {
+      const books = bookshelfManager.getBooks()
+      const fileName = parsed.bookUrl.split('://')[1]
+      book = books.find(b => b.bookUrl.startsWith(parsed.bookUrl.split('://')[0] + '://') && b.bookUrl.includes(fileName.split('_')[0]))
+    }
     if (!book) return showMessage('书籍不存在', 3000, 'error')
     // 查找已打开的标签页
     const tab = Array.from(document.querySelectorAll('.layout-tab-bar .item')).find(t => (t.getAttribute('data-title') || t.querySelector('.item__text')?.textContent) === book.name)
-    if (tab) return (tab as HTMLElement).click(), requestAnimationFrame(() => window.dispatchEvent(new CustomEvent('sireader:goto', { detail: { cfi: parsed.cfi } })))
+    if (tab) return (tab as HTMLElement).click(), requestAnimationFrame(() => window.dispatchEvent(new CustomEvent('sireader:goto', { detail: { cfi: parsed.cfi, id: parsed.id } })))
     return openTab({ app: (plugin as any).app, custom: { icon: 'iconBook', title: book.name, data: { bookInfo: { ...book, epubCfi: parsed.cfi } }, id: `${plugin.name}custom_tab_online_reader` }, position: { rightTab: 'right', bottomTab: 'bottom' }[settings.value.openMode] })
   }
   

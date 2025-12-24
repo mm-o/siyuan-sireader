@@ -1,21 +1,21 @@
 <template>
-  <div class="sr-bookshelf fn__flex-1 fn__flex-column b3-scroll">
+  <div class="sr-bookshelf fn__flex-1 fn__flex-column b3-scroll" @click="showTagMenu = showSortMenu = false">
     <div class="sr-toolbar">
       <input v-model="keyword" :placeholder="i18n.searchPlaceholder || '搜索...'">
       <div class="sr-select" v-if="tags.length > 1">
-        <button class="b3-tooltips b3-tooltips__s" @click="showTagMenu = !showTagMenu" :aria-label="activeTag">
+        <button class="b3-tooltips b3-tooltips__s" @click.stop="showTagMenu = !showTagMenu" :aria-label="activeTag">
           <svg><use xlink:href="#lucide-sliders-horizontal"/></svg>
         </button>
-        <div v-if="showTagMenu" class="sr-menu" @click="showTagMenu = false">
-          <div v-for="tag in tags" :key="tag" :class="['sr-menu-item', { active: activeTag === tag }]" @click="activeTag = tag">{{ tag }}</div>
+        <div v-if="showTagMenu" class="sr-menu" @click.stop>
+          <div v-for="tag in tags" :key="tag" :class="['sr-menu-item', { active: activeTag === tag }]" @click="activeTag = tag; showTagMenu = false">{{ tag }}</div>
         </div>
       </div>
       <div class="sr-select">
-        <button class="b3-tooltips b3-tooltips__s" @click="showSortMenu = !showSortMenu" :aria-label="sortLabel">
+        <button class="b3-tooltips b3-tooltips__s" @click.stop="showSortMenu = !showSortMenu" :aria-label="sortLabel">
           <svg><use xlink:href="#lucide-clock-plus"/></svg>
         </button>
-        <div v-if="showSortMenu" class="sr-menu" @click="showSortMenu = false">
-          <div v-for="s in SORTS" :key="s.value" :class="['sr-menu-item', { active: sortType === s.value }]" @click="changeSort(s.value)">{{ s.label }}</div>
+        <div v-if="showSortMenu" class="sr-menu" @click.stop>
+          <div v-for="s in SORTS" :key="s.value" :class="['sr-menu-item', { active: sortType === s.value }]" @click="changeSort(s.value); showSortMenu = false">{{ s.label }}</div>
         </div>
       </div>
       <button class="b3-tooltips b3-tooltips__s" @click="toggleViewMode" :aria-label="viewMode === 'grid' ? '网格' : viewMode === 'list' ? '列表' : '简洁'">
@@ -24,7 +24,7 @@
       <button class="b3-tooltips b3-tooltips__s" @click="checkAllUpdates" :aria-label="i18n.checkUpdate || '检查更新'">
         <svg><use xlink:href="#lucide-list-restart"/></svg>
       </button>
-      <button class="b3-tooltips b3-tooltips__s" @click="triggerFileUpload" :aria-label="i18n.addBook || '添加书籍'">
+      <button class="b3-tooltips b3-tooltips__s" @click="fileInput?.click()" :aria-label="i18n.addBook || '添加书籍'">
         <svg><use xlink:href="#lucide-book-plus"/></svg>
       </button>
     </div>
@@ -78,61 +78,54 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { bookshelfManager, type BookIndex } from '@/core/bookshelf'
 import { showMessage } from 'siyuan'
 import { isMobile } from '@/core/mobile'
 
-const props = defineProps<{ i18n: any }>()
+defineProps<{ i18n: any }>()
 const emit = defineEmits(['read'])
 
 const SORTS = [
   { value: 'time', label: '最近阅读' },
+  { value: 'added', label: '最近添加' },
+  { value: 'progress', label: '阅读进度' },
   { value: 'name', label: '书名' },
   { value: 'author', label: '作者' },
   { value: 'update', label: '最近更新' }
 ] as const
+const FORMAT_LABELS = { epub: 'EPUB', pdf: 'PDF', mobi: 'MOBI', azw3: 'AZW3', fb2: 'FB2', cbz: 'CBZ', txt: 'TXT', online: '在线' }
+const TEXT_COVER_FORMATS = ['txt', 'pdf', 'mobi', 'azw3']
 
 const books = ref<BookIndex[]>([])
 const keyword = ref('')
-const activeTag = ref('全部')
-const sortType = ref<'time' | 'name' | 'author' | 'update'>('time')
+const activeTag = ref((localStorage.getItem('sr-active-tag') as any) || '全部')
+const sortType = ref<'time' | 'name' | 'author' | 'update' | 'added' | 'progress'>((localStorage.getItem('sr-sort-type') as any) || 'time')
 const showTagMenu = ref(false)
 const showSortMenu = ref(false)
-const viewMode = ref<'grid' | 'list' | 'compact'>('grid')
+const viewMode = ref<'grid' | 'list' | 'compact'>((localStorage.getItem('sr-view-mode') as any) || 'grid')
 const removingBook = ref<string | null>(null)
 const fileInput = ref<HTMLInputElement>()
 const coverCache = new Map<string, string | null>()
 
-const FORMAT_LABELS: Record<string, string> = { epub: 'EPUB', pdf: 'PDF', mobi: 'MOBI', azw3: 'AZW3', fb2: 'FB2', cbz: 'CBZ', txt: 'TXT', online: '在线' }
-const TEXT_COVER_FORMATS = ['txt', 'pdf', 'mobi', 'azw3']
+watch(viewMode, v => localStorage.setItem('sr-view-mode', v))
+watch(activeTag, v => localStorage.setItem('sr-active-tag', v))
+watch(sortType, v => localStorage.setItem('sr-sort-type', v))
 
 const tags = computed(() => ['全部', ...new Set(books.value.map(b => FORMAT_LABELS[b.format] || b.format.toUpperCase()))])
-const sortLabel = computed(() => SORTS.find(s => s.value === sortType.value)?.label || '')
+const sortLabel = computed(() => SORTS.find(s => s.value === sortType.value)?.label ?? '')
+const displayBooks = computed(() => books.value
+  .filter(b => activeTag.value === '全部' || FORMAT_LABELS[b.format] === activeTag.value)
+  .filter(b => !keyword.value || [b.name, b.author].some(s => s.toLowerCase().includes(keyword.value.toLowerCase())))
+)
 
-const displayBooks = computed(() => {
-  let list = books.value
-  if (activeTag.value !== '全部') list = list.filter(b => FORMAT_LABELS[b.format] === activeTag.value)
-  if (keyword.value) {
-    const kw = keyword.value.toLowerCase()
-    list = list.filter(b => b.name.toLowerCase().includes(kw) || b.author.toLowerCase().includes(kw))
-  }
-  return list
-})
-
-const getProgress = (book: BookIndex) => {
-  if (book.epubProgress) return book.epubProgress
-  if (book.totalChapterNum > 0) return Math.round(((book.durChapterIndex + 1) / book.totalChapterNum) * 100)
-  return 0
-}
+const getProgress = (book: BookIndex) => book.epubProgress ?? (book.totalChapterNum > 0 ? Math.round(((book.durChapterIndex + 1) / book.totalChapterNum) * 100) : 0)
 
 const getCoverUrl = (book: BookIndex) => {
-  if (TEXT_COVER_FORMATS.includes(book.format)) return ''
-  if (!book.coverUrl) return ''
+  if (TEXT_COVER_FORMATS.includes(book.format) || !book.coverUrl) return ''
   if (book.coverUrl.startsWith('/data/')) {
-    if (coverCache.has(book.coverUrl)) return coverCache.get(book.coverUrl) || ''
-    loadCover(book.coverUrl)
-    return ''
+    coverCache.has(book.coverUrl) || loadCover(book.coverUrl)
+    return coverCache.get(book.coverUrl) || ''
   }
   return book.coverUrl
 }
@@ -143,28 +136,20 @@ const loadCover = async (path: string) => {
     if (!res.ok) throw new Error()
     coverCache.set(path, URL.createObjectURL(await res.blob()))
     books.value = [...books.value]
-  } catch {
-    coverCache.set(path, null)
-  }
+  } catch { coverCache.set(path, null) }
 }
 
 const readBook = async (book: BookIndex) => {
   const full = await bookshelfManager.getBook(book.bookUrl)
   if (!full) return showMessage('加载失败', 3000, 'error')
-  
-  // 移动端直接触发事件，桌面端通过 emit
-  if (isMobile()) {
-    window.dispatchEvent(new CustomEvent('reader:open', { detail: { book: full } }))
-  } else {
-    emit('read', full)
-  }
+  isMobile() ? window.dispatchEvent(new CustomEvent('reader:open', { detail: { book: full } })) : emit('read', full)
 }
 
 const checkAllUpdates = async () => {
   const results = await bookshelfManager.checkAllUpdates()
   refreshBooks()
   const cnt = results.filter(r => r.hasUpdate).length
-  showMessage(cnt > 0 ? `${cnt} 本书有更新` : '已是最新', 2000, 'info')
+  showMessage(cnt ? `${cnt} 本书有更新` : '已是最新', 2000, 'info')
 }
 
 const confirmRemove = async (book: BookIndex) => {
@@ -178,52 +163,40 @@ const confirmRemove = async (book: BookIndex) => {
 
 const refreshBooks = () => books.value = bookshelfManager.getBooks()
 
-const changeSort = async (type: 'time' | 'name' | 'author' | 'update') => {
+const changeSort = async (type: typeof sortType.value) => {
   sortType.value = type
-  await bookshelfManager.sortBooks(type)
-  refreshBooks()
+  if (type === 'added') {
+    books.value.sort((a, b) => b.addTime - a.addTime)
+  } else if (type === 'progress') {
+    books.value.sort((a, b) => getProgress(b) - getProgress(a))
+  } else {
+    await bookshelfManager.sortBooks(type as 'time' | 'name' | 'author' | 'update')
+    refreshBooks()
+  }
 }
 
-const toggleViewMode = () => {
-  const modes: Array<'grid' | 'list' | 'compact'> = ['grid', 'list', 'compact']
-  viewMode.value = modes[(modes.indexOf(viewMode.value) + 1) % 3]
-  localStorage.setItem('sr-view-mode', viewMode.value)
-}
-
-const triggerFileUpload = () => fileInput.value?.click()
+const toggleViewMode = () => viewMode.value = ['grid', 'list', 'compact'][((['grid', 'list', 'compact'] as const).indexOf(viewMode.value) + 1) % 3] as typeof viewMode.value
 
 const handleFileUpload = async (e: Event) => {
   const files = Array.from((e.target as HTMLInputElement).files || [])
   if (!files.length) return
   
-  let success = 0, failed = 0
-  
-  for (const file of files) {
-    try {
-      await bookshelfManager.addLocalBook(file)
-      success++
-    } catch {
-      failed++
-    }
-  }
+  const results = await Promise.allSettled(files.map(f => bookshelfManager.addLocalBook(f)))
+  const [success, failed] = [results.filter(r => r.status === 'fulfilled').length, results.filter(r => r.status === 'rejected').length]
   
   await bookshelfManager.init(true)
   refreshBooks()
   
-  if (failed === 0) showMessage(`导入 ${success} 本`, 2000, 'info')
-  else if (success === 0) showMessage('导入失败', 3000, 'error')
-  else showMessage(`成功 ${success} 本，失败 ${failed} 本`, 3000, 'info')
-  
+  showMessage(failed === 0 ? `导入 ${success} 本` : success === 0 ? '导入失败' : `成功 ${success} 本，失败 ${failed} 本`, failed ? 3000 : 2000, failed && !success ? 'error' : 'info')
   if (fileInput.value) fileInput.value.value = ''
 }
 
 onMounted(async () => {
-  viewMode.value = (localStorage.getItem('sr-view-mode') as any) || 'grid'
   await bookshelfManager.init()
   refreshBooks()
-  window.addEventListener('sireader:bookshelf-updated',refreshBooks)
+  window.addEventListener('sireader:bookshelf-updated', refreshBooks)
 })
-onUnmounted(()=>window.removeEventListener('sireader:bookshelf-updated',refreshBooks))
+onUnmounted(() => window.removeEventListener('sireader:bookshelf-updated', refreshBooks))
 </script>
 
 <style scoped lang="scss">
@@ -239,7 +212,7 @@ onUnmounted(()=>window.removeEventListener('sireader:bookshelf-updated',refreshB
 .confirm-enter-from,.confirm-leave-to{opacity:0;transform:scale(.9)}
 .sr-cover-wrap{position:relative;padding-top:140%;background:linear-gradient(135deg,var(--b3-theme-primary-lightest),var(--b3-theme-surface-lighter))}
 .sr-cover{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
-.sr-text-cover{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:12px;font-size:13px;font-weight:600;text-align:center;line-height:1.3;color:var(--b3-theme-on-surface);word-break:break-word}
+.sr-text-cover{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:12px;font-size:13px;font-weight:600;text-align:center;line-height:1.3;color:var(--b3-theme-on-surface);word-break:break-word;overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical}
 .sr-format-tag{position:absolute;top:4px;left:4px;padding:2px 6px;background:color-mix(in srgb, var(--b3-theme-on-surface) 60%, transparent);color:var(--b3-theme-surface);border-radius:4px;font-size:9px;font-weight:600;letter-spacing:.5px;backdrop-filter:blur(4px)}
 .sr-badge{position:absolute;top:4px;right:4px;min-width:16px;height:16px;display:flex;align-items:center;justify-content:center;background:var(--b3-theme-error);color:var(--b3-theme-on-error);border-radius:8px;padding:0 4px;font-size:10px;font-weight:600}
 .sr-progress{position:absolute;bottom:0;left:0;height:2px;background:var(--b3-theme-primary)}
@@ -248,9 +221,9 @@ onUnmounted(()=>window.removeEventListener('sireader:bookshelf-updated',refreshB
 }
 .sr-compact{display:flex;flex-direction:column;gap:1px;
   .sr-card{flex-direction:row;height:34px;padding:0 10px;align-items:center;
-    .sr-info{padding:0;flex:1;flex-direction:row;align-items:center;gap:8px;min-height:auto}
-    .sr-title{flex:1;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    .sr-meta{font-size:11px;width:70px;flex-shrink:0;text-align:right;opacity:.5}
+    .sr-info{padding:0;flex:1;flex-direction:row;align-items:center;gap:8px;min-height:auto;min-width:0}
+    .sr-title{flex:1;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+    .sr-meta{font-size:11px;width:70px;flex-shrink:0;text-align:right;opacity:.5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .sr-progress-info{gap:6px;flex-shrink:0;width:70px;justify-content:flex-end;.sr-percent{font-size:11px}.sr-chapter{font-size:10px}}}
 }
 .sr-info{padding:6px 8px;display:flex;flex-direction:column;gap:2px;min-height:38px}
