@@ -24,18 +24,18 @@
         <svg><use xlink:href="#iconRefresh"/></svg>检测
       </button>
       <button v-else class="b3-button b3-button--error" @click="stopCheck = true">
-        <svg><use xlink:href="#iconClose"/></svg>停止({{ progress }}/{{ total }})
+        <svg><use xlink:href="#iconClose"/></svg>停止({{ progress }}/{{ enabledCount }})
       </button>
       
-      <button v-if="invalid.length" class="b3-button b3-button--warning" @click="deleteInvalid">
-        <svg><use xlink:href="#iconTrashcan"/></svg>清理({{ invalid.length }})
+      <button v-if="invalidCount" class="b3-button b3-button--warning" @click="deleteInvalid">
+        <svg><use xlink:href="#iconTrashcan"/></svg>清理({{ invalidCount }})
       </button>
     </div>
 
     <div class="sm-list">
       <div v-for="s in filtered" :key="s.bookSourceUrl" 
-           class="sm-item" :class="{off: !s.enabled, bad: status[s.bookSourceUrl]==='invalid', sel: selected.includes(s.bookSourceUrl)}">
-        <input type="checkbox" class="b3-checkbox" :checked="selected.includes(s.bookSourceUrl)" @change="toggleSelect(s.bookSourceUrl)" @click.stop>
+           class="sm-item" :class="{off: !s.enabled, bad: status[s.bookSourceUrl]==='invalid', sel: isSelected(s.bookSourceUrl)}">
+        <input type="checkbox" class="b3-checkbox" :checked="isSelected(s.bookSourceUrl)" @change="toggleSelect(s.bookSourceUrl)" @click.stop>
         <div class="sm-st">
           <svg v-if="status[s.bookSourceUrl]==='checking'" class="spin"><use xlink:href="#iconRefresh"/></svg>
           <svg v-else-if="status[s.bookSourceUrl]==='valid'" class="ok"><use xlink:href="#iconCheck"/></svg>
@@ -71,23 +71,14 @@ import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { bookSourceManager } from '@/core/book'
 import { showMessage, Dialog } from 'siyuan'
 
-const props = withDefaults(defineProps<{ i18n?: any }>(), { i18n: () => ({}) })
-
 const sources = ref<BookSource[]>([])
-
-onMounted(async () => {
-  await bookSourceManager.loadSources()
-  sources.value = bookSourceManager.getSources()
-})
 const status = ref<Record<string, 'checking'|'valid'|'invalid'>>({})
 const checking = ref(false)
 const progress = ref(0)
 const keyword = ref('')
-const selected = ref<string[]>([])
+const selected = ref<Set<string>>(new Set())
 const stopCheck = ref(false)
 
-const total = computed(() => sources.value.filter(s => s.enabled).length)
-const invalid = computed(() => sources.value.filter(s=>status.value[s.bookSourceUrl]==='invalid'))
 const filtered = computed(() => {
   if (!keyword.value) return sources.value
   const k = keyword.value.toLowerCase()
@@ -97,20 +88,29 @@ const filtered = computed(() => {
     s.bookSourceGroup?.toLowerCase().includes(k)
   )
 })
-const allSelected = computed(() => filtered.value.length > 0 && selected.value.length === filtered.value.length)
+
+const allSelected = computed(() => filtered.value.length > 0 && selected.value.size === filtered.value.length)
+const enabledCount = computed(() => sources.value.filter(s => s.enabled).length)
+const invalidCount = computed(() => sources.value.filter(s => status.value[s.bookSourceUrl] === 'invalid').length)
+
+const isSelected = (url: string) => selected.value.has(url)
 
 const reload = () => sources.value = bookSourceManager.getSources()
-const onSearch = () => {}
 
 const toggleAll = () => {
-  if (allSelected.value) selected.value = []
-  else selected.value = filtered.value.map(s => s.bookSourceUrl)
+  if (allSelected.value) {
+    selected.value.clear()
+  } else {
+    selected.value = new Set(filtered.value.map(s => s.bookSourceUrl))
+  }
 }
 
 const toggleSelect = (url: string) => {
-  const idx = selected.value.indexOf(url)
-  if (idx > -1) selected.value.splice(idx, 1)
-  else selected.value.push(url)
+  if (selected.value.has(url)) {
+    selected.value.delete(url)
+  } else {
+    selected.value.add(url)
+  }
 }
 
 const batchEnable = (enable: boolean) => {
@@ -124,20 +124,28 @@ const batchEnable = (enable: boolean) => {
     }
   })
   reload()
-  selected.value = []
-  showMessage(`${enable?'启用':'禁用'} ${count} 个书源`)
+  selected.value.clear()
+  showMessage(`${enable ? '启用' : '禁用'} ${count} 个书源`)
 }
 
 const batchDelete = () => {
-  if (!confirm(`删除 ${selected.value.length} 个书源？`)) return
-  selected.value.forEach(url => {
-    bookSourceManager.removeSource(url)
-    delete status.value[url]
+  const count = selected.value.size
+  new Dialog({
+    title: '批量删除',
+    content: `<div class="b3-dialog__content">确定删除 ${count} 个书源？</div>`,
+    width: '400px',
+    destroyCallback: (options) => {
+      if (options?.confirm) {
+        selected.value.forEach(url => {
+          bookSourceManager.removeSource(url)
+          delete status.value[url]
+        })
+        reload()
+        selected.value.clear()
+        showMessage(`删除 ${count} 个书源`)
+      }
+    }
   })
-  const count = selected.value.length
-  reload()
-  selected.value = []
-  showMessage(`删除 ${count} 个书源`)
 }
 
 const toggle = (s: BookSource) => {
@@ -147,40 +155,57 @@ const toggle = (s: BookSource) => {
 }
 
 const del = (s: BookSource) => {
-  if (!confirm(`删除「${s.bookSourceName}」？`)) return
-  bookSourceManager.removeSource(s.bookSourceUrl)
-  delete status.value[s.bookSourceUrl]
-  reload()
+  new Dialog({
+    title: '删除书源',
+    content: `<div class="b3-dialog__content">确定删除「${s.bookSourceName}」？</div>`,
+    width: '400px',
+    destroyCallback: (options) => {
+      if (options?.confirm) {
+        bookSourceManager.removeSource(s.bookSourceUrl)
+        delete status.value[s.bookSourceUrl]
+        reload()
+      }
+    }
+  })
 }
 
 const deleteInvalid = () => {
-  if (!confirm(`删除${invalid.value.length}个失效书源？`)) return
-  invalid.value.forEach(s => {
-    bookSourceManager.removeSource(s.bookSourceUrl)
-    delete status.value[s.bookSourceUrl]
+  const invalid = sources.value.filter(s => status.value[s.bookSourceUrl] === 'invalid')
+  new Dialog({
+    title: '清理失效书源',
+    content: `<div class="b3-dialog__content">确定删除 ${invalid.length} 个失效书源？</div>`,
+    width: '400px',
+    destroyCallback: (options) => {
+      if (options?.confirm) {
+        invalid.forEach(s => {
+          bookSourceManager.removeSource(s.bookSourceUrl)
+          delete status.value[s.bookSourceUrl]
+        })
+        reload()
+        showMessage(`已删除 ${invalid.length} 个`)
+      }
+    }
   })
-  reload()
-  showMessage(`已删除${invalid.value.length}个`)
 }
 
 const testKeywords = ['小说', '网文', '书', '青春']
 const check = async (s: BookSource) => {
   if (stopCheck.value) return
   status.value[s.bookSourceUrl] = 'checking'
-  for (const keyword of testKeywords) {
+  for (const kw of testKeywords) {
     if (stopCheck.value) return
     try {
       const results = await Promise.race([
-        bookSourceManager.searchBooks(keyword, s.bookSourceUrl),
+        bookSourceManager.searchBooks(kw, s.bookSourceUrl),
         new Promise<never>((_, rej) => setTimeout(() => rej(), 12000))
       ])
       if (results.length > 0) {
         status.value[s.bookSourceUrl] = 'valid'
         return
       }
-    } catch { /* 继续下一个关键词 */ }
+    } catch {}
   }
-  !stopCheck.value && (status.value[s.bookSourceUrl] = 'invalid')
+  if (!stopCheck.value) status.value[s.bookSourceUrl] = 'invalid'
 }
 
 const checkAll = async () => {
@@ -190,16 +215,20 @@ const checkAll = async () => {
   const enabled = sources.value.filter(s => s.enabled)
   const batchSize = 5
   for (let i = 0; i < enabled.length && !stopCheck.value; i += batchSize) {
-    const batch = enabled.slice(i, i + batchSize)
-    await Promise.allSettled(batch.map(check))
+    await Promise.allSettled(enabled.slice(i, i + batchSize).map(check))
     progress.value = Math.min(i + batchSize, enabled.length)
   }
   checking.value = false
-  const ok = enabled.filter(s => status.value[s.bookSourceUrl] === 'valid').length
+  const validCount = enabled.filter(s => status.value[s.bookSourceUrl] === 'valid').length
   showMessage(stopCheck.value 
-    ? `检测停止: ${ok}/${progress.value}有效`
-    : `检测完成: ${ok}/${enabled.length}有效`)
+    ? `检测停止: ${validCount}/${progress.value} 有效`
+    : `检测完成: ${validCount}/${enabled.length} 有效`)
 }
+
+onMounted(async () => {
+  await bookSourceManager.loadSources()
+  reload()
+})
 
 onBeforeUnmount(() => {
   stopCheck.value = true

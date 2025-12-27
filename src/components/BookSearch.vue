@@ -1,127 +1,101 @@
 <template>
-  <div class="sr-bs-search">
-    <div class="sr-toolbar" v-motion-pop-visible>
+  <div class="sr-search">
+    <div class="sr-toolbar">
       <input v-model="keyword" :placeholder="i18n.searchPlaceholder || '输入书名搜索'" @keyup.enter="search" :disabled="searching">
       <div class="sr-select">
-        <button class="b3-tooltips b3-tooltips__s" @click="showSourceMenu = !showSourceMenu" :aria-label="selectedSourceName">
-          <svg><use xlink:href="#lucide-sliders-horizontal"></use></svg>
+        <button class="b3-tooltips b3-tooltips__s" @click.stop="showSourceMenu = !showSourceMenu" :aria-label="selectedSourceName">
+          <svg><use xlink:href="#lucide-sliders-horizontal"/></svg>
         </button>
-        <div v-show="showSourceMenu" class="sr-menu" @click="showSourceMenu = false">
-          <div class="sr-menu-item" :class="{active: !selectedSource}" @click="selectedSource = ''">{{ i18n.allSources || '全部书源' }}</div>
-          <div v-for="src in enabledSources" :key="src.bookSourceUrl" class="sr-menu-item" :class="{active: selectedSource === src.bookSourceUrl}" @click="selectedSource = src.bookSourceUrl">{{ src.bookSourceName }}</div>
+        <div v-if="showSourceMenu" class="sr-menu" @click.stop>
+          <div :class="['sr-menu-item', { active: !selectedSource }]" @click="selectedSource = ''; showSourceMenu = false">{{ i18n.allSources || '全部书源' }}</div>
+          <div v-for="src in enabledSources" :key="src.bookSourceUrl" :class="['sr-menu-item', { active: selectedSource === src.bookSourceUrl }]" @click="selectedSource = src.bookSourceUrl; showSourceMenu = false">{{ src.bookSourceName }}</div>
         </div>
       </div>
       <button class="b3-tooltips b3-tooltips__s" @click="emit('openSettings')" :aria-label="i18n.bookSourceManage || '书源管理'">
-        <svg><use xlink:href="#lucide-settings-2"></use></svg>
+        <svg><use xlink:href="#lucide-settings-2"/></svg>
       </button>
     </div>
 
     <div class="sr-results" ref="resultsContainer" @scroll="onScroll">
-      <div 
-        v-for="(book, idx) in results" 
-        :key="book.bookUrl" 
-        v-motion-pop-visible
-        class="sr-card"
-      >
-        <div v-if="book.coverUrl" class="sr-cover">
-          <img :src="book.coverUrl" @error="e => e.target.src='/icons/book-placeholder.svg'">
-        </div>
-        <div class="sr-info">
-          <div class="sr-title">{{ book.name }}</div>
-          <div class="sr-author">{{ book.author }}</div>
-          <div v-if="book.intro" class="sr-intro">{{ book.intro }}</div>
-          <div class="sr-meta">
-            <span class="sr-source">{{ book.sourceName }}</span>
-            <span v-if="book.lastChapter" class="sr-latest">{{ book.lastChapter }}</span>
+      <div v-if="!searching && !results.length && keyword" class="sr-placeholder">{{ i18n.noResults || '未找到书籍' }}</div>
+      <div v-else class="sr-list">
+        <div v-for="book in results" :key="book.bookUrl" 
+             v-motion
+             :initial="{ opacity: 0, y: 15 }"
+             :enter="{ opacity: 1, y: 0, transition: { delay: results.indexOf(book) * 20 } }"
+             class="sr-card" @click="showDetail(book)">
+          <img v-if="book.coverUrl" :src="book.coverUrl" @error="e => e.target.src='/icons/book-placeholder.svg'" class="sr-cover">
+          <div class="sr-info">
+            <div class="sr-title">{{ book.name }}</div>
+            <div class="sr-author">{{ book.author }}</div>
+            <div v-if="book.intro" class="sr-intro">{{ book.intro }}</div>
+            <div v-if="book.lastChapter" class="sr-chapter">{{ book.lastChapter }}</div>
+            <div class="sr-source">{{ book.sourceName }}</div>
           </div>
-        </div>
-        <div class="sr-actions">
-          <button class="b3-button b3-button--outline" @click.stop="showDetail(book)">{{ i18n.viewDetail || '详情' }}</button>
-          <button v-if="!isInShelf(book)" class="b3-button b3-button--outline" @click.stop="addToShelf(book)">{{ i18n.addToShelf || '加入' }}</button>
-          <button v-else class="b3-button b3-button--primary" disabled>{{ i18n.inShelf || '已在架' }}</button>
+          <button class="sr-btn sr-btn-icon b3-tooltips b3-tooltips__w" :class="{ active: isInShelf(book) }" :aria-label="isInShelf(book) ? '已在书架' : '加入书架'" @click.stop="addToShelf(book)">
+            <svg><use :xlink:href="isInShelf(book) ? '#iconCheck' : '#iconAdd'"/></svg>
+          </button>
         </div>
       </div>
       
-      <Transition name="fade">
-        <div v-if="searching" class="sr-status">
-          搜索中... ({{ results.length }})
-          <button class="b3-button b3-button--cancel" @click="stopSearch">停止</button>
-        </div>
-      </Transition>
+      <div v-if="searching" class="sr-status">
+        <span>搜索中... ({{ results.length }})</span>
+        <button class="sr-btn sr-btn-text" @click="stopSearch">停止</button>
+      </div>
       
-      <Transition name="fade">
-        <div v-if="!searching && hasMore" class="sr-status">
-          <button class="b3-button b3-button--outline" @click="loadMore">加载更多书源</button>
-        </div>
-      </Transition>
+      <div v-if="!searching && hasMore" class="sr-status">
+        <button class="sr-btn sr-btn-primary" @click="loadMore">加载更多</button>
+      </div>
       
-      <Transition name="fade">
-        <div v-if="!searching && !hasMore && results.length" class="sr-status sr-done">已加载全部书源</div>
-      </Transition>
-      
-      <Transition name="fade">
-        <div v-if="!searching && !results.length && keyword" class="sr-status sr-empty">{{ i18n.noResults }}</div>
-      </Transition>
+      <div v-if="!searching && !hasMore && results.length" class="sr-status">已加载全部</div>
     </div>
 
-    <!-- 详情面板 -->
     <Transition name="slide">
       <div v-if="detailBook" class="sr-detail">
         <div class="sr-detail-header">
-          <h3>{{ i18n.viewDetail || '书籍详情' }}</h3>
-          <button class="b3-button b3-button--text" @click="detailBook = null">
-            <svg><use xlink:href="#iconClose"></use></svg>
+          <span>书籍详情</span>
+          <button class="sr-btn sr-btn-icon" @click="detailBook = null">
+            <svg><use xlink:href="#iconClose"/></svg>
           </button>
         </div>
 
         <div class="sr-detail-content">
-          <div class="sr-detail-cover">
-            <img :src="detailBook.coverUrl || '/icons/book-placeholder.svg'" @error="e => e.target.src='/icons/book-placeholder.svg'">
+          <img class="sr-cover-large" :src="detailBook.coverUrl || '/icons/book-placeholder.svg'" @error="e => e.target.src='/icons/book-placeholder.svg'">
+          
+          <h2>{{ detailBook.name }}</h2>
+          <p class="sr-meta">{{ detailBook.author }}</p>
+          
+          <div v-if="tags.length" class="sr-tags">
+            <span v-for="tag in tags" :key="tag">{{ tag }}</span>
           </div>
           
-          <div class="sr-detail-info">
-            <h2>{{ detailBook.name }}</h2>
-            <p class="sr-detail-author">{{ detailBook.author }}</p>
-            <div v-if="tags.length" class="sr-tags">
-              <span v-for="tag in tags" :key="tag">{{ tag }}</span>
-            </div>
-            <div class="sr-stats">
-              <span v-if="detailBook.wordCount">{{ i18n.wordCount || '字数' }}：{{ detailBook.wordCount }}</span>
-              <span>{{ i18n.source || '来源' }}：{{ detailBook.sourceName }}</span>
-              <span v-if="detailBook.lastChapter">{{ i18n.latest || '最新' }}：{{ detailBook.lastChapter }}</span>
-            </div>
-            <p v-if="detailBook.intro" class="sr-detail-intro">{{ detailBook.intro }}</p>
-            
-            <div class="sr-detail-actions">
-              <button v-if="!isInShelf(detailBook)" class="b3-button b3-button--primary" @click="addToShelf(detailBook)">
-                <svg><use xlink:href="#iconAdd"></use></svg>{{ i18n.addToShelf || '加入书架' }}
-              </button>
-              <button v-else class="b3-button b3-button--primary" disabled>
-                <svg><use xlink:href="#iconCheck"></use></svg>{{ i18n.inShelf || '已在书架' }}
-              </button>
-              <button class="b3-button b3-button--outline" @click="emit('read', detailBook)">
-                <svg><use xlink:href="#iconRead"></use></svg>{{ i18n.readOnline || '在线阅读' }}
-              </button>
-            </div>
+          <p v-if="detailBook.intro" class="sr-intro-full">{{ detailBook.intro }}</p>
+          
+          <div class="sr-actions-full">
+            <button class="sr-btn sr-btn-primary" :class="{ active: isInShelf(detailBook) }" @click="isInShelf(detailBook) || addToShelf(detailBook)">
+              <svg><use :xlink:href="isInShelf(detailBook) ? '#iconCheck' : '#iconAdd'"/></svg>
+              {{ isInShelf(detailBook) ? '已在书架' : '加入书架' }}
+            </button>
+            <button class="sr-btn sr-btn-primary" @click="emit('read', detailBook)">
+              <svg><use xlink:href="#iconRead"/></svg>开始阅读
+            </button>
           </div>
 
           <div class="sr-chapters">
             <div class="sr-chapters-header">
-              <h4>{{ i18n.chapters || '目录' }} ({{ chapters.length }})</h4>
-              <button class="b3-button b3-button--text" @click="reversed = !reversed">
-                <svg><use xlink:href="#iconSort"></use></svg>{{ i18n.reverse || '倒序' }}
+              <span>目录 {{ chapters.length }}</span>
+              <button class="sr-btn sr-btn-icon" @click="reversed = !reversed">
+                <svg><use xlink:href="#iconSort"/></svg>
               </button>
             </div>
             
-            <Transition name="fade" mode="out-in">
-              <div v-if="loadingChapters" key="loading" class="sr-loading">{{ i18n.loadingChapters || '加载章节中...' }}</div>
-              <div v-else-if="!chapters.length" key="empty" class="sr-empty">{{ i18n.noChapters || '暂无章节' }}</div>
-              <div v-else key="list" class="sr-chapters-list">
-                <div v-for="(chapter, index) in displayChapters" :key="index" class="sr-chapter-item" @click="emit('read', detailBook)">
-                  {{ chapter.name || chapter.title || `第${index + 1}章` }}
-                </div>
+            <div v-if="loadingChapters" class="sr-placeholder">加载中...</div>
+            <div v-else-if="!chapters.length" class="sr-placeholder">暂无章节</div>
+            <div v-else class="sr-chapters-list">
+              <div v-for="(chapter, index) in displayChapters" :key="index" class="sr-chapter-item" @click="emit('read', detailBook)">
+                {{ chapter.name || chapter.title || `第${index + 1}章` }}
               </div>
-            </Transition>
+            </div>
           </div>
         </div>
       </div>
@@ -130,7 +104,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed } from 'vue'
 import { bookSourceManager } from '@/core/book'
 import { bookshelfManager } from '@/core/bookshelf'
 import { showMessage } from 'siyuan'
@@ -163,7 +137,6 @@ const selectedSourceName = computed(() => {
   return src?.bookSourceName || ''
 })
 
-// 搜索：初始加载第一批
 const search = async () => {
   if (!keyword.value.trim()) return
   
@@ -172,19 +145,15 @@ const search = async () => {
   hasMore.value = true
   
   try {
-    // 创建迭代器
     searchIterator.value = bookSourceManager.searchBooksStream(keyword.value, selectedSource.value || undefined)
-    
-    // 加载第一批（10个书源）
     await loadMore()
   } catch (e: any) {
-    alert('搜索失败: ' + e.message)
+    showMessage('搜索失败: ' + e.message, 3000, 'error')
   } finally {
     searching.value = false
   }
 }
 
-// 加载更多
 const loadMore = async () => {
   if (!searchIterator.value || searching.value) return
   
@@ -197,7 +166,7 @@ const loadMore = async () => {
       results.value.push(...value)
     }
   } catch (e: any) {
-    alert('加载失败: ' + e.message)
+    showMessage('加载失败: ' + e.message, 3000, 'error')
   } finally {
     searching.value = false
   }
@@ -223,7 +192,7 @@ const loadChapters = async () => {
     const tocUrl = bookInfo.tocUrl || detailBook.value.bookUrl
     chapters.value = await bookSourceManager.getChapters(detailBook.value.sourceUrl || detailBook.value.origin, tocUrl)
   } catch (e: any) {
-    showMessage(`${props.i18n.loadChaptersFailed || '加载章节失败'}: ${e.message}`, 3000, 'error')
+    showMessage(`加载章节失败: ${e.message}`, 3000, 'error')
   } finally {
     loadingChapters.value = false
   }
@@ -243,109 +212,84 @@ const addToShelf = async (book: any) => {
       intro: book.intro,
       wordCount: book.wordCount,
     })
-    showMessage(`《${book.name}》${props.i18n.addedToShelf || '已加入书架'}`, 2000, 'info')
+    showMessage(`《${book.name}》已加入书架`, 2000, 'info')
   } catch (e: any) {
     showMessage(e.message, 3000, 'error')
   }
 }
 
-// 滚动到底部自动加载
 const onScroll = () => {
   if (!resultsContainer.value || searching.value || !hasMore.value) return
   const { scrollTop, scrollHeight, clientHeight } = resultsContainer.value
-  if (scrollTop + clientHeight >= scrollHeight - 100) {
-    loadMore()
-  }
+  if (scrollTop + clientHeight >= scrollHeight - 100) loadMore()
 }
-
 </script>
 
 <style scoped lang="scss">
-.sr-bs-search{display:flex;flex-direction:column;height:100%;background:var(--b3-theme-background)}
-.sr-toolbar{position:sticky;top:0;z-index:10}
-.sr-results{flex:1;overflow-y:auto;padding:18px 20px 20px}
-.sr-card{display:flex;gap:14px;padding:16px;margin-bottom:14px;background:var(--b3-theme-surface);border-radius:8px;box-shadow:0 1px 3px #0000000d;transition:all .25s cubic-bezier(.4,0,.2,1);
-  &:hover{box-shadow:0 4px 10px #00000014;transform:translateY(-2px)}
+// 统一按钮样式
+.sr-btn{border:none;cursor:pointer;transition:all .15s;display:flex;align-items:center;justify-content:center;gap:4px;
+  svg{width:14px;height:14px}
+  &:active{transform:scale(.95)}
 }
-.sr-cover{width:68px;height:95px;border-radius:6px;flex-shrink:0;overflow:hidden;background:var(--b3-theme-background);
-  img{width:100%;height:100%;object-fit:cover}
+.sr-btn-icon{width:28px;height:28px;padding:0;background:transparent;color:var(--b3-theme-on-surface);opacity:.5;border-radius:4px;
+  &:hover{opacity:1;background:var(--b3-theme-surface)}
+  &.active{opacity:1;color:var(--b3-theme-primary);background:var(--b3-theme-primary-lightest)}
 }
-.sr-info{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px}
-.sr-title{font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--b3-theme-on-surface)}
-.sr-author{font-size:12px;opacity:.75;font-weight:500}
-.sr-intro{font-size:11px;opacity:.65;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;line-height:1.5}
-.sr-meta{display:flex;gap:10px;font-size:10px;margin-top:auto;padding-top:4px}
-.sr-source{color:var(--b3-theme-primary);font-weight:600;padding:2px 8px;background:var(--b3-theme-primary-lightest);border-radius:4px}
-.sr-latest{opacity:.6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.sr-actions{display:flex;flex-direction:column;gap:8px;align-self:flex-start;
-  button{padding:6px 14px;font-size:12px;transition:all .2s;white-space:nowrap;&:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 2px 6px rgba(0,0,0,.1)}}
+.sr-btn-primary{height:32px;padding:0 14px;background:var(--b3-theme-primary);color:var(--b3-theme-on-primary);border-radius:4px;font-size:12px;font-weight:500;
+  &:hover{transform:translateY(-1px);box-shadow:0 2px 6px #0003}
+  &.active{opacity:.5;pointer-events:none}
 }
-.sr-status{padding:18px;text-align:center;background:var(--b3-theme-surface);border-radius:8px;margin:0 0 14px;font-size:13px;box-shadow:0 1px 3px #0000000d;
-  button{margin-left:10px}
-}
-.sr-done{opacity:.6}
-.sr-empty{padding:40px;opacity:.6;font-size:13px}
-.fade-enter-active, .fade-leave-active { transition:opacity .3s; }
-.fade-enter-from, .fade-leave-to { opacity:0; }
-.slide-enter-active { transition: all .25s cubic-bezier(.4,0,.2,1); }
-.slide-leave-active { transition: all .2s cubic-bezier(.4,0,1,1); }
-.slide-enter-from { opacity: 0; transform: translateX(15px); }
-.slide-leave-to { opacity: 0; transform: translateX(-15px); }
-.expand-enter-active, .expand-leave-active { transition: all .3s cubic-bezier(.4,0,.2,1); overflow: hidden; }
-.expand-enter-from, .expand-leave-to { max-height: 0; opacity: 0; transform: scaleY(.9); }
-.expand-enter-to, .expand-leave-from { max-height: 400px; opacity: 1; transform: scaleY(1); }
-
-.sr-detail { position:absolute; top:0; right:0; bottom:0; width:400px; background:var(--b3-theme-background); box-shadow:-4px 0 16px #0003; z-index:10; display:flex; flex-direction:column; }
-.sr-detail-header { display:flex; justify-content:space-between; align-items:center; padding:16px 20px; border-bottom:1px solid var(--b3-border-color);
-  h3 { margin:0; font-size:16px; font-weight:600; }
-  button { opacity:.6; &:hover { opacity:1; } }
-}
-.sr-detail-content { flex:1; overflow-y:auto; padding:20px; }
-.sr-detail-cover { text-align:center; margin-bottom:20px;
-  img { width:160px; height:220px; object-fit:cover; border-radius:8px; box-shadow:0 4px 12px #0003; }
-}
-.sr-detail-info { 
-  h2 { font-size:20px; font-weight:600; margin:0 0 8px; }
-}
-.sr-detail-author { font-size:14px; opacity:.75; margin:0 0 12px; }
-.sr-tags { display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap;
-  span { padding:4px 12px; background:var(--b3-theme-surface); border-radius:12px; font-size:12px; }
-}
-.sr-stats { display:flex; flex-direction:column; gap:6px; font-size:13px; opacity:.7; margin-bottom:16px;
-  span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-}
-.sr-detail-intro { line-height:1.6; opacity:.85; margin-bottom:20px; font-size:14px; }
-.sr-detail-actions { display:flex; gap:12px; margin-bottom:24px;
-  button { flex:1; transition:all .2s;
-    svg { width:16px; height:16px; margin-right:6px; }
-    &:hover:not(:disabled) { transform:translateY(-2px); box-shadow:0 4px 8px #0003; }
-  }
-}
-.sr-chapters { background:var(--b3-theme-surface); border-radius:8px; padding:16px; }
-.sr-chapters-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; padding-bottom:8px; border-bottom:1px solid var(--b3-border-color);
-  h4 { margin:0; font-size:14px; font-weight:600; }
-}
-.sr-loading, .sr-empty { padding:32px 20px; text-align:center; opacity:.5; font-size:13px; }
-.sr-chapters-list { max-height:400px; overflow-y:auto; }
-.sr-chapter-item { padding:10px 12px; cursor:pointer; border-radius:4px; transition:all .2s; font-size:13px;
-  &:hover { background:var(--b3-list-hover); }
+.sr-btn-text{height:28px;padding:0 10px;background:var(--b3-theme-surface);color:var(--b3-theme-on-surface);border-radius:4px;font-size:11px;
+  &:hover{background:var(--b3-theme-background)}
 }
 
-.slide-left-enter-active, .slide-left-leave-active { transition:all .3s cubic-bezier(.4,0,.2,1); }
-.slide-left-enter-from { transform:translateX(100%); opacity:0; }
-.slide-left-leave-to { transform:translateX(100%); opacity:0; }
+.sr-search{display:flex;flex-direction:column;height:100%;overflow:hidden}
+.sr-toolbar{position:relative;z-index:10}
+.sr-results{flex:1;overflow-y:auto;padding:12px 8px;min-height:0}
+.sr-list{display:flex;flex-direction:column;gap:8px}
+.sr-card{display:flex;gap:12px;padding:12px;background:var(--b3-theme-surface);border-radius:6px;cursor:pointer;transition:transform .15s;&:hover{transform:translateY(-2px)}}
+.sr-cover{width:80px;height:112px;border-radius:4px;flex-shrink:0;object-fit:cover;background:var(--b3-theme-background)}
+.sr-info{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.sr-title{font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sr-author{font-size:11px;opacity:.6}
+.sr-intro{font-size:11px;opacity:.5;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;line-height:1.4}
+.sr-chapter{font-size:10px;opacity:.5;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:auto}
+.sr-source{font-size:10px;color:var(--b3-theme-primary);font-weight:600;padding:2px 6px;background:var(--b3-theme-primary-lightest);border-radius:3px;align-self:flex-start}
+.sr-status{display:flex;align-items:center;justify-content:center;gap:8px;padding:16px;background:var(--b3-theme-surface);border-radius:6px;margin:0 0 8px;font-size:12px;opacity:.7}
+.sr-placeholder{padding:40px;text-align:center;opacity:.5;font-size:12px}
+.slide-enter-active{transition:all .2s cubic-bezier(.4,0,.2,1)}
+.slide-leave-active{transition:all .15s cubic-bezier(.4,0,1,1)}
+.slide-enter-from{opacity:0;transform:translateX(15px)}
+.slide-leave-to{opacity:0;transform:translateX(-15px)}
+
+.sr-detail{position:absolute;top:0;right:0;bottom:0;width:320px;background:var(--b3-theme-background);box-shadow:-4px 0 12px #0003;z-index:10;display:flex;flex-direction:column}
+.sr-detail-header{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;border-bottom:1px solid var(--b3-border-color);
+  span{font-size:13px;font-weight:600}
+}
+.sr-detail-content{flex:1;overflow-y:auto;padding:16px;
+  h2{font-size:16px;font-weight:600;margin:0 0 4px}
+  .sr-meta{font-size:12px;opacity:.6;margin:0 0 10px}
+}
+.sr-cover-large{width:100%;height:auto;aspect-ratio:7/10;object-fit:cover;border-radius:6px;margin-bottom:12px}
+.sr-tags{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;
+  span{padding:2px 8px;background:var(--b3-theme-surface);border-radius:8px;font-size:10px}
+}
+.sr-intro-full{line-height:1.5;opacity:.7;margin-bottom:14px;font-size:12px}
+.sr-actions-full{display:flex;gap:6px;margin-bottom:14px;
+  button{flex:1}
+}
+.sr-chapters{background:var(--b3-theme-surface);border-radius:6px;padding:10px}
+.sr-chapters-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--b3-border-color);
+  span{font-size:12px;font-weight:600}
+}
+.sr-chapters-list{max-height:320px;overflow-y:auto}
+.sr-chapter-item{padding:7px 8px;cursor:pointer;border-radius:4px;transition:background .15s;font-size:11px;
+  &:hover{background:var(--b3-list-hover)}
+}
 
 @media (max-width:640px) {
-  .sr-toolbar { flex-direction:column; margin:12px; }
-  .sr-search-input, .sr-toolbar select { width:100%; }
-  .sr-results { padding:12px; }
-  .sr-card { flex-direction:column; }
-  .sr-cover { width:100%; height:180px; }
-  .sr-actions { flex-direction:row; }
-  .sr-detail { width:100%; }
-  .sr-detail-actions { 
-    flex-direction:column;
-    button { width:100%; }
-  }
+  .sr-card{flex-direction:column}
+  .sr-cover{width:100%;height:180px}
+  .sr-detail{width:100%}
 }
 </style>

@@ -350,7 +350,6 @@ async function detectAndDecodeText(buffer:ArrayBuffer):Promise<string>{
 }
 
 export async function loadTxtBook(view: FoliateView, content: string|ArrayBuffer, chapters: TxtChapter[], bookInfo?: any, settings?: ReaderSettings) {
-  // 处理编码
   let text=''
   if(content instanceof ArrayBuffer){
     text=await detectAndDecodeText(content)
@@ -366,7 +365,9 @@ export async function loadTxtBook(view: FoliateView, content: string|ArrayBuffer
       try {
         const text = await bookSourceManager.getChapterContent(bookInfo.sourceUrl || bookInfo.origin, ch.url)
         html = toHtml(ch.title, text)
-      } catch { html = toHtml(ch.title, '加载失败') }
+      } catch {
+        html = toHtml(ch.title, '加载失败')
+      }
     } else {
       html = toHtml(ch.title, ch.content || '')
     }
@@ -408,7 +409,6 @@ export async function loadTxtBook(view: FoliateView, content: string|ArrayBuffer
     }
     updateLocation(index, detail.fraction || 0)
     
-    // 绑定TXT文档事件和渲染标注
     setTimeout(() => {
       try{
         const contents = (view as any).renderer?.getContents?.()
@@ -418,7 +418,7 @@ export async function loadTxtBook(view: FoliateView, content: string|ArrayBuffer
             if (doc && doc.body) marks.bindTxtDocEvents(doc, index)
           }
         }
-      }catch(e){console.error('[TXT] bindTxtDocEvents:',e)}
+      }catch{}
     }, 200)
   }) as EventListener)
   

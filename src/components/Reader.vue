@@ -178,7 +178,6 @@ const init=async()=>{
       
       markManager.value=createMarkManager({format:'pdf',plugin:props.plugin,bookUrl,bookName:props.bookInfo?.name||props.file?.name||'book',onAnnotationClick:showAnn,pdfViewer:viewer})
       await markManager.value.init()
-      markManager.value.setOutline(view.book?.toc||[])
       await markManager.value.restoreProgress(props.bookInfo)
       
       currentView.value={...view,isPdf:true,marks:markManager.value}
@@ -245,7 +244,7 @@ const init=async()=>{
       currentView.value=view
       
       if(format==='online'&&props.bookInfo){
-        await loadTxtBook(view,'',[],props.bookInfo,props.settings)
+        await loadTxtBook(view,'',props.bookInfo.chapters||[],props.bookInfo,props.settings)
       }else{
         const file=await loadFile()
         if(!file)throw new Error('未提供TXT文件')
@@ -488,7 +487,7 @@ onUnmounted(async()=>{savePosition();clearActiveReader();await markManager.value
 .search-slide-enter-active,.search-slide-leave-active{transition:all .2s}
 .search-slide-enter-from,.search-slide-leave-to{opacity:0;transform:translate(-50%,-10px)}
 .sr-selection-menu{position:fixed;z-index:10000;display:flex;gap:4px;padding:6px;background:var(--b3-theme-surface);border:1px solid var(--b3-border-color);border-radius:8px;box-shadow:0 4px 16px #0003}
-.sr-btn{width:32px;height:32px;display:flex;align-items:center;justify-content:center;border:none;background:transparent;border-radius:6px;cursor:pointer;transition:all .15s;color:var(--b3-theme-on-surface);svg{width:16px;height:16px}&:hover{background:var(--b3-list-hover);color:var(--b3-theme-primary)}}
+.sr-btn{width:32px;height:32px;display:flex;align-items:center;justify-content:center;border:none;background:transparent;border-radius:8px;cursor:pointer;transition:all .15s;color:var(--b3-theme-on-surface);svg{width:16px;height:16px}&:hover{background:var(--b3-list-hover);color:var(--b3-theme-primary)}}
 </style>
 
 <style>

@@ -160,24 +160,21 @@ class BookshelfManager {
     await this.saveIndex()
   }
 
+  async updateBook(bookUrl: string, updates: Partial<Book>) {
+    const book = await this.getBook(bookUrl)
+    if (!book) throw new Error('书籍不存在')
+    await this.saveBook({ ...book, ...updates })
+  }
+
   async addBook(partial: Partial<Book>) {
     if (!partial.bookUrl) throw new Error('URL不能为空')
     if (this.index.some(b => b.bookUrl === partial.bookUrl)) throw new Error('书籍已存在')
     
     const format = partial.format || 'online'
     const hasFile = ['epub', 'mobi', 'azw3', 'fb2', 'pdf', 'cbz', 'txt'].includes(format)
-    
-    let chapters: any[] = []
-    if (partial.origin && format === 'online') {
-      try {
-        const info = await bookSourceManager.getBookInfo(partial.origin, partial.bookUrl)
-        chapters = await bookSourceManager.getChapters(partial.origin, info.tocUrl || partial.bookUrl)
-      } catch {}
-    }
-    
     const now = Date.now()
-    const chaps = partial.chapters || chapters.map((ch, i) => ({ index: i, title: ch.name || `第${i + 1}章`, url: ch.url || '' }))
     
+    // 在线书籍延迟加载章节，只保存基本信息
     await this.saveBook({
       ...partial,
       bookUrl: partial.bookUrl,
@@ -186,12 +183,12 @@ class BookshelfManager {
       originName: partial.originName || '',
       name: partial.name || '未知书名',
       author: partial.author || '未知作者',
-      chapters: hasFile ? [] : chaps,
-      totalChapterNum: partial.totalChapterNum || chaps.length,
-      latestChapterTitle: chaps[chaps.length - 1]?.title || '',
+      chapters: hasFile ? [] : (partial.chapters || []),
+      totalChapterNum: partial.totalChapterNum || 0,
+      latestChapterTitle: '',
       latestChapterTime: now,
       durChapterIndex: 0,
-      durChapterTitle: chaps[0]?.title || '',
+      durChapterTitle: '',
       durChapterPos: 0,
       durChapterTime: now,
       addTime: now,

@@ -35,6 +35,10 @@ const { customFonts, isLoadingFonts } = settingManager
 
 // ===== 计算属性 =====
 const isNotebookMode = computed(() => settings.value.annotationMode === 'notebook')
+const tooltipDir = computed(() => {
+  const pos = settings.value.navPosition
+  return pos === 'left' ? 'e' : pos === 'right' ? 'w' : pos === 'top' ? 's' : 'n'
+})
 const tabs = computed(() => [{ id: 'bookshelf' as const, icon: 'lucide-library-big', tip: 'bookshelf' }, { id: 'search' as const, icon: 'lucide-book-search', tip: 'search' }, { id: 'deck' as const, icon: 'lucide-wallet-cards', tip: '卡包' }, ...(canShowToc.value ? [{ id: 'toc' as const, icon: 'lucide-scroll-text', tip: '目录' }, { id: 'bookmark' as const, icon: 'lucide-map-pin-check', tip: '书签' }, { id: 'mark' as const, icon: 'lucide-paint-bucket', tip: '标注' }, { id: 'note' as const, icon: 'lucide-map-pin-pen', tip: '笔记' }] : []), { id: 'general' as const, icon: 'lucide-settings-2', tip: 'tabGeneral' }, { id: 'appearance' as const, icon: 'lucide-paintbrush-vertical', tip: 'tabAppearance' }, { id: 'dictionary' as const, icon: 'lucide-book-text', tip: '词典' }])
 
 const previewStyle = computed(() => { const theme = settings.value.theme === 'custom' ? settings.value.customTheme : PRESET_THEMES[settings.value.theme]; if (!theme) return {}; const { textSettings: t, paragraphSettings: p, layoutSettings: l, visualSettings: v, viewMode } = settings.value, filters = [v.brightness !== 1 && `brightness(${v.brightness})`, v.contrast !== 1 && `contrast(${v.contrast})`, v.sepia > 0 && `sepia(${v.sepia})`, v.saturate !== 1 && `saturate(${v.saturate})`, v.invert && 'invert(1) hue-rotate(180deg)'].filter(Boolean).join(' '), fontFamily = t.fontFamily === 'custom' && t.customFont.fontFamily ? `"${t.customFont.fontFamily}", sans-serif` : (t.fontFamily || 'inherit'); return { color: theme.color, backgroundColor: theme.bgImg ? 'transparent' : theme.bg, backgroundImage: theme.bgImg ? `url("${theme.bgImg}")` : 'none', backgroundSize: 'cover', backgroundPosition: 'center', fontFamily, fontSize: `${t.fontSize}px`, letterSpacing: `${t.letterSpacing}em`, lineHeight: p.lineHeight, filter: filters || 'none', '--paragraph-spacing': p.paragraphSpacing, '--text-indent': p.textIndent, '--margin-h': `${l.marginHorizontal}px`, '--margin-v': `${l.marginVertical}px`, '--gap': `${l.gap}%`, '--header-footer': `${l.headerFooterMargin}px`, '--max-block': l.maxBlockSize > 0 ? `${l.maxBlockSize}px` : 'none', '--column-count': viewMode === 'double' ? 2 : 1 } })
@@ -65,12 +69,12 @@ const linkFormatDesc = computed(() => `${props.i18n?.linkFormatDesc || '可用�
 </script>
 
 <template>
-  <div class="sr-settings">
+  <div class="sr-settings" :class="`nav-${settings.navPosition}`">
     <aside class="sr-nav">
       <button
         v-for="tab in tabs" :key="tab.id"
-        class="sr-nav-btn b3-tooltips b3-tooltips__e"
-        :class="{ active: activeTab === tab.id }"
+        class="sr-nav-btn b3-tooltips"
+        :class="[{ active: activeTab === tab.id }, `b3-tooltips__${tooltipDir}`]"
         :aria-label="i18n?.[tab.tip] || tab.tip"
         @click="activeTab = tab.id"
       >
@@ -80,33 +84,29 @@ const linkFormatDesc = computed(() => `${props.i18n?.linkFormatDesc || '可用�
 
     <main class="sr-content">
       <!-- 样式预览 -->
-      <Transition name="fade">
-        <div v-if="activeTab === 'appearance'" class="sr-preview-outer" :style="previewStyle">
-          <div class="sr-preview-header">{{ i18n.livePreview || '实时预览' }}</div>
-          <div class="sr-preview-content">
-            <div class="sr-preview-columns">
-              <p>春江潮水连海平，海上明月共潮生。</p>
-              <p>滟滟随波千万里，何处春江无月明。</p>
-            </div>
-          </div>
-          <div class="sr-preview-footer">{{ settings.viewMode === 'double' ? '双页' : settings.viewMode === 'scroll' ? '连续滚动' : '单页' }}</div>
+      <div v-if="activeTab === 'appearance'" class="sr-preview" :style="previewStyle">
+        <div class="sr-preview-hf">{{ i18n.livePreview || '实时预览' }}</div>
+        <div class="sr-preview-body">
+          <p>春江潮水连海平，海上明月共潮生。</p>
+          <p>滟滟随波千万里，何处春江无月明。</p>
         </div>
-      </Transition>
+        <div class="sr-preview-hf">{{ settings.viewMode === 'double' ? '双页' : settings.viewMode === 'scroll' ? '连续滚动' : '单页' }}</div>
+      </div>
 
       <Transition name="slide" mode="out-in">
         <!-- General -->
         <div v-if="activeTab === 'general'" :key="activeTab" class="sr-section">
             <div v-motion-pop-visible class="sr-group">
               <h3 class="sr-title">{{ i18n.interfaceSettings || '界面设置' }}</h3>
-              <div v-for="item in interfaceItems" :key="item.key" class="sr-item">
-                <div class="sr-label">
-                  <div class="sr-label-text">{{ i18n[item.key] }}</div>
-                  <div class="sr-label-desc">{{ i18n[item.key + 'Desc'] }}</div>
-                </div>
+              <label v-for="item in interfaceItems" :key="item.key" class="sr-item">
+                <span class="sr-label">
+                  <b>{{ i18n[item.key] }}</b>
+                  <small>{{ i18n[item.key + 'Desc'] }}</small>
+                </span>
                 <select v-model="settings[item.key]" class="b3-select" @change="save">
                   <option v-for="opt in item.opts" :key="opt" :value="opt">{{ i18n[opt] || opt }}</option>
                 </select>
-              </div>
+              </label>
             </div>
 
             <!-- 暂时屏蔽标注设置 -->
@@ -162,12 +162,12 @@ const linkFormatDesc = computed(() => `${props.i18n?.linkFormatDesc || '可用�
 
             <div v-motion-pop-visible class="sr-group">
               <h3 class="sr-title">{{ i18n.copySettings || '复制设置' }}</h3>
-              <div class="sr-item">
-                <div class="sr-label">
-                  <div class="sr-label-text">{{ i18n.linkFormat || '链接格式' }}</div>
-                  <div class="sr-label-desc">{{ linkFormatDesc }}</div>
-                </div>
-              </div>
+              <label class="sr-item">
+                <span class="sr-label">
+                  <b>{{ i18n.linkFormat || '链接格式' }}</b>
+                  <small>{{ linkFormatDesc }}</small>
+                </span>
+              </label>
               <textarea v-model="settings.linkFormat" class="b3-text-field" rows="2" @input="debouncedSave" style="width:100%;resize:vertical;font-size:12px"/>
             </div>
           </div>
@@ -177,69 +177,63 @@ const linkFormatDesc = computed(() => `${props.i18n?.linkFormatDesc || '可用�
             <div v-motion-pop-visible class="sr-group">
               <h3 class="sr-title">{{ i18n.themeTitle || i18n.presetTheme }}</h3>
               
-              <div class="sr-item">
-                <div class="sr-label">
-                  <div class="sr-label-text">{{ i18n.presetTheme }}</div>
-                  <div class="sr-label-desc">{{ i18n.presetThemeDesc }}</div>
-                </div>
+              <label class="sr-item">
+                <span class="sr-label">
+                  <b>{{ i18n.presetTheme }}</b>
+                  <small>{{ i18n.presetThemeDesc }}</small>
+                </span>
                 <select v-model="settings.theme" class="b3-select" @change="save">
                   <option v-for="(theme, key) in PRESET_THEMES" :key="key" :value="key">
                     {{ i18n[theme.name] || theme.name }}
                   </option>
                   <option value="custom">{{ i18n.custom }}</option>
                 </select>
-              </div>
+              </label>
 
-              <Transition name="expand">
-                <div v-if="settings.theme === 'custom'" class="sr-custom">
-                  <div v-for="item in customThemeItems" :key="item.key" class="sr-item">
-                    <div class="sr-label">
-                      <div class="sr-label-text">{{ i18n[item.label] }}</div>
-                    </div>
-                    <input v-model="settings.customTheme[item.key]" :type="item.type" :class="item.type === 'color' ? 'sr-color' : 'b3-text-field'" @change="save">
-                  </div>
-                </div>
-              </Transition>
+              <template v-if="settings.theme === 'custom'">
+                <label v-for="item in customThemeItems" :key="item.key" class="sr-item">
+                  <b>{{ i18n[item.label] }}</b>
+                  <input v-model="settings.customTheme[item.key]" :type="item.type" :class="item.type === 'color' ? 'sr-color' : 'b3-text-field'" @change="save">
+                </label>
+              </template>
             </div>
 
             <div v-for="group in appearanceGroups" :key="group.title" v-motion-pop-visible class="sr-group">
               <h3 class="sr-title">{{ i18n[group.title] }}</h3>
               
-              <div v-for="item in group.items" :key="item.key" class="sr-item">
-                <div class="sr-label"><div class="sr-label-text">{{ i18n[item.key] }}</div></div>
+              <label v-for="item in group.items" :key="item.key" class="sr-item">
+                <b>{{ i18n[item.key] }}</b>
                 <select v-if="item.type === 'select'" v-model="settings[group.title][item.key]" class="b3-select" @change="debouncedSave">
                   <option v-for="(opt, idx) in item.opts" :key="opt" :value="opt">{{ i18n[item.labels[idx]] }}</option>
                 </select>
-                <div v-else-if="item.type === 'range'" class="sr-slider">
+                <span v-else-if="item.type === 'range'" class="sr-slider">
                   <input v-model.number="settings[group.title][item.key]" type="range" class="b3-slider" :min="item.min" :max="item.max" :step="item.step" @input="debouncedSave">
-                  <span class="sr-value">{{ settings[group.title][item.key] }}{{ item.unit || '' }}</span>
-                </div>
+                  <em>{{ settings[group.title][item.key] }}{{ item.unit || '' }}</em>
+                </span>
                 <input v-else-if="item.type === 'checkbox'" v-model="settings[group.title][item.key]" type="checkbox" class="b3-switch" @change="save">
-              </div>
+              </label>
               
               <!-- 字体 -->
-              <div v-if="group.title === 'textSettings'" class="sr-doc-search">
-                <div class="sr-label">
-                  <div class="sr-label-text">
-                    {{ i18n.fontFamily }}
-                    <button class="b3-button b3-button--text" style="padding:0;margin-left:6px" @click="loadCustomFonts" :disabled="isLoadingFonts" :aria-label="i18n.fontTip">
-                      <svg style="width:12px;height:12px"><use xlink:href="#iconRefresh"></use></svg>
-                    </button>
-                  </div>
-                  <div class="sr-label-desc"><code style="font-size:10px;opacity:.7">data/plugins/custom-fonts/</code></div>
+              <div v-if="group.title === 'textSettings'" class="sr-fonts">
+                <b>
+                  {{ i18n.fontFamily }}
+                  <button class="b3-button b3-button--text" style="padding:0;margin-left:6px" @click="loadCustomFonts" :disabled="isLoadingFonts" :aria-label="i18n.fontTip">
+                    <svg style="width:12px;height:12px"><use xlink:href="#iconRefresh"/></svg>
+                  </button>
+                </b>
+                <small><code>data/plugins/custom-fonts/</code></small>
+                <div v-if="settings.textSettings.customFont.fontFamily" class="sr-font-sel" @click="setFont()">
+                  <span :style="{fontFamily:settings.textSettings.customFont.fontFamily}">{{ settings.textSettings.customFont.fontFamily }}</span>
+                  <small>{{ settings.textSettings.customFont.fontFile }} ✕</small>
                 </div>
-                <div v-if="settings.textSettings.customFont.fontFamily" class="sr-doc-info" style="cursor:pointer" @click="setFont()">
-                  <div class="sr-doc-name" :style="{fontFamily:settings.textSettings.customFont.fontFamily}">{{ settings.textSettings.customFont.fontFamily }}</div>
-                  <div class="sr-doc-id">{{ settings.textSettings.customFont.fontFile }} <span style="opacity:.5">✕</span></div>
+                <div v-if="isLoadingFonts" class="sr-empty">{{ i18n.loadingFonts }}</div>
+                <div v-else-if="customFonts.length" class="sr-font-list">
+                  <div v-for="f in customFonts" :key="f.name" class="sr-font-item" :style="{fontFamily:f.displayName}" @click="setFont(f)">{{ f.displayName }}</div>
                 </div>
-                <div v-if="isLoadingFonts" class="sr-empty" style="padding:16px">{{ i18n.loadingFonts }}</div>
-                <div v-else-if="customFonts.length" class="sr-doc-results">
-                  <div v-for="f in customFonts" :key="f.name" class="sr-doc-item" :style="{fontFamily:f.displayName,fontSize:'15px'}" @click="setFont(f)">{{ f.displayName }}</div>
-                </div>
-                <div v-else class="sr-empty" style="padding:16px">{{ i18n.noCustomFonts }}</div>
+                <div v-else class="sr-empty">{{ i18n.noCustomFonts }}</div>
               </div>
 
-              <button v-if="group.title === 'pageSettings'" class="b3-button b3-button--outline sr-reset" @click="resetStyles">
+              <button v-if="group.title === 'visualSettings'" class="b3-button b3-button--outline sr-reset" @click="resetStyles">
                 {{ i18n.resetToDefault }}
               </button>
             </div>
@@ -249,91 +243,58 @@ const linkFormatDesc = computed(() => `${props.i18n?.linkFormatDesc || '可用�
         <!-- Bookshelf -->
         <Bookshelf v-else-if="activeTab === 'bookshelf'" :key="activeTab" :i18n="i18n" @read="handleReadOnline" />
 
-        <!-- Search -->
-        <BookSearch v-else-if="activeTab === 'search'" :key="activeTab" :i18n="i18n" @read="handleReadOnline" @openSettings="openSourceMgr" />
-
         <!-- Dictionary -->
         <DictMgr v-else-if="activeTab === 'dictionary'" :key="activeTab" />
 
         <!-- TOC/Bookmark/Mark/Note/Deck -->
         <ReaderToc v-else-if="['toc','bookmark','mark','note','deck'].includes(activeTab)" :key="activeTab" v-model:mode="activeTab" :i18n="props.i18n" />
       </Transition>
+
+      <!-- Search - 使用 v-show 保持状态 -->
+      <BookSearch v-show="activeTab === 'search'" :i18n="i18n" @read="handleReadOnline" @openSettings="openSourceMgr" />
     </main>
   </div>
 </template>
 
 <style scoped lang="scss">
-.sr-settings{display:flex;height:100%;background:var(--b3-theme-background)}
-.sr-nav{width:40px;background:var(--b3-theme-surface);border-right:1px solid var(--b3-border-color);padding:4px;display:flex;flex-direction:column;gap:4px;flex-shrink:0;align-items:center}
-.sr-nav-btn{width:32px;height:32px;display:flex;align-items:center;justify-content:center;border:none;background:transparent;border-radius:6px;cursor:pointer;transition:all .15s;color:var(--b3-theme-on-surface);flex-shrink:0;svg{width:18px;height:18px}
+.sr-settings{display:flex;height:100%;background:var(--b3-theme-background);
+  &.nav-left{flex-direction:row}
+  &.nav-right{flex-direction:row-reverse}
+  &.nav-top{flex-direction:column}
+  &.nav-bottom{flex-direction:column-reverse}
+}
+.sr-nav{background:var(--b3-theme-surface);border-radius:8px;padding:4px;display:flex;gap:4px;flex-shrink:0;align-items:center;
+  .nav-left &,.nav-right &{width:40px;flex-direction:column;margin:8px 0}
+  .nav-left &{margin-left:8px}
+  .nav-right &{margin-right:8px}
+  .nav-top &,.nav-bottom &{height:40px;flex-direction:row;padding:4px 8px;margin:0 8px}
+  .nav-top &{margin-top:8px}
+  .nav-bottom &{margin-bottom:8px}
+}
+.sr-nav-btn{width:32px;height:32px;display:flex;align-items:center;justify-content:center;border:none;background:transparent;border-radius:8px;cursor:pointer;transition:all .15s;color:var(--b3-theme-on-surface);flex-shrink:0;svg{width:18px;height:18px}
   &:hover{background:var(--b3-list-hover)}
-  &.active{background:var(--b3-theme-primary);color:var(--b3-theme-on-primary);box-shadow:0 2px 4px #0003}
+  &.active{background:var(--b3-theme-primary);color:var(--b3-theme-on-primary)}
 }
-.sr-content { flex: 1; overflow: hidden; padding: 0; display: flex; flex-direction: column; }
+.sr-content { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
 
-// 预览外层容器
-.sr-preview-outer {
-  position: sticky;
-  top: 0;
-  z-index: 10;
-  margin: 20px;
-  margin-bottom: 0;
-  background: var(--b3-theme-surface);
-  border-radius: 8px;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  max-height: var(--max-block);
-}
-
-// 页眉
-.sr-preview-header {
-  height: var(--header-footer);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 10px;
-  opacity: 0.4;
-  border-bottom: 1px dashed currentColor;
-  flex-shrink: 0;
-  transition: height 0.3s;
-}
-
-// 内容区域
-.sr-preview-content {
-  flex: 1;
-  padding: var(--margin-v) var(--margin-h);
-  overflow: auto;
-  transition: padding 0.3s;
-}
-
-// 多列布局
-.sr-preview-columns {
-  column-count: var(--column-count, 1);
-  column-gap: var(--gap);
-  transition: column-count 0.3s, column-gap 0.3s;
+.sr-preview {
+  position: sticky; top: 0; z-index: 10; margin: 20px 20px 0;
+  background: var(--b3-theme-surface); border-radius: 8px; overflow: hidden;
+  display: flex; flex-direction: column; max-height: var(--max-block);
+  column-count: var(--column-count, 1); column-gap: var(--gap);
   p { 
-    margin: 0;
-    text-indent: calc(1em * var(--text-indent, 0));
-    line-height: inherit;
-    break-inside: avoid;
-    transition: text-indent 0.3s;
+    margin: 0; padding: var(--margin-v) var(--margin-h);
+    text-indent: calc(1em * var(--text-indent, 0)); break-inside: avoid;
     & + p { margin-top: calc(1em * var(--paragraph-spacing, 0.8)); }
   }
 }
-
-// 页脚
-.sr-preview-footer {
-  height: var(--header-footer);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 10px;
-  opacity: 0.4;
-  border-top: 1px dashed currentColor;
-  flex-shrink: 0;
-  transition: height 0.3s;
+.sr-preview-hf {
+  height: var(--header-footer); display: flex; align-items: center; justify-content: center;
+  font-size: 10px; opacity: 0.4; border: 1px dashed currentColor; border-width: 1px 0 0;
+  &:first-child { border-width: 0 0 1px; }
 }
+.sr-preview-body { flex: 1; overflow: auto; }
+
 .sr-section{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:20px}
 .sr-group { background: var(--b3-theme-surface); border-radius: 8px; padding: 18px; box-shadow: 0 1px 3px #0000000d; transition: box-shadow .3s;
   &:hover { box-shadow: 0 4px 10px #00000014; }
@@ -341,49 +302,55 @@ const linkFormatDesc = computed(() => `${props.i18n?.linkFormatDesc || '可用�
 .sr-title { font-size: 15px; font-weight: 600; color: var(--b3-theme-primary); margin: 0 0 14px; }
 .sr-item { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 10px 0;
   &:not(:last-child) { border-bottom: 1px solid var(--b3-border-color); }
+  b { font-size: 13px; font-weight: 500; }
 }
-.sr-label { flex: 1; min-width: 0; }
-.sr-label-text { font-size: 13px; font-weight: 500; color: var(--b3-theme-on-surface); margin-bottom: 3px; }
-.sr-label-desc { font-size: 11px; color: var(--b3-theme-on-surface-variant); opacity: .7; line-height: 1.4; }
+.sr-label { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px;
+  small { font-size: 11px; opacity: .7; line-height: 1.4; }
+}
 .b3-select { min-width: 130px; }
-.sr-slider { display: flex; align-items: center; gap: 10px; }
-.b3-slider { width: 130px; }
-.sr-value { min-width: 55px; text-align: right; font-size: 12px; font-weight: 500; color: var(--b3-theme-primary); }
-.sr-custom { margin-top: 10px; }
+.sr-slider { display: flex; align-items: center; gap: 10px;
+  input { width: 130px; }
+  em { min-width: 55px; text-align: right; font-size: 12px; font-weight: 500; color: var(--b3-theme-primary); font-style: normal; }
+}
 .sr-color { width: 55px; height: 34px; padding: 3px; border-radius: 4px; cursor: pointer; border: 1px solid var(--b3-border-color); }
 .sr-reset { width: 100%; margin-top: 14px; padding: 9px; font-size: 12px; transition: all .2s;
   &:hover { transform: translateY(-1px); box-shadow: 0 3px 6px #0003; }
 }
-.slide-enter-active { transition: all .25s cubic-bezier(.4,0,.2,1); }
-.slide-leave-active { transition: all .2s cubic-bezier(.4,0,1,1); }
-.slide-enter-from { opacity: 0; transform: translateX(15px); }
-.sr-toc{flex:1;display:flex;flex-direction:column;overflow:hidden}
-.fade-enter-active, .fade-leave-active { transition: opacity .3s; }
-.fade-enter-from, .fade-leave-to { opacity: 0; }
-.slide-leave-to { opacity: 0; transform: translateX(-15px); }
-.expand-enter-active, .expand-leave-active { transition: all .3s cubic-bezier(.4,0,.2,1); overflow: hidden; }
-.expand-enter-from, .expand-leave-to { max-height: 0; opacity: 0; transform: scaleY(.9); }
-.expand-enter-to, .expand-leave-from { max-height: 400px; opacity: 1; transform: scaleY(1); }
-.sr-doc-search { 
-  margin-top: 12px;
-  input { width: 100%; margin-bottom: 8px; }
+
+.sr-fonts { margin-top: 12px; display: flex; flex-direction: column; gap: 8px;
+  b { font-size: 13px; font-weight: 500; }
+  small code { font-size: 10px; opacity: .7; }
 }
-.sr-doc-info { 
-  padding: 12px; margin-bottom: 12px; border-radius: 6px; 
+.sr-font-sel { 
+  padding: 12px; border-radius: 6px; cursor: pointer;
+  background: var(--b3-theme-surface); border: 1px solid var(--b3-border-color);
+  display: flex; flex-direction: column; gap: 4px;
+  span { font-weight: 500; }
+  small { font-size: 12px; opacity: 0.65; font-family: monospace; }
+  &:hover { background: var(--b3-list-hover); }
+}
+.sr-font-list { 
+  max-height: 250px; overflow-y: auto; border-radius: 6px;
   background: var(--b3-theme-surface); border: 1px solid var(--b3-border-color);
 }
-.sr-doc-name { font-weight: 500; margin-bottom: 4px; }
-.sr-doc-id { font-size: 12px; opacity: 0.65; font-family: monospace; }
-.sr-doc-results { 
-  max-height: 250px; overflow-y: auto; margin-top: 8px; border-radius: 6px;
-  background: var(--b3-theme-surface); border: 1px solid var(--b3-border-color);
-}
-.sr-empty { padding: 20px; text-align: center; color: var(--b3-theme-on-surface-light); opacity: 0.6; }
-.sr-doc-item { 
-  padding: 10px 12px; cursor: pointer; transition: background 0.15s; 
+.sr-font-item { 
+  padding: 10px 12px; cursor: pointer; font-size: 15px;
   border-bottom: 1px solid var(--b3-border-color);
   &:last-child { border-bottom: none; }
   &:hover { background: var(--b3-list-hover); }
 }
-@media (max-width:640px){.sr-settings{flex-direction:column}.sr-nav{width:100%;flex-direction:row;border-right:none;border-bottom:1px solid var(--b3-border-color);padding:4px 8px}.sr-content{padding:14px}.sr-item{flex-direction:column;align-items:flex-start;gap:10px}.b3-select,.sr-slider{width:100%}}
+.sr-empty { padding: 16px; text-align: center; opacity: 0.6; }
+
+.slide-enter-active { transition: all .25s cubic-bezier(.4,0,.2,1); }
+.slide-leave-active { transition: all .2s cubic-bezier(.4,0,1,1); }
+.slide-enter-from { opacity: 0; transform: translateX(15px); }
+.slide-leave-to { opacity: 0; transform: translateX(-15px); }
+
+@media (max-width:640px){
+  .sr-settings{flex-direction:column !important}
+  .sr-nav{width:100% !important;height:40px !important;flex-direction:row !important;border:none !important;border-bottom:1px solid var(--b3-border-color) !important;padding:4px 8px !important}
+  .sr-content{padding:14px}
+  .sr-item{flex-direction:column;align-items:flex-start;gap:10px}
+  .b3-select,.sr-slider{width:100%}
+}
 </style>

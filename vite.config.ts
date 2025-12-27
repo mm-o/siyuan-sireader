@@ -139,7 +139,7 @@ export default defineConfig(({
 
         // make sure to externalize deps that shouldn't be bundled
         // into your library
-        external: ["siyuan", "process"],
+        external: ["siyuan", "process", /^\/stage\//],
 
         output: {
           entryFileNames: "[name].js",

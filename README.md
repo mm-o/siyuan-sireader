@@ -1,526 +1,353 @@
 <div class="sy__outline" style="max-width: 900px; margin: 0 auto;">
-    <div style="text-align: center; padding: 2.5em 1.5em; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 16px; box-shadow: 0 8px 32px rgba(0,0,0,0.1);">
-        <h1 style="color: white; margin: 0 0 0.3em; font-size: 2.5em; font-weight: 600;">📖 SiReader</h1>
-        <p style="color: rgba(255,255,255,0.9); margin: 0 0 2em; font-size: 1.1em;">Enhanced eBook Reading · Smart Annotations · Multiple Themes</p>
-        <div style="display: flex; justify-content: center; gap: 15px; flex-wrap: wrap;">
-            <a href="" 
-               style="display: inline-block; min-width: 160px; padding: 18px 28px; background: white; color: #667eea; border-radius: 12px; text-decoration: none; font-size: 1.1em; font-weight: 600; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
-                📖 User Guide
-            </a>
-            <a href="" 
-               style="display: inline-block; min-width: 160px; padding: 18px 28px; background: white; color: #667eea; border-radius: 12px; text-decoration: none; font-size: 1.1em; font-weight: 600; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
-                🔄 Changelog
-            </a>
-            <a href="" 
-               style="display: inline-block; min-width: 160px; padding: 18px 28px; background: white; color: #667eea; border-radius: 12px; text-decoration: none; font-size: 1.1em; font-weight: 600; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
-                🔗 Links
-            </a>
-        </div>
-    </div>
-    <div style="padding: 2em 1.5em;">
-        <div style="background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%); border-radius: 12px; padding: 1.5em; margin-bottom: 2em; border-left: 4px solid #667eea;">
-            <h3 style="margin: 0 0 0.5em; color: #667eea;">🎯 About</h3>
-            <p style="margin: 0; line-height: 1.6;">Transform SiYuan into a professional eBook reader with smart annotations, multiple themes, dictionary integration, and immersive reading experience. Currently supports EPUB format, with plans for PDF, MOBI and more formats.</p>
-        </div>
-    </div>
-
-## 📖 Quick Start
-
-### 🚀 Installation
-1. Open SiYuan `Settings` → `Marketplace` → `Plugins`
-2. Search for "SiReader" and install
-3. Enable the plugin, 📖 reader icon will appear in toolbar
-
-### 📝 Open EPUB Books
-Drag EPUB files into SiYuan documents to create links, click links to open books
+<div style="text-align: center; padding: 2.5em 1.5em; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 16px; box-shadow: 0 8px 32px rgba(0,0,0,0.1); margin-bottom: 2em;">
+<h1 style="color: white; margin: 0 0 0.3em; font-size: 2.5em; font-weight: 600;">📖 SiReader</h1>
+<p style="color: rgba(255,255,255,0.9); margin: 0 0 1.5em; font-size: 1.1em;">Professional eBook Reader · Smart Annotation · Multi-format Support</p>
+<p style="color: rgba(255,255,255,0.85); margin: 0 0 1.5em; line-height: 1.6; font-size: 0.95em;">Transform SiYuan Notes into a professional eBook reader<br>Support EPUB/PDF/TXT/Online novels with smart annotation, multi-theme switching, dictionary lookup, AI translation, deck system, and more for an immersive reading experience</p>
+<p style="margin: 0;">
+<img src="https://img.shields.io/badge/version-0.6.4-blue.svg" alt="Version" style="display: inline-block; margin: 0 4px;">
+<img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License" style="display: inline-block; margin: 0 4px;">
+<img src="https://img.shields.io/badge/SiYuan-3.0+-orange.svg" alt="SiYuan" style="display: inline-block; margin: 0 4px;">
+</p>
+</div>
+</div>
 
 ---
 
-## 🚀 Latest Updates
+## ✨ Core Features
+
+### 📚 Multi-format Support
+- **EPUB** - Full support with smart TOC and footnote recognition
+- **PDF** - Professional reader with zoom, rotation, and search
+- **TXT** - Smart encoding detection and chapter recognition
+- **Online Novels** - Multi-source search with real-time updates
+
+### 🎨 Reading Experience
+- **8 Themes** - Default, Almond, Autumn, Green, Blue, Night, Dark, Gold
+- **Custom Themes** - Fully customizable text color, background, and images
+- **Reading Modes** - Single/double page, scroll/flip, left/right TOC
+- **Appearance Settings** - Font, size, spacing, margins, visual filters
+
+### 🖊️ Smart Annotation
+- **7 Colors** - Red🔴Orange🟠Yellow🟡Green🟢Pink🩷Blue🔵Purple🟣, 4 styles (highlight/underline/border/wavy)
+- **PDF Advanced** - Ink annotation, shape annotation (rectangle/circle/triangle), fill function
+- **Note System** - Add detailed notes to annotations with real-time editing
+- **Precise Location** - Use CFI/page number for accurate positioning
+
+### 📖 Dictionary
+- **7 Sources** - Cambridge, Youdao, Haici, Chinese Character, Phrase, Zdic, Bing
+- **Smart Recognition** - Auto-select the most suitable dictionary
+- **Deck System** - Add words to deck for review
+
+### 🔍 Book Source
+- **Multi-source** - Custom book sources with concurrent search
+- **Smart Parsing** - Full support for JSONPath, CSS, XPath, JavaScript, Regex
+- **Rule Combination** - Support `&&`/`||`/`%%` combination, `{$.path}` nesting, `@put/@get` data sharing
+
+---
+
+## 🚀 Quick Start
+
+### Installation
+1. Open SiYuan → `Settings` → `Marketplace` → `Plugins`
+2. Search "SiReader"
+3. Click install and enable
+
+### Usage
+- **Local Files** - Click "Add Book" button in bookshelf, select EPUB/PDF/TXT files to import
+- **Online Novels** - Click toolbar search button, search and add to bookshelf
+- **Bookshelf** - Click toolbar bookshelf button to manage all books
+
+---
+
+## 📝 Latest Updates
+
+### v0.6.4 (2025.12.27)
+
+#### 🔍 Book Source Enhancement
+- **Rule Parser Refactor** - Full support for JSONPath, CSS selectors, XPath, JavaScript, Regex with `&&`/`||`/`%%` combination, `{$.path}` nesting, `@put/@get` data sharing
+- **Smart Content Processing** - Auto-clean useless tags, convert HTML entities, smart paragraph splitting, image recognition with chain selection, index filtering, attribute extraction
+
+#### ⚡ Performance Optimization
+- **Size Optimization** - Use SiYuan built-in PDF.js, remove redundant dependencies
+- **Uninstall Optimization** - Add refresh method on plugin uninstall
+
+#### 🎨 UI Optimization
+- **Navigation System** - Support left, right, top, bottom positions with smart tooltip direction, unified visual style, 8px border radius
+- **Source Manager** - Fix Dialog close issue, use Set for selection state, performance improvement
+- **Selection Menu** - Limit to reader container, unified 8px border radius
+- **Settings Panel** - Remove redundant nesting, use semantic tags, fully reuse SiYuan b3 styles
+
+#### 🔧 Code Optimization
+- **Extreme Simplification** - 30% less HTML, 40% less CSS, shallower DOM hierarchy
+- **SiYuan Style Unified** - Navigation, settings group, book cards use unified visual style
+
+#### 🐛 Bug Fixes
+- **Dialog Close** - Fix close button hidden in some themes
+- **Menu Position** - Fix selection menu exceeding reader container
+- **Border Radius** - Unify all components to 8px border radius
+- **Annotation Icon** - Fix duplicate icon display after annotation operation
+
+---
 
 ### v0.6.3 (2025.12.24)
 
-#### 📚 Bookshelf Enhancements
+#### 📚 Bookshelf Enhancement
+- **Text Overflow Fix** - Fix text overflow in list and compact view
+- **New Sort Methods** - Recently added, recently read, reading progress
+- **State Persistence** - Auto-save sort method, filter tags, view mode
 
-- **✅ Text Overflow Fix** - Fixed text overflow in bookshelf list and compact views, ensuring complete display of book titles and author information
-- **📊 New Sort Options** - Added "Recently Added", "Recently Read", and "Reading Progress" sort options for quick book finding
-- **💾 State Persistence** - Bookshelf sort method, filter tags, and view mode auto-save to local storage, maintaining settings on next open
+#### 🖊️ PDF Shape Annotation
+- **Fill Function** - Support rectangle, circle, triangle fill (solid/hollow toggle)
+- **Auto Popup** - Auto popup edit window after shape annotation
+- **Smart Interaction** - Optimize ink and shape annotation interaction
 
-#### 🖊️ PDF Shape Annotation Enhancements
+#### 🔗 PDF Link & Jump
+- **Precise Location** - Use page number and rectangle coordinates
+- **Blink Hint** - Highlight blink effect after jump
+- **Unified Logic** - Unify jump highlight and copy method
 
-- **🎨 Fill Function** - Added shape annotation fill function, supports color fill for rectangles, circles, triangles (solid/hollow toggle)
-- **📝 Auto Popup** - Shape annotation automatically opens edit note window after completion for immediate note addition
-- **🎯 Smart Interaction** - Optimized ink and shape annotation interaction logic, clicking toolbar collapse button auto-exits edit mode
-
-#### 🔗 PDF Link & Navigation Optimization
-
-- **📍 Precise Positioning** - Modified PDF link format using page number and rectangle coordinates for accurate positioning and more precise navigation
-- **✨ Flash Indicator** - Added highlight flash effect after navigation for clearer target position identification
-- **🔄 Unified Logic** - Unified navigation highlight logic and copy methods, consistent behavior between reading and annotation interfaces
-
-#### ⚡ PDF Rendering Optimization
-
-- **🎯 Rewritten Rendering** - Rewrote PDF rendering method, fixed delayed rendering and annotation misalignment issues
-- **📐 Coordinate Conversion** - Optimized PDF coordinate system conversion logic, ensuring accurate annotation positions after zoom and rotation
-- **🖼️ Canvas Management** - Improved Canvas layer management, auto-recreates drawers after zoom to avoid coordinate misalignment
+#### ⚡ PDF Rendering
+- **Rewrite Rendering** - Fix rendering delay and annotation misalignment
+- **Coordinate Transform** - Optimize coordinate system conversion
+- **Canvas Management** - Improve Canvas layer management
 
 ---
 
-### v0.6.2 (2025.12.21)
-
-#### 🐛 Bug Fixes
-
-- **✅ Book Data Files** - Fixed duplicate creation of book data files when books close abnormally
-- **✅ Tab Response** - Added responsive switching of TOC, bookmarks, annotations, and notes when switching tabs
-- **✅ File Loading** - Unified PDF/EPUB/TXT file loading logic, using `arrayBuffer()` instead of `blob()` to avoid large file loading failures
-- **✅ Image Error Handling** - Auto-hide failed EPUB images, no broken image icons displayed
-- **✅ Mobile z-index** - Fixed mobile reader container z-index too high blocking SiYuan top bar (back button and menu)
-- **✅ Control Bar Display** - Optimized bottom control bar display logic, ensuring close button shows even on loading failure
-- **✅ Annotation Overlay** - Lowered annotation overlay and card z-index, ensuring control bar always on top and clickable
-- **✅ Component Unmount** - Fixed error accessing null reference during component unmount
-
-#### ✨ Mobile Support (Experimental)
-
-- **📱 Mobile Reading** - Initial mobile reading support, PDF works normally, EPUB/TXT may have issues
-- **👆 Gesture Navigation** - Support left/right swipe for page turning, minimum swipe distance 50px, auto-filter vertical swipes
-- **💾 Position Memory** - Auto-save and restore reading position on mobile (CFI or page number)
-- **🔙 Back Support** - Listen to browser back button, auto-trigger reader close event
-- **📱 Sidebar Entry** - Added SiReader icon entry in mobile sidebar, click to open settings panel
-
-#### ⚡ Code Optimization
-
-- **🔄 Position Management** - Unified reading position save and restore logic, cleaner code
-- **📂 File Loading** - Unified file loading process for all formats, improved stability
-- **🏷️ Tab Switching** - Optimized tab switching listener mechanism
-- **🎯 Overall Simplification** - Removed redundant code, improved performance and maintainability
-
----
-
-### v0.6.1 (2025.12.21)
-
-#### 🐛 Bug Fixes
-
-- **✅ PDF Annotation Position** - Fixed PDF text selection annotation position misalignment, unified coordinate system using `x/y/w/h` format
-- **✅ Card Deck Highlight** - Fixed missing purple highlight after adding PDF words to card deck, extended card deck data structure to support `page` and `rects` fields
-- **✅ Note Tooltip** - Unified tooltip display logic for annotation notes and shape annotation notes, hover to show full note content
-- **✅ Card Deck Location** - Fixed "location info not saved" error when clicking card deck page location, support PDF format `page` field positioning
-- **✅ Link Format Description** - Added "note" and "image" variable descriptions in i18n files, improved available variables prompt in copy settings
-
-#### ⚡ Performance Optimization
-
-**PDF Loading Optimization**
-- Enabled font rendering and WebGL hardware acceleration, dramatically improved rendering speed
-- Optimized Canvas context and rendering resolution, reduced pixel calculations
-- Asynchronous text layer loading, non-blocking page rendering
-- Reduced preload range, lower memory usage
-
-**PDF Search Optimization**
-- Text caching mechanism, 80% faster second search
-- Prioritize rendered text layers, avoid redundant parsing
-- Smart highlight algorithm, correctly handle cross-span matches
-- Auto scroll to match position, improved interaction experience
-
----
-
-### v0.6.0 (2025.12.20)
-
-#### ✨ New Features
-
-**📄 PDF Reading Support**
-- **Complete PDF Reader** - Professional PDF reader based on PDF.js, supports zoom (25%-400%), rotation, page navigation
-- **Virtual Scrolling** - Priority queue + virtual scrolling technology, dramatically improves large file loading speed
-- **Full-Text Search** - Support PDF full-text search with highlighted results for quick content location
-- **Metadata Parsing** - Auto extract PDF title, author, page count and other metadata
-- **Toolbar Interaction** - Support toolbar collapse/expand, drag to adjust position, edge detection to prevent overflow
-
-**🖊️ Advanced PDF Annotations**
-- **Ink Annotations** - Support freehand ink annotations with 7 colors, adjustable thickness (1-10px), eraser function
-- **Shape Annotations** - Support rectangle, circle, triangle annotations with color selection, thickness adjustment, drag to resize
-- **Shape Copy** - Support copying shape annotations to SiYuan notes with auto-generated formatted links
-- **Vector Storage** - Ink and shape annotations stored as coordinate point data (JSON), no extra storage space
-- **Smart Rendering** - Low-resolution Canvas for real-time preview during reading, high-resolution images (2x DPR) generated when copying
-
-**📚 Dictionary Card Deck System**
-- **Dictionary Cards** - One-click add lookup results to card deck for review and management
-- **Reading Interface Marks** - Card deck vocabulary displayed with 🌐 icon in reading interface, click to view details
-- **Real-time Sync** - Immediately update reading interface and data file (`deck.json`) after adding/deleting cards
-
-**📝 EPUB Footnote Enhancement**
-- **Smart Footnote Recognition** - Auto recognize EPUB footnote links (`epub:type="noteref"` / `role="doc-noteref"`)
-- **Click Popup Display** - Click footnote links to show popup instead of jumping, displays footnote type, ID and full content
-- **Tooltip Display** - Hover to show tooltip preview, support scrolling for long content
-- **Interaction Optimization** - 100ms delay hide, mouse can enter tooltip for operations
-
-**🎨 Unified Tooltip System**
-- **Three Types** - Unified display style for notes (blue 📝), dictionary (purple 🌐), footnotes (red 📌)
-- **Visual Effects** - Three-layer shadows, frosted glass background, gradient header, icon glow effects
-- **Edge Detection** - Auto detect viewport edges to prevent tooltip overflow
-- **Smart Interaction** - Mouse can enter tooltip interior, support scrolling and copying content
-
-**📖 TXT Parsing Enhancement**
-- **Smart Encoding Detection** - Auto detect UTF-8/UTF-16/GBK encoding, support BOM markers
-- **Chapter Recognition** - Support multiple chapter format recognition (Chapter X, Chapter X, numeric sequence, 【Title】)
-- **Error Handling** - Auto fallback to GBK when encoding detection fails, ensure file readability
-
-#### 🔧 Interface Optimization
-
-**📋 Annotation Panel Refactor**
-- **Unified Panel** - Refactored `MarkPanel.vue`, unified PDF/EPUB/TXT annotation interactions
-- **Unified Edit UI** - Unified annotation, editing, display windows with consistent structure and style
-- **Unified Display** - Ink and shape annotations unified in annotation page, support delete, edit, click to expand details
-- **Real-time Editing** - Support real-time modification and saving of annotation text, notes, colors, styles
-- **Precise Management** - Use `data-mark-id` for precise positioning and management of each annotation and icon
-- **7 Colors 4 Styles** - Red🔴Orange🟠Yellow🟡Green🟢Pink🩷Blue🔵Purple🟣 + Highlight/Underline/Outline/Squiggly
-- **Interaction Optimization** - Optimized interaction flow for annotation selection, editing, deletion
-
-**🎯 Annotation Manager Optimization**
-- **Unified Management** - `MarkManager.ts` unified management of PDF/EPUB/TXT annotation logic
-- **Precise Operations** - Add/update/delete annotations with precise single annotation operations, no impact on others
-- **Data Sync** - Annotation data real-time sync with dictionary card deck (`deck.json`)
-
-**📚 Bookshelf Metadata Enhancement**
-- **Smart Parsing** - Optimized EPUB/MOBI/AZW3/FB2/CBZ metadata parsing logic
-- **Complete Info** - Auto extract title, author, description, chapters, cover and other complete information
-- **Cache Optimization** - Metadata caching mechanism, reduce redundant parsing for better performance
-- **Progress Refresh** - Optimized bookshelf progress display, real-time sync reading progress
-
-#### 🐛 Bug Fixes
-
-- **✅ Annotation Misalignment** - Fixed annotation position misalignment after deletion
-- **✅ Icon Residue** - Fixed icon not cleared after annotation deletion causing residue
-- **✅ Card Sync** - Fixed `deck.json` file not syncing after dictionary card deletion
-- **✅ Tooltip Edge** - Fixed tooltip overflow beyond viewport edges
-- **✅ Footnote Jump** - Fixed EPUB footnotes jumping directly instead of showing content
-- **✅ Highlight Misalignment** - Fixed text highlight style misalignment after adding/deleting annotations
-- **✅ Progress Save** - Fixed inaccurate reading progress saving, ensure real-time sync
-- **✅ Bookshelf Progress** - Fixed bookshelf progress not updating, optimized refresh mechanism
-
----
-
-### v0.5.1 (2025.12.12)
-
-#### 🐛 Bug Fixes
-- **✅ Fixed online build issues** - Changed to local build to avoid build environment differences
-
-#### ⏸️ Feature Adjustments
-- **📊 Paused reading stats** - Temporarily disabled bottom-right reading statistics
-
----
-
-## 🚀 What's New in v0.5.0 (2025.12.12)
-
-### ✨ Core Features
-- **📚 Reading Engine Upgrade** - Completely replaced with foliate-js, supports EPUB, MOBI, PDF, TXT, online novels
-- **⌨️ Keyboard Navigation** - Support arrow keys, PageUp/Down, spacebar for page turning
-- **🎹 Custom Shortcuts** - Support SiYuan custom shortcuts (prev page, next page, toggle bookmark)
-- **🔗 Smart Link Navigation** - Support `sireader://` protocol, click links to jump to specific positions, avoid duplicate tabs
-- **📦 Card Deck** - Support vocabulary card deck management for learning and review
-- **📖 Dictionary System** - Support StarDict/MDict offline dictionaries and online dictionaries, select text to lookup
-- **🌐 AI Translation** - Integrated SiYuan AI translation and lookup features
-
-### 📚 Bookshelf & Search
-- **📖 Local Import** - Support importing local EPUB/MOBI/PDF/TXT files to bookshelf
-- **🔍 Smart Search** - Search by title, author, multiple sorting options (time/title/author/update)
-- **📋 Multiple Views** - Support grid, list, compact display modes
-- **🌐 Book Source Search** - Support concurrent multi-source search, streaming results, one-click add to bookshelf
-- **🔄 Update Check** - One-click check updates for all online books
-- **📖 Metadata Parsing** - Auto parse EPUB metadata (title, author, description, chapters, cover)
-
-### 🎨 Reading & Annotation
-- **📑 TOC Navigation** - Use foliate-js native TOC, support search and smart positioning
-- **📌 Bookmark Management** - Add, delete, jump to bookmarks
-- **🌈 7-Color Annotation** - Red🔴Orange🟠Yellow🟡Green🟢Pink🩷Blue🔵Purple🟣, support adding notes
-- **🎨 4 Styles** - Highlight, underline, outline, squiggly, freely combine
-- **🔍 Color Filter** (Coming Soon) - Filter annotations by color, batch management
-- **💾 Persistence** - Independent annotation storage, precise positioning with CFI
-
-### ⚙️ Interface & Settings
-- **⚙️ Settings Panel** - Brand new design, clear categories: General, Appearance, Dictionary
-- **📋 Sidebar** - Optimized button order: Bookshelf→Search→Cards→TOC→Bookmarks→Annotations→Notes→General→Style→Dictionary
-- **🎨 Theme System** - Unified SiYuan theme colors, perfect integration
-- **🔤 Appearance Settings** - Font, size, spacing, line height, paragraph spacing, text indent fully adjustable
-- **📏 Layout Settings** - Horizontal/vertical margins, column gap, header/footer height fine control
-- **🌈 Visual Effects** - Brightness, contrast, sepia, saturation, invert filters
-- **📖 Reading Modes** - Single/double page, slide/scroll pagination, TOC left/right switch
-
-### 🔗 Links & Copy
-- **📋 Formatted Links** - Support custom templates, default uses SiYuan callout format
-- **🎯 Precise Positioning** - Use CFI for precise book position
-- **📖 Chapter Recognition** - Auto recognize current chapter, generate links with chapter info
-- **🔗 Smart Navigation** - Click links to auto detect open books, jump directly
-
-### ⚡ Performance & Optimization
-- **📦 Architecture Optimization** - Business logic moved to composables, cleaner components
-- **🔄 Reactive** - Settings changes take effect immediately, no refresh needed
-- **💾 Smart Caching** - Cache book info, reduce redundant loading
-- **🎯 Functional Programming** - Use reduce/map/filter to simplify code
-- **🔒 Type Safety** - Complete TypeScript type definitions
-
-### 🐛 Bug Fixes
-- **✅ Font Settings** - Fixed font not working (use full URL path)
-- **✅ Theme Application** - Fixed theme not applying to entire tab
-- **✅ Reactive Updates** - Fixed reading interface not responding to settings updates
-- **✅ Chapter Retrieval** - Fixed chapter info not retrieved correctly
-- **✅ Author Formatting** - Support string/object/array formats
-- **✅ Link Encoding** - Fixed Chinese link encoding issues
-- **✅ Internationalization** - Fixed tooltip showing English text
-- **✅ Cover Parsing** - Fixed EPUB cover parsing failure causing infinite retries, auto fallback to text cover
-- **✅ Shortcut Conflicts** - Fixed shortcuts working during editing, only respond when reading
-
----
-
-## 🎨 Main Features
-
-### 📚 Reading Experience
-
-#### 🎨 Multiple Themes
-8 beautiful preset themes + custom themes for different reading scenarios:
-
-**8 Preset Themes:**
-| Theme | Scenario | Features |
-|-------|----------|----------|
-| **Default** | Daily reading | Classic white background, clear and readable |
-| **Almond** | Long-time reading | Eye-care colors, reduce eye strain |
-| **Autumn** | Cozy reading | Warm tones, comfortable experience |
-| **Green** | Natural reading | Fresh green, eye-friendly |
-| **Blue** | Calm reading | Peaceful blue, serene mood |
-| **Night** | Night reading | Dark background, protect vision |
-| **Dark** | Focus reading | Pure black mode, immersive experience |
-| **Gold** | Premium reading | Luxury colors, exclusive experience |
-
-**Custom Themes:**
-- **Text Color**: Custom text display color (HEX values supported)
-- **Background Color**: Custom page background color (HEX values supported)
-- **Background Image**: Upload custom background images (URL or local path)
-- **Live Preview**: See effects immediately, support import/export configs
-
-#### 📱 Reading Modes
-- **Pagination Mode**: Traditional page-turning experience, perfect for novels
-- **Scroll Mode**: Continuous scrolling, suitable for academic documents
-- **Single Page**: Focus on current page
-- **Double Page**: Simulate physical book reading
-
-#### ⌨️ Convenient Controls
-- **Keyboard Navigation**: ← → arrow keys for page turning
-- **Toolbar Control**: Previous, next, table of contents buttons
-
-### 📝 Smart Annotations
-
-#### 🎨 7-Color Annotation System
-Use 7 colors to mark different types of content:
-
-| Color | Letter | Suggested Use |
-|-------|----------|---------------|
-| 🔴 **Red** | R | Important content, key concepts |
-| 🟠 **Orange** | O | Issues to note |
-| 🟡 **Yellow** | Y | General highlights, reminders |
-| 🟢 **Green** | G | Positive info, good viewpoints |
-| 🩷 **Pink** | P | Personal insights, thoughts |
-| 🔵 **Blue** | B | Additional info, extended content |
-| 🟣 **Purple** | V | Questions, need verification |
-
-#### 📖 Auto Chapter Tagging
-- Automatically add chapter info when annotating
-- Annotation format: `- R [annotation text (Chapter 3)](link#position)`
-- Chapter info displayed separately in annotation panel
-
-#### 📝 Annotation Document Management
-**Two Management Modes:**
-1. **Notebook Mode**: Create independent docs for each book under specified notebook
-2. **Document Mode**: Create subdocs for each book under specified document
-
-### 📚 Table of Contents Navigation
-
-#### 📂 Three Browse Modes
-
-**1. Contents Mode**
-- **Chapter Navigation**: Display complete book TOC structure
-- **Hierarchical Display**: Support multi-level TOC with auto indentation
-- **Progress Display**: Show reading progress percentage for each chapter
-- **Bookmark Operations**: Hover over chapters to show 📖 bookmark button
-- **Current Position**: Highlight current reading chapter
-
-**2. Bookmark Mode**
-- **Bookmark List**: Display all saved bookmarks
-- **Quick Jump**: Click bookmarks to jump directly to positions
-- **Bookmark Management**: Hover to show 🗑️ delete button
-- **Empty State**: Show "No bookmarks" when empty
-- **Chapter Title**: Display bookmark's chapter name
-
-**3. Annotation Mode**
-- **Annotation List**: Display all colored annotation content
-- **Color Classification**: Left color border identifies different annotation types
-- **Content Display**: Annotation text + chapter info displayed separately
-- **Quick Location**: Click annotations to jump to original text
-- **Delete Function**: Hover to show 🗑️ delete button
-
-### 📚 Dictionary Integration
-
-#### 🌐 Multi-Dictionary Support
-Support 7 professional dictionary sources with auto language detection:
-
-| Dictionary | Language | Features |
-|------------|----------|----------|
-| **Cambridge** | English | Professional definitions, US/UK phonetics, rich examples, auto pronunciation |
-| **Youdao** | English | Quick search suggestions, smart recommendations |
-| **Haici** | English | Detailed analysis, pronunciation audio, part-of-speech tagging |
-| **Chinese Dict** | Chinese | Radical strokes, pinyin notation, character analysis |
-| **Word Dict** | Chinese | Word definitions, synonyms/antonyms, idiom stories |
-| **Zdic** | Chinese | Ancient Chinese, etymology, classical text support |
-| **Bing** | Universal | External jump, complete dictionary functions |
-
-#### 🎯 Smart Recognition
-- **Chinese Characters** → Auto select Chinese dictionary
-- **Chinese Words** → Auto select Word dictionary
-- **English Words** → Auto select Cambridge dictionary
-
-
-### 🎨 EPUB Block Styles
-Support multiple EPUB block display styles for beautiful in-document links:
-
-#### 5 Block Styles
-| Style | Effect | Use Case |
-|-------|--------|----------|
-| **Default** | Plain link style | Simple reference |
-| **Border** | Add border decoration | Highlight display |
-| **Card** | Card layout with cover and info | Book showcase |
-| **Cover** | Cover image only | Book collection |
-| **Reader** | Embedded reader | Direct reading |
+## 📖 Feature Details
+
+### 🎨 Theme System
+8 preset themes for different scenarios, support custom themes:
+- **Default** - Classic white background with black text
+- **Almond** - Eye-protection color scheme
+- **Autumn** - Warm tone
+- **Green** - Fresh and eye-friendly
+- **Blue** - Calm and peaceful
+- **Night** - Dark background
+- **Dark** - Pure black mode
+- **Gold** - Luxury color scheme
+
+### 🖊️ Annotation System
+7 colors with 4 style combinations:
+- **Colors** - Red🔴Orange🟠Yellow🟡Green🟢Pink🩷Blue🔵Purple🟣
+- **Styles** - Highlight, underline, border, wavy
+- **Notes** - Add detailed notes to annotations
+- **Management** - Filter by color, batch management
+
+### 📖 Dictionary System
+9 professional dictionary sources with smart recognition:
+- **AI Translation** - Free AI translation (no config), SiYuan AI translation (requires OpenAI API)
+- **Offline Dictionary** - Support StarDict (.ifo/.idx/.dict.dz) and dictd (.index/.dict.dz) formats
+- **English Dictionary** - Cambridge (bilingual, phonetics, audio, examples), Youdao (simple), Haici (rich examples)
+- **Chinese Dictionary** - Character (radicals, strokes), Phrase (synonyms, antonyms), Zdic (classical Chinese)
+- **Universal Dictionary** - Bing (external webpage)
+
+**Key Features:**
+- **Smart Parsing** - Auto-extract POS, tags, annotations, domains, usage
+- **Long Text Translation** - AI translation supports long text and paragraphs with format preservation
+- **Dictionary Sorting** - Customizable dictionary query order
+- **Offline Query** - Offline dictionaries work without network, fast query
+- **Audio Pronunciation** - Cambridge dictionary supports US/UK pronunciation
+
+### 🔍 Book Source System
+Powerful rule parser:
+- **JSONPath** - `$.key`, `$[0]`, `$[*]`, `.key` recursive search
+- **CSS Selectors** - Chain selection, index filtering, attribute extraction
+- **JavaScript** - `<js>...</js>` code block, `result` variable passing
+- **Regex** - `##regex##replace` syntax
+- **Rule Combination** - `&&` (and), `||` (or), `%%` (cross merge)
+
+### 🛠️ PDF Toolbar
+Professional PDF reading tools:
+- **Zoom Control** - Zoom in, zoom out, fit width, fit page
+- **Rotation** - Rotate left/right 90°
+- **Tool Modes** - Text selection, hand drag
+- **Ink Annotation** - 7 colors, width adjustment, eraser, undo
+- **Shape Annotation** - Rectangle, circle, triangle with fill support
+- **Document Operations** - Print, download, export images, view metadata
+
+### 📊 Reading Statistics
+Track reading time:
+- **Current Session** - Current reading session time
+- **Today** - Today's total reading time
+- **Total** - Cumulative reading time
+- **Status Bar** - Real-time display in status bar
+- **Auto Save** - Auto-save every minute
+
+### 🔗 Copy & Jump
+Smart link generation:
+- **Annotation Copy** - One-click copy to SiYuan note format
+- **Custom Template** - Support custom link format
+- **Shape Screenshot** - Auto-generate shape annotation screenshots
+- **Precise Jump** - Click link to jump to exact annotation position
+- **Blink Hint** - Highlight blink effect after jump
+
+### 📦 Deck System
+Vocabulary learning and review:
+- **One-click Add** - Add word lookup results to deck with one click
+- **Reading Annotation** - Deck words show 🌐 icon in reading interface
+- **Real-time Sync** - Immediately update reading interface after add/delete
+- **Data Persistence** - Store as `deck.json` file
+- **Position Record** - Record word location in book, chapter, page
+- **Smart Annotation** - Deck words auto-highlight in purple
+
+### 📚 Bookshelf Management
+Complete book management system:
+- **Multi-view** - Grid, list, compact display modes
+- **Smart Sorting** - Recently added, recently read, reading progress, title, author
+- **Tag Filtering** - Filter by book tags
+- **Progress Display** - Real-time reading progress percentage
+- **Update Check** - One-click check all online book updates
+- **Metadata Parsing** - Auto-extract title, author, intro, chapters, cover
+- **Batch Management** - Support batch delete, export books
+
+### 🔗 Smart Jump
+Precise positioning and jump:
+- **sireader:// Protocol** - Support custom protocol links
+- **CFI Positioning** - EPUB uses CFI for precise positioning
+- **Page Positioning** - PDF uses page number and rectangle coordinates
+- **Blink Hint** - Highlight blink effect after jump
+- **Smart Detection** - Auto-detect opened books, jump directly
+
+### 📱 Mobile Support (Experimental)
+Initial mobile reading support:
+- **Gesture Navigation** - Swipe left/right to turn pages (minimum 50px)
+- **Position Memory** - Auto-save and restore reading position
+- **Back Support** - Listen to browser back button
+- **Sidebar Entry** - Add SiReader icon to mobile sidebar
 
 ---
 
 ## ⚙️ Settings
 
-### 🎨 Theme Settings
-1. Click toolbar settings button ⚙️
-2. Select `Theme` tab
-3. Choose from preset themes
-4. Or select "Custom" to create personal theme
+### General Settings
+- **Open Mode** - New tab, right tab, bottom tab, new window
+- **Navigation Position** - Left, right, top, bottom
+- **TOC Position** - Left, right
+- **Reading Mode** - Single, double, scroll
+- **Page Animation** - Slide, none
 
-### 📝 Annotation Settings
-1. Select `Annotation` tab
-2. Choose annotation document creation method:
-   - **Notebook Mode**: Create independent doc for each book
-   - **Document Mode**: Create subdocs under specified document
-3. Set target notebook or parent document
+### Appearance Settings
+- **Theme** - 8 preset themes + custom
+- **Text** - Font, size, letter spacing
+- **Paragraph** - Line height, paragraph spacing, text indent
+- **Layout** - Horizontal margin, vertical margin, column gap
+- **Visual** - Brightness, contrast, sepia, saturation, invert
 
-### 📖 Reading Settings
-1. Select `Reading` tab
-2. Choose page animation effects
-3. Set single or double page display mode
-
-### 🔧 General Settings
-1. Select `General` tab
-2. Set book opening method:
-   - **New Tab**: Open in new tab
-   - **Right Tab**: Open on right side
-   - **Bottom Tab**: Open at bottom
-   - **New Window**: Open in new window
-3. Choose TOC opening position:
-   - **Dialog**: Popup display
-   - **Left**: Left panel
-   - **Right**: Right panel
+### Dictionary Settings
+- **Offline Dictionary** - StarDict/MDict format, support upload, sort, enable/disable
+- **Online Dictionary** - 9 dictionary sources, support sort, enable/disable
+- **AI Translation** - Free AI (no config), SiYuan AI (requires OpenAI API)
+- **Dictionary Management** - Customize query order, prioritize dictionaries at the top
 
 ---
 
-## 💡 Usage Tips
+## 💡 Tips
 
-### 📖 Efficient Reading Tips
-1. **Theme Switching**: Choose appropriate themes based on time and environment
-   - Daytime: use "Default" or "Almond"
-   - Nighttime: use "Night" or "Dark" mode
-2. **Reading Modes**: Choose based on content type
-   - Novels: Pagination mode + Single page
-   - Academic: Scroll mode + Double page
+### Reading Tips
+1. **Theme Switch** - Use default/almond in daytime, night/dark at night
+2. **Reading Mode** - Use page+single for novels, scroll+double for academic
+3. **Shortcuts** - ← → for page turn, Space for page turn, PageUp/Down for page turn
 
-### 📝 Annotation Management Tips
-1. **Color Classification**:
-   - 🔴 Red: Core concepts and important theories
-   - 🟡 Yellow: General highlights and key information
-   - 🟢 Green: Positive cases and successful experiences
-   - 🔵 Blue: Supplementary materials and extended reading
-   - 🟣 Purple: Questions and content needing verification
+### Annotation Tips
+1. **Color Classification** - Red for core concepts, yellow for general points, green for positive cases, blue for supplementary, purple for questions
+2. **Annotation Review** - Regularly review in annotation mode
+3. **Annotation Export** - Auto-save to SiYuan notes
 
-2. **Annotation Organization**: Regularly review all annotations in annotation mode
-3. **Annotation Export**: Annotations auto-save to SiYuan documents for later organization
+### Dictionary Tips
+1. **Quick Lookup** - Double-click to select and query
+2. **Pin Window** - Click 📌 to pin dictionary window
+3. **Multi-dictionary** - Switch between different dictionary tabs
+4. **Offline Dictionary** - Download StarDict format dictionaries, upload and use without network
+5. **AI Translation** - Support long text translation with format and paragraph preservation
+6. **Dictionary Sorting** - Adjust order in dictionary management, prioritize frequently used dictionaries
 
-### 📚 Dictionary Query Tips
-1. **Quick Query**: Double-click to select and query unknown words
-2. **Fixed Window**: Click 📌 to fix dictionary window while studying
-3. **Multi-Dictionary Comparison**: Switch dictionary tabs to compare definitions
+### PDF Tips
+1. **Ink Annotation** - Suitable for handwritten notes and highlighting
+2. **Shape Annotation** - Rectangle selection, circle marking, triangle indication
+3. **Toolbar Drag** - Long press toolbar button to drag position
+4. **Hand Tool** - Enable to drag pages, suitable for large documents
+
+### Book Source Tips
+1. **Concurrent Search** - Search multiple sources simultaneously
+2. **Custom Sources** - Support importing JSON format sources
+3. **Rule Debugging** - Use browser developer tools to test rules
+
+---
+
+## 🏗️ Technical Architecture
+
+### Core Modules
+- **Foliate.js** - EPUB rendering engine with CFI positioning
+- **PDF.js** - Mozilla's PDF rendering engine (SiYuan built-in)
+- **RuleParser** - Multi-format book source parser (JSONPath/CSS/XPath/JS/Regex)
+- **MarkManager** - Unified annotation manager for PDF/EPUB/TXT
+- **Bookshelf** - Book metadata and progress management
+
+### Key Features
+- **Unified Annotation** - Single API for PDF/EPUB/TXT annotations
+- **Smart Positioning** - CFI for EPUB, page+rect for PDF, section for TXT
+- **Real-time Sync** - Auto-save reading progress and annotations
+- **Deck Integration** - Vocabulary cards sync with reading interface
+- **Mobile Support** - Gesture navigation and position memory
 
 ---
 
 ## ❓ FAQ
 
-### 📱 Usage Issues
+**Q: Can't open EPUB file?**  
+A: Check if the file format is standard EPUB and not corrupted
 
-**Q: EPUB file won't open?**  
-A: Check if file format is standard EPUB and ensure file is not corrupted
-
-**Q: Annotations not saving?**  
+**Q: Annotations not saved?**  
 A: Check if notebook or parent document is correctly configured in annotation settings
 
-**Q: Dictionary query not responding?**  
-A: Check network connection, some dictionaries require internet access
+**Q: Dictionary not responding?**  
+A: Check network connection, some dictionaries require internet
 
-**Q: Theme switching not working?**  
-A: Refresh reader page or reopen EPUB file
+**Q: AI translation failed?**  
+A: SiYuan AI requires OpenAI API configuration in Settings → AI, or use "AI Translation (Free)" option
 
-### ⚙️ Settings Issues
+**Q: Offline dictionary not working?**  
+A: Ensure complete dictionary files (.ifo/.idx/.dict.dz or .index/.dict.dz) are uploaded and enabled in dictionary management
 
-**Q: Can't find settings button?**  
-A: Settings button is on the right side of toolbar, icon is ⚙️
+**Q: Dictionary results inaccurate?**  
+A: Switch between different dictionaries for comparison, or adjust dictionary query order
 
-**Q: Where are annotation documents?**  
-A: Look in corresponding notebook or document based on configured mode
+**Q: Theme switch not working?**  
+A: Refresh reader page or reopen the file
 
-**Q: How to modify shortcuts?**  
-A: Shortcuts are currently fixed, custom shortcuts will be supported in future versions
+**Q: PDF annotations misaligned?**  
+A: Try rescaling or rotating the page, annotations will auto re-render
 
-**Q: EPUB block styles not working?**  
-A: Ensure EPUB file is correctly dragged into document, click block icon and select style through menu
+**Q: Book source search failed?**  
+A: Check network connection, some sources may be invalid, try other sources
 
----
+**Q: Can't turn pages on mobile?**  
+A: Ensure swipe distance exceeds 50px, or use bottom page buttons
 
-## 🔧 Technical Architecture
-
-### Tech Stack
-
-| Technology | Version | Purpose |
-|------------|---------|---------|
-| **Vue 3** | Composition API | Reactive frontend framework |
-| **ePub.js** | v0.3+ | EPUB rendering engine |
-| **SiYuan** | Plugin API | Block integration, data persistence |
-| **TypeScript** | 5.0+ | Type safety, code hints |
-
-### Design Philosophy
-
-- **🎯 Clear Responsibilities**: Single responsibility, modular design
-- **🔗 Loose Coupling**: Composition functions, dependency injection
-- **📱 User Friendly**: Modern UI, intelligent interaction
-- **⚡ Performance First**: Algorithm optimization, memory management
-- **🛠️ Extensibility**: Plugin architecture, configuration-based
-
-### Performance Optimization
-
-- **🚀 Simple & Efficient**: Single-line functions, chained operations
-- **💾 Smart Caching**: Annotation caching, progress debouncing
-- **🔄 Reactive Updates**: Direct array operations, avoid reloading
-- **🧹 Memory Management**: Auto cleanup, prevent memory leaks
+**Q: Reading progress lost?**  
+A: Plugin auto-saves progress, if issues occur try reopening the book
 
 ---
 
 ## 🙏 Acknowledgments
 
-- Thanks to the SiYuan team for providing excellent plugin development framework and templates, making plugin development more convenient and efficient.
-- **[SiYuan Plugin Development Guide](https://ld246.com/article/1723732790981#START-UP)** and its authors for detailed development documentation
-- **Plugin developer [vv](https://github.com/Wetoria)** for providing [Vue3 + Vite SiYuan Plugin Template](https://github.com/siyuan-note/plugin-sample-vite-vue)
-- **[Epub.js](https://github.com/futurepress/epub.js)** open source project for powerful EPUB rendering engine
-- Also thanks to all users who use and provide feedback, your suggestions help SiReader continuously improve.
+- [SiYuan](https://github.com/siyuan-note/siyuan) - Excellent plugin development framework
+- [Foliate.js](https://github.com/johnfactotum/foliate-js) - Powerful EPUB rendering engine
+- [PDF.js](https://github.com/mozilla/pdf.js) - Mozilla's PDF rendering engine
+- [Guiye Plugin](https://github.com/Wetoria) - Vue3 + Vite plugin template
 
-**Development Philosophy**: Simple, Efficient, Elegant, Perfect  
-**Tech Stack**: Vue3 + Epub.js + SiYuan API  
-**Architecture**: Modular, Compositional, Reactive, Extensible
+---
+
+## 📄 License
+
+This project is licensed under the [MIT](LICENSE) License
+
+---
+
+<div align="center">
+
+**Development Philosophy**: Simple · Efficient · Elegant · Perfect
+
+Made with ❤️ by SiReader Team
 
 </div>

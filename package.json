@@ -1,6 +1,6 @@
 {
   "name": "siyuan-sireader",
-  "version": "0.6.3",
+  "version": "0.6.4",
   "type": "module",
   "description": "思源笔记电子书阅读增强插件 - 思阅 SiReader",
   "author": "mm-o",
@@ -22,7 +22,6 @@
     "foliate-js": "^1.0.1",
     "jszip": "^3.10.1",
     "pdf-lib": "^1.17.1",
-    "pdfjs-dist": "^5.4.449",
     "vue": "^3.3.8"
   },
   "devDependencies": {
@@ -36,6 +35,7 @@
     "fast-glob": "^3.2.12",
     "glob": "^11.0.1",
     "minimist": "^1.2.8",
+    "pdfjs-dist": "^5.4.449",
     "rollup-plugin-livereload": "^2.0.5",
     "sass": "^1.62.1",
     "siyuan": "1.1.0",

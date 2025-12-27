@@ -80,6 +80,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { bookshelfManager, type BookIndex } from '@/core/bookshelf'
+import { bookSourceManager } from '@/core/book'
 import { showMessage } from 'siyuan'
 import { isMobile } from '@/core/mobile'
 
@@ -142,6 +143,19 @@ const loadCover = async (path: string) => {
 const readBook = async (book: BookIndex) => {
   const full = await bookshelfManager.getBook(book.bookUrl)
   if (!full) return showMessage('加载失败', 3000, 'error')
+  
+  if (full.format === 'online' && full.origin && !full.chapters?.length) {
+    try {
+      const info = await bookSourceManager.getBookInfo(full.origin, full.bookUrl)
+      const chapters = await bookSourceManager.getChapters(full.origin, info.tocUrl || full.bookUrl)
+      full.chapters = chapters.map((ch, i) => ({ index: i, title: ch.name, url: ch.url }))
+      await bookshelfManager.updateBook(full.bookUrl, { chapters: full.chapters, totalChapterNum: chapters.length })
+    } catch (e) {
+      console.error('[章节加载失败]', e)
+      return showMessage('章节加载失败', 3000, 'error')
+    }
+  }
+  
   isMobile() ? window.dispatchEvent(new CustomEvent('reader:open', { detail: { book: full } })) : emit('read', full)
 }
 

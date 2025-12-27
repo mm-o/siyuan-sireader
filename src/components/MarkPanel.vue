@@ -131,15 +131,19 @@ const state = reactive({
 const currentColor = computed(() => colors[state.color] || '#ffeb3b')
 
 const menuPosition = computed(() => {
-  const w=140
-  return{left:`${Math.max(w/2+10,Math.min(state.x,window.innerWidth-w/2-10))}px`,top:`${Math.max(60,Math.min(state.y-54,window.innerHeight-60))}px`,transform:'translate(-50%, 0)'}
+  const w=140,container=document.querySelector('.reader-container')
+  const bounds=container?.getBoundingClientRect()||{left:0,top:0,right:window.innerWidth,bottom:window.innerHeight}
+  const x=Math.max(bounds.left+w/2+10,Math.min(state.x,bounds.right-w/2-10))
+  const y=Math.max(bounds.top+60,Math.min(state.y-54,bounds.bottom-60))
+  return{left:`${x}px`,top:`${y}px`,transform:'translate(-50%, 0)'}
 })
 
 const cardPosition = computed(() => {
-  const w=340,h=state.isEditing?420:180
-  const x=Math.max(w/2+10,Math.min(state.x,window.innerWidth-w/2-10))
+  const w=340,h=state.isEditing?420:180,container=document.querySelector('.reader-container')
+  const bounds=container?.getBoundingClientRect()||{left:0,top:0,right:window.innerWidth,bottom:window.innerHeight}
+  const x=Math.max(bounds.left+w/2+10,Math.min(state.x,bounds.right-w/2-10))
   let y=state.y+10
-  if(y+h>window.innerHeight-20)y=Math.max(20,state.y-h-10)
+  if(y+h>bounds.bottom-20)y=Math.max(bounds.top+20,state.y-h-10)
   return{left:`${x}px`,top:`${y}px`,transform:'translate(-50%, 0)'}
 })
 
@@ -326,7 +330,7 @@ const handleOverlayClick = (e: MouseEvent) => {
 <style scoped lang="scss">
 .mark-overlay{position:fixed;inset:0;z-index:900;background:transparent}
 .mark-selection-menu{position:fixed;z-index:950;display:flex;gap:4px;padding:6px;background:var(--b3-theme-surface);border:1px solid var(--b3-border-color);border-radius:8px;box-shadow:0 4px 16px #0002}
-.mark-menu-btn{width:32px;height:32px;display:flex;align-items:center;justify-content:center;border:none;background:transparent;border-radius:6px;cursor:pointer;transition:all .15s;color:var(--b3-theme-on-surface);svg{width:16px;height:16px}&:hover{background:var(--b3-list-hover);color:var(--b3-theme-primary)}}
+.mark-menu-btn{width:32px;height:32px;display:flex;align-items:center;justify-content:center;border:none;background:transparent;border-radius:8px;cursor:pointer;transition:all .15s;color:var(--b3-theme-on-surface);svg{width:16px;height:16px}&:hover{background:var(--b3-list-hover);color:var(--b3-theme-primary)}}
 .sr-card{position:fixed;z-index:950;width:340px;background:var(--b3-theme-surface);border:1px solid var(--b3-border-color);border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,.1)}
 .sr-main{padding:12px;border-left:4px solid;border-radius:8px}
 .sr-title{font-size:13px;font-weight:500;line-height:1.6;color:var(--b3-theme-on-surface);margin-bottom:8px;&[contenteditable="true"]{font-size:15px;font-weight:600}}

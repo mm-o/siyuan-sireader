@@ -17,11 +17,11 @@ export const STYLES=[{type:'highlight'as const,name:'高亮',text:'A'},{type:'un
 export const getColorMap=()=>Object.fromEntries(COLORS.map(c=>[c.color,c.bg]))
 export const formatTime=(ts:number)=>{const d=new Date(ts);return`${d.getFullYear()}-${(d.getMonth()+1).toString().padStart(2,'0')}-${d.getDate().toString().padStart(2,'0')}`}
 
-// 工具函数
-export const getNoteIcon=(color?:string)=>color==='purple'?'🌐':'📒'
-export const getNoteColor=(color?:string)=>color==='purple'?'#ab47bc':'#2196f3'
+const getNoteIcon=(color?:string)=>color==='purple'?'🌐':'📒'
+const getNoteColor=(color?:string)=>color==='purple'?'#ab47bc':'#2196f3'
+const getColorBg=(color?:HighlightColor)=>COLORS.find(c=>c.color===color)?.bg||'#ffeb3b'
+const cleanTooltips=(markId:string)=>document.querySelectorAll(`[data-note-tooltip][data-mark-id="${markId}"]`).forEach(el=>el.remove())
 
-// 统一 tooltip 创建和显示函数
 export const createTooltip=(config:{icon:string;iconColor:string;title:string;content:string;id?:string})=>{
   const{icon,iconColor,title,content,id}=config
   const header=`<div style="display:flex;align-items:center;gap:8px;padding:12px 14px;border-left:4px solid ${iconColor};background:linear-gradient(135deg,var(--b3-theme-surface) 0%,var(--b3-theme-background-light) 100%)"><svg style="width:16px;height:16px;color:${iconColor};flex-shrink:0;filter:drop-shadow(0 1px 2px ${iconColor}4d)"><use xlink:href="${icon}"/></svg><span style="font-size:13px;font-weight:600;color:var(--b3-theme-on-surface);text-shadow:0 1px 2px rgba(0,0,0,.05)">${title}</span>${id?`<span style="font-size:10px;color:var(--b3-theme-on-surface-variant);margin-left:auto;opacity:0.6;font-weight:400">${id}</span>`:''}</div>`
@@ -57,7 +57,6 @@ export interface MarkManagerConfig{format:Format;view?:any;plugin:Plugin;bookUrl
 export class MarkManager{
   private format:Format
   private view:any
-  private plugin:Plugin
   private bookUrl:string
   private bookName:string
   private marks:Mark[]=[]
@@ -66,7 +65,6 @@ export class MarkManager{
   private autoSaveTimer:any
   private currentPage=1
   private currentProgress=0
-  private outline:any[]=[]
   private onAnnotationClick?:(mark:Mark)=>void
   private pdfViewer:any
   private reader:any
@@ -75,7 +73,6 @@ export class MarkManager{
   constructor(cfg:MarkManagerConfig){
     this.format=cfg.format
     this.view=cfg.view
-    this.plugin=cfg.plugin
     this.bookUrl=cfg.bookUrl
     this.bookName=cfg.bookName||'book'
     this.onAnnotationClick=cfg.onAnnotationClick
@@ -221,7 +218,7 @@ export class MarkManager{
     this.view.addEventListener('draw-annotation',((e:CustomEvent)=>{
       const{draw,annotation,range}=e.detail
       const m=this.marks.find(mark=>mark.cfi===annotation.value)
-      const color=COLORS.find(c=>c.color===(m?.color||'yellow'))?.bg||'#ffeb3b'
+      const color=getColorBg(m?.color)
       const style=m?.style||'highlight'
       const styles={underline:[Overlayer.underline,{color,width:2}],outline:[Overlayer.outline,{color,width:3}],squiggly:[Overlayer.squiggly,{color,width:2}],highlight:[Overlayer.highlight,{color}]}
       const[fn,opts]=styles[style]||styles.highlight
@@ -233,14 +230,17 @@ export class MarkManager{
   private renderNote(range:Range,mark:Mark){
     try{
       const doc=range.startContainer.ownerDocument
-      const icon=getNoteIcon(mark.color),themeColor=getNoteColor(mark.color)
-      const isVocab=mark.color==='purple'
+      if(doc.querySelector(`[data-note-marker][data-mark-id="${mark.id}"]`))return
+      
+      const icon=getNoteIcon(mark.color),themeColor=getNoteColor(mark.color),isVocab=mark.color==='purple'
       const marker=doc.createElement('span')
       marker.setAttribute('data-note-marker','true')
       if(isVocab)marker.setAttribute('data-vocab','true')
       marker.setAttribute('data-mark-id',mark.id)
       marker.textContent=icon
       marker.style.cssText='position:relative;top:-0.5em;font-size:1.1em;margin-left:3px;cursor:pointer;user-select:none;opacity:0.85'
+      
+      cleanTooltips(mark.id)
       const tooltip=window.document.createElement('div')
       tooltip.setAttribute('data-note-tooltip','true')
       if(isVocab)tooltip.setAttribute('data-vocab','true')
@@ -263,13 +263,18 @@ export class MarkManager{
     }catch(e){console.error('[Mark]',e)}
   }
 
-  // 创建笔记标记和 tooltip
-  private createNoteMarker(m:Mark,r:any,bg:string,layer:HTMLElement){
-    const marker=document.createElement('span'),tooltip=document.createElement('div')
+  private createNoteMarker(m:Mark,r:any,layer:HTMLElement){
+    if(layer.querySelector(`[data-note-marker][data-mark-id="${m.id}"]`))return
+    const bg=getColorBg(m.color)
+    const marker=document.createElement('span')
     marker.setAttribute('data-note-marker','true')
+    marker.setAttribute('data-mark-id',m.id)
     marker.textContent=getNoteIcon(m.color)
     marker.style.cssText=`position:absolute;left:${r.x+r.w+3}px;top:${r.y-5}px;font-size:14px;cursor:pointer;user-select:none;opacity:0.85;transition:opacity .2s;pointer-events:auto;z-index:12`
+    cleanTooltips(m.id)
+    const tooltip=document.createElement('div')
     tooltip.setAttribute('data-note-tooltip','true')
+    tooltip.setAttribute('data-mark-id',m.id)
     tooltip.style.cssText='position:fixed;display:none;min-width:280px;max-width:420px;background:var(--b3-theme-surface);border:1px solid var(--b3-border-color);border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.12),0 4px 16px rgba(0,0,0,.08),0 2px 8px rgba(0,0,0,.04);z-index:99999;overflow:hidden;backdrop-filter:blur(8px);word-wrap:break-word'
     tooltip.innerHTML=createTooltip({icon:m.type==='vocab'?'#iconLanguage':'#iconEdit',iconColor:bg,title:m.type==='vocab'?'词汇笔记':'标注笔记',content:`<div style="padding:14px;font-size:13px;line-height:1.7;color:var(--b3-theme-on-surface);max-height:300px;overflow-y:auto;word-wrap:break-word;word-break:break-word;background:var(--b3-theme-surface)">${m.note!.split('\n').map(l=>l.trim()).filter(Boolean).join('<br>')}</div>`})
     document.body.appendChild(tooltip)
@@ -282,17 +287,17 @@ export class MarkManager{
     layer.appendChild(marker)
   }
 
-  // PDF 渲染
   renderPdf(page:number){
     if(this.format!=='pdf'||!this.pdfViewer)return
-    const layer=document.querySelector(`[data-page="${page}"] .pdf-annotation-layer`) as HTMLElement
+    const layer=document.querySelector(`[data-page="${page}"] .pdf-annotation-layer`)as HTMLElement
     if(!layer)return
-    layer.querySelectorAll('[data-note-marker],[data-note-tooltip],.pdf-highlight').forEach(el=>el.remove())
+    layer.querySelectorAll('[data-note-marker],.pdf-highlight').forEach(el=>el.remove())
+    this.marks.filter(m=>m.page===page).forEach(m=>cleanTooltips(m.id))
     const pdfPage=this.pdfViewer.getPages().get(page)
     if(!pdfPage)return
     const viewport=pdfPage.getViewport({scale:this.pdfViewer.getScale(),rotation:this.pdfViewer.getRotation()})
     this.marks.filter(m=>m.page===page&&(m.type==='highlight'||m.type==='note'||m.type==='vocab')).forEach(m=>{
-      const bg=COLORS.find(c=>c.color===m.color)?.bg||'#ffeb3b',style=m.style||'highlight'
+      const bg=getColorBg(m.color),style=m.style||'highlight'
       m.rects?.forEach((r,idx)=>{
         const bounds=viewport.convertToViewportRectangle([r.x,r.y,r.x+r.w,r.y+r.h])
         const vw=Math.abs(bounds[0]-bounds[2]),vh=Math.abs(bounds[1]-bounds[3])
@@ -304,19 +309,16 @@ export class MarkManager{
         div.style.cssText=style==='highlight'?`${base};background:${bg};opacity:0.3`:style==='underline'?`${base};border-bottom:2px solid ${bg};opacity:0.8`:style==='outline'?`${base};border:2px solid ${bg};opacity:0.8`:`${base};border-bottom:2px wavy ${bg};opacity:0.8`
         div.onclick=()=>this.onAnnotationClick?.(m)
         layer.appendChild(div)
-        if(m.note&&idx===m.rects!.length-1){
-          const noteR={x:vx,y:vy,w:vw,h:vh}
-          this.createNoteMarker(m,noteR,bg,layer)
-        }
+        if(m.note&&idx===m.rects!.length-1)this.createNoteMarker(m,{x:vx,y:vy,w:vw,h:vh},layer)
       })
     })
   }
 
-  // TXT 渲染
   renderTxt(doc:Document,section:number){
-    if(this.format!=='txt'||!doc||!doc.body)return
+    if(this.format!=='txt'||!doc?.body)return
     try{
       doc.querySelectorAll('[data-txt-mark],[data-note-marker]').forEach(el=>el.remove())
+      this.marks.filter(m=>m.section===section).forEach(m=>cleanTooltips(m.id))
       this.marks.filter(m=>m.section===section&&m.type!=='bookmark').forEach(m=>{
         const walker=doc.createTreeWalker(doc.body,NodeFilter.SHOW_TEXT)
         let node:Node|null
@@ -329,8 +331,7 @@ export class MarkManager{
             range.setEnd(node,idx+(m.text?.length||0))
             const span=doc.createElement('span')
             span.setAttribute('data-txt-mark','true')
-            const color=COLORS.find(c=>c.color===m.color)?.bg||'#ffeb3b'
-            const style=m.style||'highlight'
+            const color=getColorBg(m.color),style=m.style||'highlight'
             if(style==='highlight')span.style.backgroundColor=color
             else if(style==='underline')Object.assign(span.style,{borderBottom:`2px solid ${color}`,paddingBottom:'2px'})
             else if(style==='outline')Object.assign(span.style,{border:`2px solid ${color}`,padding:'0 2px',borderRadius:'2px'})
@@ -346,7 +347,7 @@ export class MarkManager{
   }
 
   bindTxtDocEvents(doc:Document,section:number){
-    if(!doc||!doc.body||(doc as any).__txtEventsBound)return
+    if(!doc?.body||(doc as any).__txtEventsBound)return
     try{
       doc.addEventListener('mouseup',(e:MouseEvent)=>window.dispatchEvent(new CustomEvent('txt-selection',{detail:{doc,event:e}})))
       this.renderTxt(doc,section)
@@ -361,12 +362,11 @@ export class MarkManager{
     contents.forEach(({doc}:any)=>{if(doc)this.renderTxt(doc,section)})
   }
 
-  // 公共 API
   async addHighlight(loc:string|number,text:string,color:HighlightColor,style:MarkStyle='highlight',rects?:any[]):Promise<Mark>{
     const m=this.add({type:'highlight',[typeof loc==='string'?'cfi':this.format==='pdf'?'page':'section']:loc,text:text.substring(0,200),color,style,rects})
     if(this.format==='pdf')this.renderPdf(m.page!)
     else if(this.format==='txt')this.refreshTxt()
-    else if(m.cfi)await this.view?.addAnnotation?.({value:m.cfi,color:m.color}).catch(()=>{})
+    else if(m.cfi)await this.view?.addAnnotation?.({value:m.cfi,color:m.color,note:m.note}).catch(()=>{})
     this.save()
     window.dispatchEvent(new Event('sireader:marks-updated'))
     return m
@@ -393,7 +393,7 @@ export class MarkManager{
       if(type==='ink')return false
       keyOrMark=id
     }
-    const m=this.marks.find(mark=>mark.id===keyOrMark)||this.marksMap.get(keyOrMark)
+    const m=this.marksMap.get(keyOrMark)
     if(!m)return false
     Object.assign(m,updates)
     if(this.format==='pdf')this.renderPdf(m.page!)
@@ -425,9 +425,8 @@ export class MarkManager{
     }
     if(await this.callManager('ink','deleteInk',idOrKey))return true
     if(await this.callManager('shape','deleteShape',idOrKey))return true
-    const m=this.marks.find(mark=>mark.id===idOrKey)||this.marksMap.get(idOrKey)
-    if(!m)return false
-    if(!this.del(m.id))return false
+    const m=this.marksMap.get(idOrKey)
+    if(!m||!this.del(m.id))return false
     if(m.type==='vocab'&&m.text){
       try{
         const{getDeckCards,removeFromDeck}=await import('@/core/dictionary')
@@ -439,7 +438,7 @@ export class MarkManager{
     else if(this.format==='txt')this.refreshTxt()
     else{
       if(m.cfi)await this.view?.deleteAnnotation?.({value:m.cfi}).catch(()=>{})
-      document.querySelectorAll(`[data-mark-id="${m.id}"]`).forEach(el=>el.remove())
+      cleanTooltips(m.id)
       const contents=this.view?.renderer?.getContents?.()
       contents?.forEach(({doc}:any)=>doc?.querySelectorAll(`[data-mark-id="${m.id}"]`).forEach((el:Element)=>el.remove()))
     }
@@ -448,7 +447,6 @@ export class MarkManager{
     return true
   }
 
-  // 书签
   addBookmark(loc?:string|number,title?:string):Mark{
     const l=this.view?.lastLocation
     const useLoc=loc||(this.format==='pdf'?this.currentPage:l?.cfi||l?.section)
@@ -485,11 +483,8 @@ export class MarkManager{
   getShapeAnnotations=()=>this.getManager('shape')?.toJSON?.()||[]
   
   async goTo(m:Mark){
-    if(this.format==='pdf'&&m.page){
-      window.dispatchEvent(new CustomEvent('sireader:goto',{detail:{cfi:`#page-${m.page}`,id:m.id}}))
-    }else{
-      window.dispatchEvent(new CustomEvent('sireader:goto',{detail:{cfi:m.cfi||`section-${m.section}`,id:m.id}}))
-    }
+    if(this.format==='pdf'&&m.page)window.dispatchEvent(new CustomEvent('sireader:goto',{detail:{cfi:`#page-${m.page}`,id:m.id}}))
+    else window.dispatchEvent(new CustomEvent('sireader:goto',{detail:{cfi:m.cfi||`section-${m.section}`,id:m.id}}))
   }
 
   updateProgress(){
@@ -520,7 +515,6 @@ export class MarkManager{
     this.syncToBookshelf()
   }
 
-  setOutline=(outline:any[])=>this.outline=outline
   setCurrentPage=(page:number)=>{this.currentPage=page;this.save()}
   
   async destroy(){
@@ -548,4 +542,4 @@ export class MarkManager{
 }
 
 export const createMarkManager=(cfg:MarkManagerConfig)=>new MarkManager(cfg)
-export type{Mark,MarkManagerConfig,HighlightColor,MarkStyle,MarkType}
+export type{Mark,HighlightColor,MarkStyle,MarkType}

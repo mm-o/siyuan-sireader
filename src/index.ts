@@ -2,7 +2,7 @@ import { Plugin, getFrontend } from 'siyuan'
 import '@/index.scss'
 import PluginInfoString from '@/../plugin.json'
 import { destroy, init } from '@/main'
-
+ 
 const { version } = PluginInfoString
 
 export default class PluginSample extends Plugin {
@@ -65,6 +65,7 @@ export default class PluginSample extends Plugin {
     // 新的 foliate 系统会在组件卸载时自动清理
     destroy()
     console.log('[SiReader] 插件已禁用')
+    location.reload() 
   }
 
   async uninstall() {

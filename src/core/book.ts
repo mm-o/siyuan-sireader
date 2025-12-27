@@ -1,20 +1,21 @@
 import JSZip from 'jszip'
 import { fetchSyncPost, fetchPost } from 'siyuan'
-import { ruleParser, CssParser } from './RuleParser'
+import { ruleParser } from './RuleParser'
 
-// ==================== 规则引擎 ====================
+// 规则引擎（简化版）
 class RuleEngine {
   private jsonData: any = null
 
   replaceVariables(template: string, variables: Record<string, any>): string {
     if (!template) return ''
-    let result = template.replace(/\{\{([^}]+)\}\}/g, (match, expr) => {
+    let result = template.replace(/\{\{cookie\.[^}]+\}\}/g, '')
+    result = result.replace(/\{\{([^}]+)\}\}/g, (match, expr) => {
       try {
         if (/^\w+$/.test(expr)) return String(variables[expr] || '')
         let computed = expr
         for (const [key, value] of Object.entries(variables)) {
           const numValue = Number(value)
-          if (!isNaN(numValue)) computed = computed.replace(new RegExp(`\\b${key}\\b`, 'g'), String(numValue))
+          !isNaN(numValue) && (computed = computed.replace(new RegExp(`\\b${key}\\b`, 'g'), String(numValue)))
         }
         return String(Function(`'use strict'; return (${computed})`)())
       } catch { return match }
@@ -32,137 +33,6 @@ class RuleEngine {
     return path.split('.').reduce((o, k) => (o || {})[k], obj)
   }
 
-  parseRule(html: string, rule: string): string {
-    if (!html || !rule) return ''
-    try {
-      if (rule.startsWith('@JSon:')) return this.parseJsonPath(html, rule.substring(6))
-      if (rule.includes('||')) return rule.split('||').map(r => r.trim()).reduce((res, r) => res || this.parseRule(html, r), '')
-      if (rule.includes('&&')) return rule.split('&&').map(r => r.trim()).reduce((res, r) => res || this.parseSingleRule(html, r), '')
-      return this.parseSingleRule(html, rule)
-    } catch { return '' }
-  }
-
-  private parseJsonPath(jsonStr: string, path: string): string {
-    try {
-      const data = typeof jsonStr === 'string' ? JSON.parse(jsonStr) : jsonStr
-      this.jsonData = data
-      if (path.startsWith('$..')) {
-        const results: any[] = []
-        const search = (obj: any) => {
-          if (obj && typeof obj === 'object') {
-            if (path.substring(3) in obj) results.push(obj[path.substring(3)])
-            Object.values(obj).forEach(search)
-          }
-        }
-        search(data)
-        return results[0] ? String(results[0]) : ''
-      }
-      return path.startsWith('$.') ? String(this.getJsonValue(data, path.substring(2)) || '') : ''
-    } catch { return '' }
-  }
-  
-  private parseSingleRule(html: string, rule: string): string {
-    let result = html
-    const parts = rule.split('@')
-    if (parts[0]) {
-      const elements = this.selectElements(result, parts[0])
-      if (!elements.length) return ''
-      result = elements[0].outerHTML
-    }
-    for (let i = 1; i < parts.length; i++) {
-      const part = parts[i]
-      if (part.startsWith('js:')) result = this.executeJs(result, part.substring(3))
-      else if (part.includes('##')) {
-        const [attr, ...regexParts] = part.split('##')
-        if (attr) result = this.extractAttribute(result, attr)
-        if (regexParts.length) result = this.applyRegex(result, regexParts.join('##'))
-      } else result = this.extractAttribute(result, part)
-    }
-    return result.trim()
-  }
-
-  private executeJs(input: string, code: string): string {
-    try {
-      return String(new Function('result', `try{${code};return result}catch{return result}`)(input) || '')
-    } catch { return input }
-  }
-  
-  private selectElements(html: string, selector: string): Element[] {
-    const doc = new DOMParser().parseFromString(html, 'text/html')
-    if (selector.startsWith('class.')) return Array.from(doc.querySelectorAll(`.${selector.substring(6)}`))
-    if (selector.startsWith('id.')) { const el = doc.getElementById(selector.substring(3)); return el ? [el] : [] }
-    if (selector.startsWith('tag.')) {
-      const match = selector.match(/^tag\.([^.]+)(?:\.(\d+))?$/)
-      if (match) {
-        const elements = Array.from(doc.getElementsByTagName(match[1]))
-        return match[2] !== undefined ? (elements[parseInt(match[2])] ? [elements[parseInt(match[2])]] : []) : elements
-      }
-    }
-    return this.evaluateCssSelector(html, selector)
-  }
-  
-  private extractAttribute(html: string, attr: string): string {
-    const el = new DOMParser().parseFromString(html, 'text/html').body.firstElementChild
-    if (!el) return html
-    if (attr === 'text') return el.textContent?.trim() || ''
-    if (attr === 'textNodes') return Array.from(el.childNodes).filter(n => n.nodeType === 3).map(n => n.textContent?.trim()).filter(t => t).join('\n')
-    if (attr === 'html') return el.innerHTML || ''
-    return el.getAttribute(attr) || (attr === 'href' || attr === 'src' || attr === 'data-src' || attr === 'value' ? '' : html)
-  }
-
-  private applyRegex(text: string, pattern: string): string {
-    try {
-      const match = pattern.match(/^\/(.*)\/\s([gimsuy]*)$/)
-      return text.replace(match ? new RegExp(match[1], match[2]) : new RegExp(pattern, 'g'), '')
-    } catch { return text }
-  }
-
-  private evaluateCssSelector(html: string, selector: string): Element[] {
-    const doc = new DOMParser().parseFromString(html, 'text/html')
-    const eqMatch = selector.match(/^(.+):eq\((\d+)\)$/)
-    if (eqMatch) { const els = Array.from(doc.querySelectorAll(eqMatch[1])); return els[parseInt(eqMatch[2])] ? [els[parseInt(eqMatch[2])]] : [] }
-    if (selector.endsWith(':first')) { const els = Array.from(doc.querySelectorAll(selector.replace(/:first$/, ''))); return els[0] ? [els[0]] : [] }
-    if (selector.endsWith(':last')) { const els = Array.from(doc.querySelectorAll(selector.replace(/:last$/, ''))); return els.length ? [els[els.length - 1]] : [] }
-    try { return Array.from(doc.querySelectorAll(selector)) }
-    catch { return [] }
-  }
-
-  getString(html: string, rule: string, context: RuleContext = {}): string {
-    if (!html || !rule) return ''
-    const finalRule = this.replaceVariables(rule, context)
-    if (typeof html !== 'string' && typeof html === 'object' && html[finalRule] !== undefined) return String(html[finalRule])
-    return this.parseRule(html, finalRule)
-  }
-
-  getElements(html: string, rule: string, context: RuleContext = {}): Element[] {
-    if (!html || !rule) return []
-    let finalRule = this.replaceVariables(rule, context)
-    if (finalRule.includes('<js>')) {
-      const selectorLine = finalRule.split('\n')[0].trim()
-      if (!selectorLine || selectorLine.startsWith('<js>')) return []
-      finalRule = selectorLine
-    }
-    if (finalRule.startsWith('$.')) finalRule = '@JSon:' + finalRule
-    if (finalRule.startsWith('@JSon:')) {
-      try {
-        const data = typeof html === 'string' ? JSON.parse(html) : html
-        const result = finalRule.startsWith('@JSon:$.') ? this.getJsonValue(data, finalRule.substring(8)) : null
-        if (Array.isArray(result)) {
-          return result.map((item, index) => {
-            const div = document.createElement('div')
-            div.setAttribute('data-json', JSON.stringify(item))
-            div.setAttribute('data-index', String(index))
-            return div
-          })
-        }
-      } catch {}
-      return []
-    }
-    // 使用 CssParser 处理完整的选择器链（包括 @li@a 等）
-    const parser = new CssParser(html)
-    return parser.getElements(finalRule)
-  }
-
   parseHeader(headerStr: string): Record<string, string> {
     if (!headerStr) return {}
     if (headerStr.startsWith('@js:')) {
@@ -178,31 +48,40 @@ class RuleEngine {
 
 const ruleEngine = new RuleEngine()
 
-// ==================== 书源管理器 ====================
+
+// 书源管理器
 class BookSourceManager {
   private snippets: any[] = []
 
-  // 网络请求
-  private async request(url: string, headers = {}): Promise<string> {
+  private async request(url: string, headers = {}, method = 'GET', body = '', timeout = 30000): Promise<string> {
     try {
-      const res = await fetchSyncPost('/api/network/forwardProxy', {
-        url, method: 'GET', contentType: 'text/html',
+      const payload: any = {
+        url, method, contentType: 'text/html',
         headers: Object.entries(headers).map(([name, value]) => ({ name, value })),
-        timeout: 15000
-      })
-      return res?.code === 0 ? res.data?.body || '' : ''
-    } catch { return '' }
+        timeout
+      }
+      method === 'POST' && body && (payload.body = body)
+      
+      const res = await fetchSyncPost('/api/network/forwardProxy', payload)
+      if (res?.code !== 0) {
+        console.error('[请求失败]', { url, code: res?.code, msg: res?.msg })
+        return ''
+      }
+      return res.data?.body || ''
+    } catch (e: any) {
+      console.error('[请求异常]', { url, error: e.message })
+      return ''
+    }
   }
 
-  // 加载书源
   async loadSources() {
     const res = await fetchSyncPost('/api/snippet/getSnippet', { type: 'all', enabled: 2 })
     if (res.code === 0 && res.data?.snippets) {
       this.snippets = res.data.snippets
-      const snippet = this.snippets.find(s => s.type === 'js' && s.enabled && s.content?.includes('siyuanBookSources'))
+      const snippet = this.snippets.find((s: any) => s.type === 'js' && s.enabled && s.content?.includes('siyuanBookSources'))
       if (snippet) {
         const t: any = {}
-        eval(snippet.content.replace(/window\./g, 't.')) // eslint-disable-line no-eval
+        eval(snippet.content.replace(/window\./g, 't.'))
         ;(window as any).siyuanBookSources = t.siyuanBookSources || { sources: [] }
         return
       }
@@ -211,19 +90,19 @@ class BookSourceManager {
   }
 
   getSources() { return (window as any).siyuanBookSources?.sources || [] }
-  getEnabledSources() { return this.getSources().filter(s => s.enabled) }
+  getEnabledSources() { return this.getSources().filter((s: any) => s.enabled) }
   exportSources() { return JSON.stringify(this.getSources(), null, 2) }
-  private getSource(url: string) { return this.getSources().find(s => s.bookSourceUrl === url) }
+  private getSource(url: string) { return this.getSources().find((s: any) => s.bookSourceUrl === url) }
 
   addSource(source: BookSource) {
     const sources = this.getSources()
-    const idx = sources.findIndex(s => s.bookSourceUrl === source.bookSourceUrl)
+    const idx = sources.findIndex((s: any) => s.bookSourceUrl === source.bookSourceUrl)
     idx >= 0 ? sources[idx] = source : sources.push(source)
     this.save()
   }
 
   removeSource(url: string) {
-    ;(window as any).siyuanBookSources.sources = this.getSources().filter(s => s.bookSourceUrl !== url)
+    ;(window as any).siyuanBookSources.sources = this.getSources().filter((s: any) => s.bookSourceUrl !== url)
     this.save()
   }
 
@@ -232,7 +111,7 @@ class BookSourceManager {
       const data = JSON.parse(json)
       const arr = Array.isArray(data) ? data : (data.sources || [])
       const sources = this.getSources()
-      const imported = arr.filter(s => s.bookSourceUrl && !sources.some(e => e.bookSourceUrl === s.bookSourceUrl))
+      const imported = arr.filter((s: any) => s.bookSourceUrl && !sources.some((e: any) => e.bookSourceUrl === s.bookSourceUrl))
       if (imported.length) { sources.push(...imported); this.save() }
       return imported.length
     } catch { return 0 }
@@ -240,7 +119,7 @@ class BookSourceManager {
 
   private save() {
     const sources = this.getSources()
-    const snippet = this.snippets.find(s => s.type === 'js' && s.enabled && s.content?.includes('siyuanBookSources'))
+    const snippet = this.snippets.find((s: any) => s.type === 'js' && s.enabled && s.content?.includes('siyuanBookSources'))
     const header = `// 思源阅读器 - 书源配置扩展
 // ==SiReaderBookSources==
 // @name         SiReader 书源数据
@@ -252,17 +131,16 @@ class BookSourceManager {
 
 `
     const content = `${header}window.siyuanBookSources = {\n  sources: ${JSON.stringify(sources, null, 2)},\n  loaded: true,\n  version: '2.0.0'\n};`
-    if (snippet) snippet.content = content
-    else this.snippets.push({ id: Date.now().toString(), name: 'SiReader 书源', type: 'js', enabled: true, content })
+    snippet ? (snippet.content = content) : this.snippets.push({ id: Date.now().toString(), name: 'SiReader 书源', type: 'js', enabled: true, content })
     fetchPost('/api/snippet/setSnippet', { snippets: this.snippets }, () => {})
   }
 
-  // 搜索方法
+
   async *searchBooksStream(keyword: string, sourceUrl?: string, page = 1) {
     const sources = sourceUrl ? [this.getSource(sourceUrl)].filter(Boolean) : this.getEnabledSources()
     for (let i = 0; i < sources.length; i += 10) {
-      const results = await Promise.allSettled(sources.slice(i, i + 10).map(s => this.searchInSource(s, keyword, page)))
-      for (const r of results) if (r.status === 'fulfilled' && r.value.length) yield r.value
+      const results = await Promise.allSettled(sources.slice(i, i + 10).map((s: any) => this.searchInSource(s, keyword, page)))
+      for (const r of results) r.status === 'fulfilled' && r.value.length && (yield r.value)
     }
   }
 
@@ -272,14 +150,13 @@ class BookSourceManager {
     return results
   }
 
-  private parseField(data: any, rule: string | undefined, isJson: boolean = false) {
-    if (!rule) return ''
-    return ruleParser.getString(data, rule, isJson)
+  private parseField(data: any, rule: string | undefined, isJson = false) {
+    return rule ? ruleParser.getString(data, rule, isJson) : ''
   }
 
   private cleanField(value: string, type: 'url' | 'intro' | 'text' = 'text') {
     if (!value) return value
-    if (type === 'url' && value.startsWith('//')) return 'https:' + value
+    if (type === 'url' && value[0] === '/' && value[1] === '/') return 'https:' + value
     if (type === 'intro' && value.length > 500) return value.substring(0, 500) + '...'
     if (type === 'text') return value.replace(/综合信息：\s*([^/\n]+).*/, '$1').split('\n').filter(l => l.trim())[0]?.trim() || value
     return value
@@ -288,33 +165,40 @@ class BookSourceManager {
   private async searchInSource(source: BookSource, keyword: string, page = 1): Promise<SearchResult[]> {
     try {
       if (source.searchUrl.includes('<js>')) return []
-      let url = this.resolveUrl(ruleEngine.replaceVariables(source.searchUrl, { key: encodeURIComponent(keyword), page }), source.bookSourceUrl)
-      if (url.includes(',{')) url = url.split(',{')[0]
+      
+      let url = source.searchUrl, method = 'GET', body = ''
+      if (url.includes(',{')) {
+        const [u, cfg] = url.split(',{')
+        url = u
+        try { const c = JSON.parse('{' + cfg); method = c.method || 'GET'; body = c.body || '' } catch {}
+      }
+      
+      url = this.resolveUrl(ruleEngine.replaceVariables(url, { key: encodeURIComponent(keyword), page }), source.bookSourceUrl)
+      body = ruleEngine.replaceVariables(body, { key: encodeURIComponent(keyword), page })
       if (!url.startsWith('http')) return []
       
       const headers = ruleEngine.parseHeader(source.header || '')
-      if (!headers['User-Agent']) headers['User-Agent'] = 'Mozilla/5.0'
-      const html = await this.request(url, headers)
-      if (!html || (!html.trim().startsWith('{') && !html.trim().startsWith('[') && html.length < 100)) return []
+      headers['User-Agent'] || (headers['User-Agent'] = 'Mozilla/5.0')
+      method === 'POST' && body && (headers['Content-Type'] = 'application/x-www-form-urlencoded')
       
-      const isJson = html.trim().startsWith('{') || html.trim().startsWith('[')
+      const html = await this.request(url, headers, method, body)
+      if (!html || (!html.trim()[0].match(/[{\[]/) && html.length < 100)) return []
+      
+      const isJson = html.trim()[0] === '{' || html.trim()[0] === '['
       const books = ruleParser.getElements(html, source.ruleSearch.bookList)
+      
       if (!books.length) return []
       
-      // 智能识别无效内容
       const isValid = (name: string, url: string) => 
         name?.trim().length >= 2 && !/^(首页|更多|返回|下?一?页|上?一?页|列表|搜索|排行|分类|最新|收藏|书架|登[录入]|注册|查看|详[情细]|阅读|目录|章节)$|^\d+$/.test(name.trim()) && !!url?.trim()
       
-      return books.slice(0, 5).map((el) => {
+      return books.slice(0, 5).map(el => {
         try {
           const json = el.getAttribute?.('data-json')
           const data = json ? (() => { try { return JSON.parse(json) } catch { return el.outerHTML } })() : el.outerHTML
-          const parse = (field: keyof BookSource['ruleSearch']) => {
-            const rule = source.ruleSearch[field]
-            return this.parseField(data, rule, isJson || !!json)
-          }
+          const parse = (field: keyof BookSource['ruleSearch']) => this.parseField(data, source.ruleSearch[field], isJson || !!json)
           
-          const result = {
+          return {
             name: parse('name'),
             author: this.cleanField(parse('author'), 'text'),
             bookUrl: this.resolveUrl(parse('bookUrl'), source.bookSourceUrl),
@@ -324,20 +208,40 @@ class BookSourceManager {
             kind: parse('kind') || undefined,
             sourceName: source.bookSourceName, sourceUrl: source.bookSourceUrl
           }
-          return result
-        } catch (error) {
-          return null
-        }
+        } catch { return null }
       }).filter((r): r is NonNullable<typeof r> => r && isValid(r.name, r.bookUrl)) as SearchResult[]
-    } catch { return [] }
+    } catch (e) {
+      console.error(`[搜索失败] ${source.bookSourceName}:`, e)
+      return []
+    }
   }
+
 
   async getBookInfo(url: string, bookUrl: string) {
     const s = this.getSource(url)
     if (!s) throw new Error('书源不存在')
-    const html = await this.request(bookUrl, ruleEngine.parseHeader(s.header || ''))
-    const isJson = html.trim().startsWith('{') || html.trim().startsWith('[')
+    
+    if (!s.ruleBookInfo || !Object.keys(s.ruleBookInfo).length || !s.ruleBookInfo.tocUrl) {
+      return {
+        name: '', author: '', intro: '', coverUrl: '', tocUrl: bookUrl,
+        bookUrl, sourceName: s.bookSourceName, sourceUrl: s.bookSourceUrl
+      }
+    }
+    
+    let html = await this.request(bookUrl, ruleEngine.parseHeader(s.header || ''))
+    const isJson = html.trim()[0] === '{' || html.trim()[0] === '['
+    
+    if (isJson && s.ruleBookInfo.init) {
+      try {
+        const json = JSON.parse(html)
+        s.ruleBookInfo.init === 'data' && json.data && (html = JSON.stringify(json.data))
+      } catch (e) {
+        console.error('[书籍信息] init规则执行失败:', e)
+      }
+    }
+    
     const parse = (rule: string) => this.parseField(html, rule, isJson)
+    
     return {
       name: parse(s.ruleBookInfo.name),
       author: this.cleanField(parse(s.ruleBookInfo.author), 'text'),
@@ -354,15 +258,41 @@ class BookSourceManager {
     const s = this.getSource(url)
     if (!s) throw new Error('书源不存在')
     
-    const html = await this.request(tocUrl, ruleEngine.parseHeader(s.header || ''))
-    const isJson = html.trim().startsWith('{') || html.trim().startsWith('[')
-    const elements = ruleEngine.getElements(html, s.ruleToc.chapterList)
+    let html = await this.request(tocUrl, ruleEngine.parseHeader(s.header || ''))
+    const isJson = html.trim()[0] === '{' || html.trim()[0] === '['
+    let rule = s.ruleToc.chapterList
+    
+    if (isJson) {
+      try {
+        const json = JSON.parse(html)
+        if (json.data && Array.isArray(json.data) && rule === 'data') {
+          html = JSON.stringify(json.data)
+          rule = '$[*]'
+        }
+      } catch {}
+    }
+    
+    const elements = ruleParser.getElements(html, rule)
     if (!elements.length) throw new Error('未找到章节列表')
     
-    return elements.map((c, i) => {
-      const name = this.parseField(c.outerHTML, s.ruleToc.chapterName, isJson)
-      const url = this.parseField(c.outerHTML, s.ruleToc.chapterUrl, isJson)
-      return { name, url: this.resolveUrl(url, tocUrl), index: i }
+    let bookidContext = ''
+    if (s.ruleToc.chapterUrl?.includes('java.get')) {
+      const bookidMatch = tocUrl.match(/[?&]bookid=([^&]+)/)
+      bookidMatch && (bookidContext = bookidMatch[1])
+    }
+    
+    return elements.map((el, i) => {
+      const jsonStr = el.getAttribute('data-json')
+      const data = jsonStr ? JSON.parse(jsonStr) : el.outerHTML
+      
+      let chapterUrl = s.ruleToc.chapterUrl
+      bookidContext && chapterUrl?.includes('java.get') && (chapterUrl = chapterUrl.replace(/java\.get\(['"]bookid['"]\)/g, `"${bookidContext}"`))
+      
+      return {
+        name: this.parseField(data, s.ruleToc.chapterName, isJson),
+        url: this.resolveUrl(this.parseField(data, chapterUrl, isJson), tocUrl),
+        index: i
+      }
     })
   }
 
@@ -370,21 +300,16 @@ class BookSourceManager {
     const s = this.getSource(url)
     if (!s) throw new Error('书源不存在')
     
-    const headers = ruleEngine.parseHeader(s.header || '')
-    const html = await this.request(chapterUrl, headers)
-    const isJson = html.trim().startsWith('{') || html.trim().startsWith('[')
+    const html = await this.request(chapterUrl, ruleEngine.parseHeader(s.header || ''))
+    if (!html) return ''
     
+    const isJson = html.trim()[0] === '{' || html.trim()[0] === '['
     let content = this.parseField(html, s.ruleContent.content, isJson)
     
-    // 二次请求：内容是URL
     if (content && /^(\/|https?:\/\/)/.test(content)) {
-      try {
-        const contentHtml = await this.request(this.resolveUrl(content, chapterUrl), headers)
-        const jsonpMatch = contentHtml.match(/callback\(\{content:\'(.*)\'\}\)/)
-        content = jsonpMatch ? jsonpMatch[1] : contentHtml
-      } catch {
-        // 静默失败
-      }
+      const html2 = await this.request(this.resolveUrl(content, chapterUrl), ruleEngine.parseHeader(s.header || ''))
+      const jsonpMatch = html2.match(/callback\(\{content:\'(.*)\'\}\)/)
+      content = jsonpMatch ? jsonpMatch[1] : html2
     }
     
     return content
@@ -394,26 +319,22 @@ class BookSourceManager {
     if (!url) return ''
     const cleanBase = baseUrl.split('#')[0].split('?')[0]
     if (url.startsWith('http://') || url.startsWith('https://')) return url
-    if (url.startsWith('//')) return 'https:' + url
-    if (url.startsWith('/')) {
+    if (url[0] === '/' && url[1] === '/') return 'https:' + url
+    if (url[0] === '/') {
       try {
         const base = new URL(cleanBase)
         return `${base.protocol}//${base.host}${url}`
-      } catch {
-        return ''
-      }
+      } catch { return '' }
     }
-    try {
-      return new URL(url, cleanBase).href
-    } catch {
-      return ''
-    }
+    try { return new URL(url, cleanBase).href }
+    catch { return '' }
   }
 }
 
 export const bookSourceManager = new BookSourceManager()
 
-// ==================== EPUB 转换器 ====================
+
+// EPUB 转换器
 class EpubConverter {
   async convertToEpub(bookInfo: BookInfo, chapters: Chapter[]): Promise<Blob> {
     const zip = new JSZip()
