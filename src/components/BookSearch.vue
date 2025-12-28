@@ -8,15 +8,21 @@
         </button>
         <div v-if="showSourceMenu" class="sr-menu" @click.stop>
           <div :class="['sr-menu-item', { active: !selectedSource }]" @click="selectedSource = ''; showSourceMenu = false">{{ i18n.allSources || '全部书源' }}</div>
+          <div v-if="annaEnabled" :class="['sr-menu-item', { active: selectedSource === 'anna' }]" @click="selectedSource = 'anna'; showSourceMenu = false">{{ i18n.annaArchive || '安娜的档案' }}</div>
           <div v-for="src in enabledSources" :key="src.bookSourceUrl" :class="['sr-menu-item', { active: selectedSource === src.bookSourceUrl }]" @click="selectedSource = src.bookSourceUrl; showSourceMenu = false">{{ src.bookSourceName }}</div>
         </div>
       </div>
-      <button class="b3-tooltips b3-tooltips__s" @click="emit('openSettings')" :aria-label="i18n.bookSourceManage || '书源管理'">
+      <button class="b3-tooltips b3-tooltips__s" @click="showSourceMgr = !showSourceMgr" :aria-label="i18n.bookSourceManage || '书源管理'">
         <svg><use xlink:href="#lucide-settings-2"/></svg>
       </button>
     </div>
 
-    <div class="sr-results" ref="resultsContainer" @scroll="onScroll">
+    <!-- 书源管理面板 -->
+    <Transition name="slide">
+      <SourceMgr v-if="showSourceMgr" @close="showSourceMgr = false" />
+    </Transition>
+
+    <div v-show="!showSourceMgr" class="sr-results" ref="resultsContainer" @scroll="onScroll">
       <div v-if="!searching && !results.length && keyword" class="sr-placeholder">{{ i18n.noResults || '未找到书籍' }}</div>
       <div v-else class="sr-list">
         <div v-for="book in results" :key="book.bookUrl" 
@@ -28,11 +34,20 @@
           <div class="sr-info">
             <div class="sr-title">{{ book.name }}</div>
             <div class="sr-author">{{ book.author }}</div>
+            <div v-if="book.kind" class="sr-author">{{ book.kind }}</div>
+            <div v-if="book.extension || book.fileSize" class="sr-author">
+              <span v-if="book.extension">{{ book.extension }}</span>
+              <span v-if="book.extension && book.fileSize"> · </span>
+              <span v-if="book.fileSize">{{ book.fileSize }}</span>
+            </div>
             <div v-if="book.intro" class="sr-intro">{{ book.intro }}</div>
             <div v-if="book.lastChapter" class="sr-chapter">{{ book.lastChapter }}</div>
             <div class="sr-source">{{ book.sourceName }}</div>
           </div>
-          <button class="sr-btn sr-btn-icon b3-tooltips b3-tooltips__w" :class="{ active: isInShelf(book) }" :aria-label="isInShelf(book) ? '已在书架' : '加入书架'" @click.stop="addToShelf(book)">
+          <button v-if="isAnnaBook(book)" class="sr-btn sr-btn-icon b3-tooltips b3-tooltips__w" :aria-label="i18n.openLink || '打开链接'" @click.stop="openAnnaLink(book.bookUrl)">
+            <svg><use xlink:href="#iconLink"/></svg>
+          </button>
+          <button v-else class="sr-btn sr-btn-icon b3-tooltips b3-tooltips__w" :class="{ active: isInShelf(book) }" :aria-label="isInShelf(book) ? '已在书架' : '加入书架'" @click.stop="addToShelf(book)">
             <svg><use :xlink:href="isInShelf(book) ? '#iconCheck' : '#iconAdd'"/></svg>
           </button>
         </div>
@@ -65,13 +80,22 @@
           <h2>{{ detailBook.name }}</h2>
           <p class="sr-meta">{{ detailBook.author }}</p>
           
-          <div v-if="tags.length" class="sr-tags">
+          <div v-if="tags.length || detailBook.extension || detailBook.fileSize || detailBook.language || detailBook.year" class="sr-tags">
             <span v-for="tag in tags" :key="tag">{{ tag }}</span>
+            <span v-if="detailBook.extension">{{ detailBook.extension }}</span>
+            <span v-if="detailBook.fileSize">{{ detailBook.fileSize }}</span>
+            <span v-if="detailBook.language">{{ detailBook.language }}</span>
+            <span v-if="detailBook.year">{{ detailBook.year }}</span>
           </div>
           
           <p v-if="detailBook.intro" class="sr-intro-full">{{ detailBook.intro }}</p>
           
-          <div class="sr-actions-full">
+          <div v-if="isAnnaBook(detailBook)" class="sr-actions-full">
+            <button class="sr-btn sr-btn-primary" @click="openAnnaLink(detailBook.bookUrl)">
+              <svg><use xlink:href="#iconLink"/></svg>{{ i18n.openLink || '打开链接' }}
+            </button>
+          </div>
+          <div v-else class="sr-actions-full">
             <button class="sr-btn sr-btn-primary" :class="{ active: isInShelf(detailBook) }" @click="isInShelf(detailBook) || addToShelf(detailBook)">
               <svg><use :xlink:href="isInShelf(detailBook) ? '#iconCheck' : '#iconAdd'"/></svg>
               {{ isInShelf(detailBook) ? '已在书架' : '加入书架' }}
@@ -81,7 +105,7 @@
             </button>
           </div>
 
-          <div class="sr-chapters">
+          <div v-if="!isAnnaBook(detailBook)" class="sr-chapters">
             <div class="sr-chapters-header">
               <span>目录 {{ chapters.length }}</span>
               <button class="sr-btn sr-btn-icon" @click="reversed = !reversed">
@@ -100,26 +124,36 @@
         </div>
       </div>
     </Transition>
+
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { bookSourceManager } from '@/core/book'
 import { bookshelfManager } from '@/core/bookshelf'
 import { showMessage } from 'siyuan'
+import SourceMgr from './SourceMgr.vue'
 
 const props = defineProps<{ i18n: any }>()
-const emit = defineEmits(['read', 'openSettings'])
+const emit = defineEmits(['read'])
 
 const isInShelf = (book: any) => bookshelfManager.hasBook(book.bookUrl)
+const isAnnaBook = (book: any) => book.bookUrl?.includes('annas-archive.org')
 const detailBook = ref<any>(null)
 const chapters = ref<any[]>([])
 const reversed = ref(false)
 const loadingChapters = ref(false)
+const showSourceMgr = ref(false)
 
 const tags = computed(() => detailBook.value?.kind?.split(',').filter(Boolean) || [])
 const displayChapters = computed(() => reversed.value ? [...chapters.value].reverse() : chapters.value)
+
+const openAnnaLink = (url: string) => {
+  const isChinese = props.i18n.name === '思阅'
+  const targetUrl = isChinese ? url.replace('annas-archive.org', 'zh.annas-archive.org') : url
+  window.open(targetUrl, '_blank')
+}
 
 const keyword = ref('')
 const selectedSource = ref('')
@@ -129,23 +163,25 @@ const results = ref<SearchResult[]>([])
 const resultsContainer = ref<HTMLElement>()
 const hasMore = ref(false)
 const searchIterator = ref<AsyncGenerator<SearchResult[]> | null>(null)
+const annaEnabled = ref(localStorage.getItem('anna_enabled') === 'true')
 
 const enabledSources = computed(() => bookSourceManager.getEnabledSources())
 const selectedSourceName = computed(() => {
   if (!selectedSource.value) return props.i18n.allSources || '全部书源'
+  if (selectedSource.value === 'anna') return props.i18n.annaArchive || '安娜的档案'
   const src = enabledSources.value.find(s => s.bookSourceUrl === selectedSource.value)
   return src?.bookSourceName || ''
 })
 
 const search = async () => {
   if (!keyword.value.trim()) return
-  
   searching.value = true
   results.value = []
   hasMore.value = true
-  
   try {
-    searchIterator.value = bookSourceManager.searchBooksStream(keyword.value, selectedSource.value || undefined)
+    const isAnnaOnly = selectedSource.value === 'anna'
+    const enableAnna = isAnnaOnly || (!selectedSource.value && annaEnabled.value)
+    searchIterator.value = bookSourceManager.searchBooksStream(keyword.value, isAnnaOnly ? undefined : selectedSource.value || undefined, 1, enableAnna)
     await loadMore()
   } catch (e: any) {
     showMessage('搜索失败: ' + e.message, 3000, 'error')
@@ -156,15 +192,11 @@ const search = async () => {
 
 const loadMore = async () => {
   if (!searchIterator.value || searching.value) return
-  
   searching.value = true
   try {
     const { value, done } = await searchIterator.value.next()
-    if (done) {
-      hasMore.value = false
-    } else if (value) {
-      results.value.push(...value)
-    }
+    hasMore.value = !done
+    if (value) results.value.push(...value)
   } catch (e: any) {
     showMessage('加载失败: ' + e.message, 3000, 'error')
   } finally {
@@ -178,9 +210,9 @@ const stopSearch = () => {
   searching.value = false
 }
 
-const showDetail = async (book: any) => {
+const showDetail = (book: any) => {
   detailBook.value = book
-  await loadChapters()
+  if (!isAnnaBook(book)) loadChapters()
 }
 
 const loadChapters = async () => {
@@ -223,6 +255,11 @@ const onScroll = () => {
   const { scrollTop, scrollHeight, clientHeight } = resultsContainer.value
   if (scrollTop + clientHeight >= scrollHeight - 100) loadMore()
 }
+
+const handleAnnaToggle = () => annaEnabled.value = localStorage.getItem('anna_enabled') === 'true'
+
+onMounted(() => window.addEventListener('anna-toggle', handleAnnaToggle))
+onUnmounted(() => window.removeEventListener('anna-toggle', handleAnnaToggle))
 </script>
 
 <style scoped lang="scss">
@@ -243,8 +280,7 @@ const onScroll = () => {
   &:hover{background:var(--b3-theme-background)}
 }
 
-.sr-search{display:flex;flex-direction:column;height:100%;overflow:hidden}
-.sr-toolbar{position:relative;z-index:10}
+.sr-search{position:relative;display:flex;flex-direction:column;height:100%;overflow:hidden}
 .sr-results{flex:1;overflow-y:auto;padding:12px 8px;min-height:0}
 .sr-list{display:flex;flex-direction:column;gap:8px}
 .sr-card{display:flex;gap:12px;padding:12px;background:var(--b3-theme-surface);border-radius:6px;cursor:pointer;transition:transform .15s;&:hover{transform:translateY(-2px)}}

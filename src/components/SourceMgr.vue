@@ -1,62 +1,53 @@
 <template>
-  <div class="sm">
-    <div class="sm-bar">
-      <label class="b3-label">
-        <input type="checkbox" class="b3-checkbox" :checked="allSelected" @change="toggleAll">
-        {{ allSelected ? '取消' : '全选' }}({{ filtered.length }})
-      </label>
-      
-      <template v-if="selected.length">
-        <button class="b3-button" @click="batchEnable(true)">
-          <svg><use xlink:href="#iconEye"/></svg>启用
+  <div class="sr-source-mgr">
+    <div class="sr-toolbar">
+      <input v-model="keyword" placeholder="搜索书源...">
+      <template v-if="selected.size">
+        <button class="b3-tooltips b3-tooltips__s" @click="batchEnable(true)" aria-label="启用">
+          <svg><use xlink:href="#lucide-eye"/></svg>
         </button>
-        <button class="b3-button" @click="batchEnable(false)">
-          <svg><use xlink:href="#iconEyeoff"/></svg>禁用
+        <button class="b3-tooltips b3-tooltips__s" @click="batchEnable(false)" aria-label="禁用">
+          <svg><use xlink:href="#lucide-eye-off"/></svg>
         </button>
-        <button class="b3-button b3-button--error" @click="batchDelete">
-          <svg><use xlink:href="#iconTrashcan"/></svg>删除
+        <button class="b3-tooltips b3-tooltips__s" @click="batchDelete" aria-label="删除">
+          <svg><use xlink:href="#lucide-trash-2"/></svg>
         </button>
       </template>
-      
-      <input v-model="keyword" class="b3-text-field sm-input" placeholder="搜索书源...">
-      
-      <button v-if="!checking" class="b3-button" @click="checkAll">
-        <svg><use xlink:href="#iconRefresh"/></svg>检测
+      <button class="b3-tooltips b3-tooltips__s" @click="toggleAnna" :aria-label="annaEnabled?(i18n?.annaEnabled||'安娜已启用'):(i18n?.annaDisabled||'安娜已禁用')">
+        <svg :style="{color:annaEnabled?'var(--b3-theme-primary)':''}"><use xlink:href="#lucide-library-big"/></svg>
       </button>
-      <button v-else class="b3-button b3-button--error" @click="stopCheck = true">
-        <svg><use xlink:href="#iconClose"/></svg>停止({{ progress }}/{{ enabledCount }})
+      <button v-if="!checking" class="b3-tooltips b3-tooltips__s" @click="checkAll" aria-label="检测书源">
+        <svg><use xlink:href="#lucide-list-restart"/></svg>
       </button>
-      
-      <button v-if="invalidCount" class="b3-button b3-button--warning" @click="deleteInvalid">
-        <svg><use xlink:href="#iconTrashcan"/></svg>清理({{ invalidCount }})
+      <button v-else class="b3-tooltips b3-tooltips__s" @click="stopCheck = true" aria-label="停止">
+        <svg><use xlink:href="#lucide-hand"/></svg>
+      </button>
+      <button v-if="invalidCount" class="b3-tooltips b3-tooltips__s" @click="deleteInvalid" aria-label="清理失效">
+        <svg><use xlink:href="#lucide-brush-cleaning"/></svg>
+      </button>
+      <button class="b3-tooltips b3-tooltips__s" @click="emit('close')" aria-label="关闭">
+        <svg><use xlink:href="#lucide-panel-top-close"/></svg>
       </button>
     </div>
 
-    <div class="sm-list">
+    <div class="sr-list">
       <div v-for="s in filtered" :key="s.bookSourceUrl" 
-           class="sm-item" :class="{off: !s.enabled, bad: status[s.bookSourceUrl]==='invalid', sel: isSelected(s.bookSourceUrl)}">
+           class="sr-card" 
+           :class="{off: !s.enabled, bad: status[s.bookSourceUrl]==='invalid', sel: isSelected(s.bookSourceUrl)}">
         <input type="checkbox" class="b3-checkbox" :checked="isSelected(s.bookSourceUrl)" @change="toggleSelect(s.bookSourceUrl)" @click.stop>
-        <div class="sm-st">
-          <svg v-if="status[s.bookSourceUrl]==='checking'" class="spin"><use xlink:href="#iconRefresh"/></svg>
-          <svg v-else-if="status[s.bookSourceUrl]==='valid'" class="ok"><use xlink:href="#iconCheck"/></svg>
-          <svg v-else-if="status[s.bookSourceUrl]==='invalid'" class="no"><use xlink:href="#iconClose"/></svg>
+        <svg v-if="status[s.bookSourceUrl]==='checking'" class="sr-icon spin"><use xlink:href="#lucide-refresh-cw"/></svg>
+        <svg v-else-if="status[s.bookSourceUrl]==='valid'" class="sr-icon ok"><use xlink:href="#lucide-check"/></svg>
+        <svg v-else-if="status[s.bookSourceUrl]==='invalid'" class="sr-icon no"><use xlink:href="#lucide-x"/></svg>
+        <div class="sr-info" @click="toggle(s)">
+          <div class="sr-name">{{ s.bookSourceName }}</div>
+          <div class="sr-url">{{ s.bookSourceUrl }}</div>
         </div>
-        <div class="sm-info">
-          <div class="sm-name">{{ s.bookSourceName }}</div>
-          <div class="sm-url">{{ s.bookSourceUrl }}</div>
-          <span v-if="s.bookSourceGroup" class="sm-tag">{{ s.bookSourceGroup }}</span>
-        </div>
-        <div class="sm-acts">
-          <button class="b3-button b3-button--text" @click.stop="toggle(s)">
-            <svg><use :xlink:href="s.enabled?'#iconEye':'#iconEyeoff'"/></svg>
-          </button>
-          <button class="b3-button b3-button--text" @click.stop="check(s)">
-            <svg><use xlink:href="#iconRefresh"/></svg>
-          </button>
-          <button class="b3-button b3-button--text" @click.stop="del(s)">
-            <svg><use xlink:href="#iconTrashcan"/></svg>
-          </button>
-        </div>
+        <button class="sr-btn-icon b3-tooltips b3-tooltips__w" @click.stop="check(s)" aria-label="检测">
+          <svg><use xlink:href="#lucide-book-search"/></svg>
+        </button>
+        <button class="sr-btn-icon b3-tooltips b3-tooltips__w" @click.stop="del(s)" aria-label="删除">
+          <svg><use xlink:href="#lucide-eraser"/></svg>
+        </button>
       </div>
       
       <div v-if="!filtered.length" class="sr-empty">
@@ -71,13 +62,16 @@ import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { bookSourceManager } from '@/core/book'
 import { showMessage, Dialog } from 'siyuan'
 
+const props = defineProps<{ i18n?: any }>()
+const emit = defineEmits(['close'])
+
 const sources = ref<BookSource[]>([])
 const status = ref<Record<string, 'checking'|'valid'|'invalid'>>({})
 const checking = ref(false)
-const progress = ref(0)
 const keyword = ref('')
 const selected = ref<Set<string>>(new Set())
 const stopCheck = ref(false)
+const annaEnabled = ref(localStorage.getItem('anna_enabled') === 'true')
 
 const filtered = computed(() => {
   if (!keyword.value) return sources.value
@@ -89,29 +83,11 @@ const filtered = computed(() => {
   )
 })
 
-const allSelected = computed(() => filtered.value.length > 0 && selected.value.size === filtered.value.length)
-const enabledCount = computed(() => sources.value.filter(s => s.enabled).length)
 const invalidCount = computed(() => sources.value.filter(s => status.value[s.bookSourceUrl] === 'invalid').length)
-
 const isSelected = (url: string) => selected.value.has(url)
-
 const reload = () => sources.value = bookSourceManager.getSources()
 
-const toggleAll = () => {
-  if (allSelected.value) {
-    selected.value.clear()
-  } else {
-    selected.value = new Set(filtered.value.map(s => s.bookSourceUrl))
-  }
-}
-
-const toggleSelect = (url: string) => {
-  if (selected.value.has(url)) {
-    selected.value.delete(url)
-  } else {
-    selected.value.add(url)
-  }
-}
+const toggleSelect = (url: string) => selected.value.has(url) ? selected.value.delete(url) : selected.value.add(url)
 
 const batchEnable = (enable: boolean) => {
   let count = 0
@@ -135,15 +111,14 @@ const batchDelete = () => {
     content: `<div class="b3-dialog__content">确定删除 ${count} 个书源？</div>`,
     width: '400px',
     destroyCallback: (options) => {
-      if (options?.confirm) {
-        selected.value.forEach(url => {
-          bookSourceManager.removeSource(url)
-          delete status.value[url]
-        })
-        reload()
-        selected.value.clear()
-        showMessage(`删除 ${count} 个书源`)
-      }
+      if (!options?.confirm) return
+      selected.value.forEach(url => {
+        bookSourceManager.removeSource(url)
+        delete status.value[url]
+      })
+      reload()
+      selected.value.clear()
+      showMessage(`删除 ${count} 个书源`)
     }
   })
 }
@@ -160,11 +135,10 @@ const del = (s: BookSource) => {
     content: `<div class="b3-dialog__content">确定删除「${s.bookSourceName}」？</div>`,
     width: '400px',
     destroyCallback: (options) => {
-      if (options?.confirm) {
-        bookSourceManager.removeSource(s.bookSourceUrl)
-        delete status.value[s.bookSourceUrl]
-        reload()
-      }
+      if (!options?.confirm) return
+      bookSourceManager.removeSource(s.bookSourceUrl)
+      delete status.value[s.bookSourceUrl]
+      reload()
     }
   })
 }
@@ -176,14 +150,13 @@ const deleteInvalid = () => {
     content: `<div class="b3-dialog__content">确定删除 ${invalid.length} 个失效书源？</div>`,
     width: '400px',
     destroyCallback: (options) => {
-      if (options?.confirm) {
-        invalid.forEach(s => {
-          bookSourceManager.removeSource(s.bookSourceUrl)
-          delete status.value[s.bookSourceUrl]
-        })
-        reload()
-        showMessage(`已删除 ${invalid.length} 个`)
-      }
+      if (!options?.confirm) return
+      invalid.forEach(s => {
+        bookSourceManager.removeSource(s.bookSourceUrl)
+        delete status.value[s.bookSourceUrl]
+      })
+      reload()
+      showMessage(`已删除 ${invalid.length} 个`)
     }
   })
 }
@@ -211,18 +184,22 @@ const check = async (s: BookSource) => {
 const checkAll = async () => {
   stopCheck.value = false
   checking.value = true
-  progress.value = 0
   const enabled = sources.value.filter(s => s.enabled)
   const batchSize = 5
   for (let i = 0; i < enabled.length && !stopCheck.value; i += batchSize) {
     await Promise.allSettled(enabled.slice(i, i + batchSize).map(check))
-    progress.value = Math.min(i + batchSize, enabled.length)
   }
   checking.value = false
   const validCount = enabled.filter(s => status.value[s.bookSourceUrl] === 'valid').length
-  showMessage(stopCheck.value 
-    ? `检测停止: ${validCount}/${progress.value} 有效`
-    : `检测完成: ${validCount}/${enabled.length} 有效`)
+  showMessage(stopCheck.value ? `检测停止: ${validCount} 有效` : `检测完成: ${validCount}/${enabled.length} 有效`)
+}
+
+const toggleAnna = () => {
+  annaEnabled.value = !annaEnabled.value
+  localStorage.setItem('anna_enabled', String(annaEnabled.value))
+  const msg = annaEnabled.value ? (props.i18n?.annaEnabled || '已启用安娜的档案') : (props.i18n?.annaDisabled || '已禁用安娜的档案')
+  showMessage(msg)
+  window.dispatchEvent(new CustomEvent('anna-toggle'))
 }
 
 onMounted(async () => {
@@ -237,19 +214,23 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped lang="scss">
-.sm{display:flex;flex-direction:column;height:100%;background:var(--b3-theme-background)}
-.sm-bar{display:flex;gap:8px;padding:8px;border-bottom:1px solid var(--b3-border-color);flex-wrap:wrap;align-items:center;.b3-label{border:none;padding:0;margin:0}}
-.sm-input{flex:1;min-width:200px}
-.sm-list{flex:1;overflow-y:auto;padding:8px}
-.sm-item{display:flex;align-items:center;gap:10px;padding:10px 12px;margin-bottom:8px;background:var(--b3-theme-surface);border:1px solid var(--b3-border-color);border-radius:4px;cursor:pointer;&:hover{background:var(--b3-list-hover)}&.off{opacity:.5}&.bad{border-color:var(--b3-theme-error);background:color-mix(in srgb,var(--b3-theme-error) 5%,transparent)}&.sel{border-color:var(--b3-theme-primary);box-shadow:0 0 0 2px color-mix(in srgb,var(--b3-theme-primary) 20%,transparent)}}
-.sm-st{width:20px;display:flex;align-items:center;justify-content:center;svg{width:16px;height:16px}}
-.spin{animation:spin 1.2s linear infinite}
+.sr-source-mgr{position:absolute;inset:0;display:flex;flex-direction:column;background:var(--b3-theme-background);z-index:10}
+.sr-list{flex:1;overflow-y:auto;padding:8px;display:flex;flex-direction:column;gap:4px}
+.sr-card{display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--b3-theme-surface);border-radius:4px;cursor:pointer;transition:transform .15s;
+  &:hover{transform:translateY(-1px)}
+  &.off{opacity:.5}
+  &.bad{border:1px solid var(--b3-theme-error);background:color-mix(in srgb,var(--b3-theme-error) 5%,transparent)}
+  &.sel{border:1px solid var(--b3-theme-primary);box-shadow:0 0 0 2px color-mix(in srgb,var(--b3-theme-primary) 20%,transparent)}
+}
+.b3-checkbox{flex-shrink:0}
+.sr-icon{width:16px;height:16px;flex-shrink:0;
+  &.spin{animation:spin 1.2s linear infinite}
+  &.ok{color:var(--b3-theme-primary)}
+  &.no{color:var(--b3-theme-error)}
+  &.off{opacity:.5}
+}
 @keyframes spin{to{transform:rotate(360deg)}}
-.ok{color:var(--b3-theme-primary)}
-.no{color:var(--b3-theme-error)}
-.sm-info{flex:1;min-width:0}
-.sm-name{font-size:13px;font-weight:500;margin-bottom:2px}
-.sm-url{font-size:11px;opacity:.6;margin-bottom:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.sm-tag{display:inline-block;font-size:10px;padding:2px 6px;background:var(--b3-theme-primary-lightest);color:var(--b3-theme-primary);border-radius:3px;font-weight:500}
-.sm-acts{display:flex;gap:4px}
+.sr-info{flex:1;min-width:0}
+.sr-name{font-size:13px;font-weight:600;margin-bottom:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sr-url{font-size:11px;opacity:.6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 </style>

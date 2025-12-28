@@ -119,25 +119,30 @@ export class PDFViewer {
       await p.render({ canvasContext: ctx, viewport: vp, transform: [dpr, 0, 0, dpr, 0, 0], background: bg, enableWebGL: true }).promise
       w.appendChild(c)
     } catch (e: any) { console.error(`[PDF] 渲染失败 ${n}:`, e); w.style.background = '#fee'; w.innerHTML = `<div style="padding:20px;color:#c00">渲染失败</div>`; return }
-    // 延迟渲染文本层
+    // 文本层（智能合并）
     requestIdleCallback(() => {
-      const txt = document.createElement('div')
-      txt.className = 'textLayer'
-      txt.style.cssText = 'position:absolute;inset:0;opacity:0;pointer-events:none'
-      txt.dataset.extracted = 'true'
-      w.appendChild(txt)
-      p.getTextContent({ disableNormalization: true }).then(textContent => {
-        const textVp = p.getViewport({ scale: this.scale, rotation: this.rotation })
-        textContent.items.forEach((it: any) => {
-          if (!it.str) return
-          const tx = pdfjs.Util.transform(textVp.transform, it.transform), s = document.createElement('span')
-          s.textContent = it.str
-          const a = Math.atan2(tx[1], tx[0]), h = Math.hypot(tx[2], tx[3])
-          s.style.cssText = `position:absolute;left:${tx[4]}px;top:${tx[5] - h * .8}px;font-size:${h}px;transform:rotate(${a}rad);transform-origin:0 0;white-space:pre;color:transparent;cursor:text`
-          txt.appendChild(s)
-        })
-        txt.style.opacity = '1'
-        txt.style.pointerEvents = 'auto'
+      const d = document.createElement('div')
+      d.className = 'textLayer'
+      d.style.cssText = 'position:absolute;inset:0;line-height:1'
+      w.appendChild(d)
+      p.getTextContent().then((tc: any) => {
+        const vp = p.getViewport({ scale: this.scale, rotation: this.rotation })
+        for (let i = 0, its = tc.items; i < its.length;) {
+          const it = its[i]
+          if (!it.str) { i++; continue }
+          const t = pdfjs.Util.transform(vp.transform, it.transform), h = Math.hypot(t[2], t[3]), a = Math.atan2(t[1], t[0])
+          let txt = it.str, x = t[4] + it.width * h, j = i + 1
+          for (; j < its.length; j++) {
+            const n = its[j]
+            if (!n.str) continue
+            const nt = pdfjs.Util.transform(vp.transform, n.transform), nh = Math.hypot(nt[2], nt[3])
+            if (Math.abs(nt[5] - t[5]) > h * .3 || Math.abs(Math.atan2(nt[1], nt[0]) - a) > .01 || Math.abs(nh - h) > h * .1 || nt[4] - x > h * 2) break
+            txt += n.str
+            x = nt[4] + n.width * nh
+          }
+          d.innerHTML += `<span style="position:absolute;left:${t[4]}px;top:${t[5]}px;font-size:${h}px;transform:rotate(${a}rad)translateY(-.8em);transform-origin:0 0;white-space:pre;color:transparent;cursor:text">${txt}</span>`
+          i = j
+        }
       })
     })
     // 延迟渲染链接层和墨迹层

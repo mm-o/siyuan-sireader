@@ -4,7 +4,7 @@
 <p style="color: rgba(255,255,255,0.9); margin: 0 0 1.5em; font-size: 1.1em;">Professional eBook Reader · Smart Annotation · Multi-format Support</p>
 <p style="color: rgba(255,255,255,0.85); margin: 0 0 1.5em; line-height: 1.6; font-size: 0.95em;">Transform SiYuan Notes into a professional eBook reader<br>Support EPUB/PDF/TXT/Online novels with smart annotation, multi-theme switching, dictionary lookup, AI translation, deck system, and more for an immersive reading experience</p>
 <p style="margin: 0;">
-<img src="https://img.shields.io/badge/version-0.6.4-blue.svg" alt="Version" style="display: inline-block; margin: 0 4px;">
+<img src="https://img.shields.io/badge/version-0.6.6-blue.svg" alt="Version" style="display: inline-block; margin: 0 4px;">
 <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License" style="display: inline-block; margin: 0 4px;">
 <img src="https://img.shields.io/badge/SiYuan-3.0+-orange.svg" alt="SiYuan" style="display: inline-block; margin: 0 4px;">
 </p>
@@ -60,6 +60,48 @@
 ---
 
 ## 📝 Latest Updates
+
+### v0.6.6 (2025.12.29)
+
+#### 🔍 EPUB Global Search
+- **Full-text Search** - Add EPUB global search using foliate native search API, support cross-chapter search
+- **Search Highlight** - Auto-highlight search results, support previous/next quick jump
+- **Result Statistics** - Real-time display of search result count and current position (e.g. "5/23")
+- **Async Search** - Use async generator to return results progressively, no lag for large files
+- **Unified Interface** - EPUB and PDF search interface unified, consistent operation experience
+
+#### 📄 PDF Text Selection Optimization
+- **Smart Text Merging** - Rewrite PDF text layer rendering logic, automatically merge adjacent text items on the same line, reduce span elements
+- **Precise Coordinate Calculation** - Use `pdfjs.Util.transform` to accurately calculate text position, font size, rotation angle
+- **Merge Condition Optimization** - Intelligently determine if text is on the same line (vertical offset < 30%), same direction (angle difference < 0.01), same font size (size difference < 10%), adjacent position (spacing < 2x font height)
+- **Performance Improvement** - Significantly reduce span elements after merging, faster selection response, lower memory usage
+- **Selection Experience** - Smoother text selection without stuttering, support cross-line selection
+
+#### 📚 eBook Search Enhancement
+- **Anna's Archive Integration** - Add Anna's Archive eBook search, aggregate Z-Library, LibGen, Sci-Hub resources
+- **Search Result Optimization** - Display format (PDF/EPUB/MOBI), file size, language, year and other details
+- **Smart Jump** - Click eBook search result to automatically jump to download page, Chinese environment jumps to Chinese version, other languages keep original
+- **Source Manager Integration** - Anna's Archive integrated into source selection menu, quick enable/disable in toolbar
+- **i18n Support** - Add `annaArchive`, `annaEnabled`, `annaDisabled`, `openLink` translation keys
+
+#### 🎨 UI Optimization
+- **Toolbar Unification** - Fix bookshelf and search toolbar style inconsistency causing dock border occlusion
+- **Source Manager Refactor** - Source manager interface integrated into dock page with slide animation, consistent with bookshelf and search
+- **Button Icon Optimization** - Unify all buttons to use lucide icons for better visual coordination
+- **Input Optimization** - Add `box-sizing: border-box` to global toolbar input to avoid overflow
+
+#### ⚡ Code Optimization
+- **Logic Simplification** - Simplify search logic and source manager logic, reduce nesting and duplicate code
+- **Method Unification** - Unify Dialog callback handling, state management, event listening methods
+- **Extreme Simplification** - Remove unused variables (`progress`, `enabledCount`), merge conditional judgments, more concise and efficient code
+
+#### 🐛 Bug Fixes
+- **Toolbar Overlap** - Fix source manager and search interface toolbar overlap issue
+- **Border Occlusion** - Fix search box overflow occluding dock border line
+- **TOC Loading** - eBook search results no longer attempt to load TOC, avoid invalid requests
+- **Text Selection** - Fix PDF text selection stuttering and slow response
+
+---
 
 ### v0.6.4 (2025.12.27)
 

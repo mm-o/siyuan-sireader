@@ -5,7 +5,6 @@ import type { ReaderSettings, FontFileInfo } from '@/composables/useSetting'
 import { PRESET_THEMES, UI_CONFIG, useSetting, useDocSearch, useNotebooks, createDialog } from '@/composables/useSetting'
 import { openTab } from 'siyuan'
 import BookSearch from './BookSearch.vue'
-import SourceMgr from './SourceMgr.vue'
 import Bookshelf from './Bookshelf.vue'
 import { bookshelfManager } from '@/core/bookshelf'
 import { MotionPlugin } from '@vueuse/motion'
@@ -54,7 +53,6 @@ const { state: docSearch, search: searchDoc, select: selectDocRaw } = useDocSear
 const selectDoc = (d: any) => selectDocRaw(d, (doc) => (settings.value.parentDoc = doc, save()))
 const setFont = (f?: FontFileInfo) => { settings.value.textSettings.fontFamily = f ? 'custom' : 'inherit'; if (f) settings.value.textSettings.customFont = { fontFamily: f.displayName, fontFile: f.name }; else settings.value.textSettings.customFont = { fontFamily: '', fontFile: '' }; f ? debouncedSave() : save() }
 const handleReadOnline = (book: any) => openTab({ app: (plugin as any).app, custom: { icon: 'iconBook', title: book.name || '在线阅读', data: { bookInfo: book }, id: `${plugin.name}custom_tab_online_reader` } })
-const openSourceMgr = () => createDialog('书源管理', 'src-mgr', SourceMgr, { i18n: props.i18n }, MotionPlugin)
 
 // ===== 生命周期 =====
 onMounted(() => (settingManager.loadCustomFonts(), bookshelfManager.init()))
@@ -251,7 +249,7 @@ const linkFormatDesc = computed(() => `${props.i18n?.linkFormatDesc || '可用�
       </Transition>
 
       <!-- Search - 使用 v-show 保持状态 -->
-      <BookSearch v-show="activeTab === 'search'" :i18n="i18n" @read="handleReadOnline" @openSettings="openSourceMgr" />
+      <BookSearch v-show="activeTab === 'search'" :i18n="i18n" @read="handleReadOnline" />
     </main>
   </div>
 </template>

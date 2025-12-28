@@ -215,7 +215,6 @@ onUnmounted(() => window.removeEventListener('sireader:bookshelf-updated', refre
 
 <style scoped lang="scss">
 .sr-bookshelf{display:flex;flex-direction:column;height:100%;overflow:hidden}
-.sr-toolbar{position:relative;z-index:10}
 .sr-books{flex:1;overflow-y:auto;padding:12px 8px;min-height:0}
 
 .sr-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px}

@@ -487,7 +487,7 @@
     flex: 1; min-width: 0; height: 28px; padding: 0 10px; border: none;
     border-bottom: 1px solid var(--b3-border-color); background: transparent;
     font-size: 12px; outline: none; color: var(--b3-theme-on-background);
-    transition: border-color .2s;
+    transition: border-color .2s; box-sizing: border-box;
     &:focus { border-color: var(--b3-theme-primary); }
     &::placeholder { color: var(--b3-theme-on-surface-variant); opacity: .6; }
   }

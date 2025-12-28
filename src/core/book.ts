@@ -136,17 +136,47 @@ class BookSourceManager {
   }
 
 
-  async *searchBooksStream(keyword: string, sourceUrl?: string, page = 1) {
+  async *searchBooksStream(keyword: string, sourceUrl?: string, page = 1, includeZLib = false) {
     const sources = sourceUrl ? [this.getSource(sourceUrl)].filter(Boolean) : this.getEnabledSources()
+    
+    // 如果启用 Z-Library，先搜索 Z-Library
+    if (includeZLib && !sourceUrl) {
+      try {
+        const { annaArchive } = await import('./anna')
+        const annaBooks = await annaArchive.search(keyword, page)
+        if (annaBooks.length > 0) {
+          const sourceName = annaArchive.getCurrentSource().name
+          const converted = annaBooks.map(book => ({
+            name: book.name,
+            author: book.author,
+            bookUrl: book.bookUrl,
+            coverUrl: book.coverUrl,
+            intro: book.intro,
+            extension: book.extension,
+            fileSize: book.fileSize,
+            language: book.language,
+            year: book.year,
+            kind: [book.extension, book.language, book.year].filter(Boolean).join(' · '),
+            sourceName: sourceName,
+            sourceUrl: 'ebook://search'
+          }))
+          yield converted
+        }
+      } catch (e: any) {
+        console.error('[EBook Search] 搜索失败:', e)
+      }
+    }
+    
+    // 搜索常规书源
     for (let i = 0; i < sources.length; i += 10) {
       const results = await Promise.allSettled(sources.slice(i, i + 10).map((s: any) => this.searchInSource(s, keyword, page)))
       for (const r of results) r.status === 'fulfilled' && r.value.length && (yield r.value)
     }
   }
 
-  async searchBooks(keyword: string, sourceUrl?: string, page = 1) {
+  async searchBooks(keyword: string, sourceUrl?: string, page = 1, includeZLib = false) {
     const results: SearchResult[] = []
-    for await (const batch of this.searchBooksStream(keyword, sourceUrl, page)) results.push(...batch)
+    for await (const batch of this.searchBooksStream(keyword, sourceUrl, page, includeZLib)) results.push(...batch)
     return results
   }
 

@@ -9,6 +9,7 @@ import type { ReaderSettings } from '@/composables/useSetting'
 import { PRESET_THEMES } from '@/composables/useSetting'
 import { bookSourceManager } from '@/core/book'
 import { createTooltip, showTooltip, hideTooltip } from '@/core/MarkManager'
+import { EPUBSearch } from './search'
 import 'foliate-js/view.js'
 
 interface TxtChapter {
@@ -114,6 +115,9 @@ export class FoliateReader {
   // 统一标记管理器（从外部设置）
   public marks: any
 
+  // 搜索管理器
+  public searchManager: EPUBSearch
+
   // 事件监听器
   private eventListeners = new Map<string, Set<Function>>()
 
@@ -125,6 +129,9 @@ export class FoliateReader {
 
     // 创建 View
     this.view = createFoliateView(this.container)
+
+    // 创建搜索管理器
+    this.searchManager = new EPUBSearch(this.view)
 
     // 设置事件监听
     this.setupEventListeners()
@@ -256,10 +263,14 @@ export class FoliateReader {
    * 搜索
    */
   async *search(query: string, options?: any) {
-    if ((this.view as any).search) yield* (this.view as any).search({ query, ...options })
+    yield* this.searchManager.search(query, options)
   }
 
-  clearSearch = () => (this.view as any).clearSearch?.()
+  clearSearch = () => this.searchManager.clear()
+  nextSearchResult = () => this.searchManager.next()
+  prevSearchResult = () => this.searchManager.prev()
+  getSearchResults = () => this.searchManager.getResults()
+  getCurrentSearchResult = () => this.searchManager.getCurrent()
 
   /**
    * 选择文本

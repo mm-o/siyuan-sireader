@@ -372,15 +372,22 @@ const handleSearch=async()=>{
   if(isPdfMode.value&&pdfSearcher.value){
     searchResults.value=await pdfSearcher.value.search(searchQuery.value)
     searchCurrentIndex.value=0
-    if(searchResults.value.length>0){
-      pdfViewer.value?.goToPage(pdfSearcher.value.getCurrent().page)
-    }
+    if(searchResults.value.length>0)pdfViewer.value?.goToPage(pdfSearcher.value.getCurrent().page)
+  }else if(reader?.searchManager){
+    searchResults.value=[]
+    for await(const r of reader.search(searchQuery.value))searchResults.value.push(r)
+    searchCurrentIndex.value=searchResults.value.length>0?0:-1
   }
-  // TODO: EPUB/TXT 搜索
 }
-const handleSearchNext=()=>{if(isPdfMode.value&&pdfSearcher.value){const r=pdfSearcher.value.next();if(r){searchCurrentIndex.value=pdfSearcher.value.getCurrentIndex();pdfViewer.value?.goToPage(r.page)}}}
-const handleSearchPrev=()=>{if(isPdfMode.value&&pdfSearcher.value){const r=pdfSearcher.value.prev();if(r){searchCurrentIndex.value=pdfSearcher.value.getCurrentIndex();pdfViewer.value?.goToPage(r.page)}}}
-const handleSearchClear=()=>{searchQuery.value='';searchResults.value=[];searchCurrentIndex.value=0;pdfSearcher.value?.clear();showSearch.value=false}
+const handleSearchNext=()=>{
+  if(isPdfMode.value&&pdfSearcher.value){const r=pdfSearcher.value.next();if(r){searchCurrentIndex.value=pdfSearcher.value.getCurrentIndex();pdfViewer.value?.goToPage(r.page)}}
+  else if(reader?.searchManager){const r=reader.nextSearchResult();if(r)searchCurrentIndex.value=reader.searchManager.getCurrentIndex()}
+}
+const handleSearchPrev=()=>{
+  if(isPdfMode.value&&pdfSearcher.value){const r=pdfSearcher.value.prev();if(r){searchCurrentIndex.value=pdfSearcher.value.getCurrentIndex();pdfViewer.value?.goToPage(r.page)}}
+  else if(reader?.searchManager){const r=reader.prevSearchResult();if(r)searchCurrentIndex.value=reader.searchManager.getCurrentIndex()}
+}
+const handleSearchClear=()=>{searchQuery.value='';searchResults.value=[];searchCurrentIndex.value=0;pdfSearcher.value?.clear();reader?.clearSearch();showSearch.value=false}
 
 // PDF 工具栏
 const handlePrint=async()=>{if(!pdfViewer.value)return;const{printPDF}=await import('@/core/pdf');await printPDF(pdfViewer.value.getPDF()!)}
@@ -491,8 +498,13 @@ onUnmounted(async()=>{savePosition();clearActiveReader();await markManager.value
 </style>
 
 <style>
+/* PDF 文本层 */
+.textLayer{position:absolute;inset:0;line-height:1}
+.textLayer span{color:transparent;cursor:text}
+.textLayer::selection{background:#0064ff4d}
+
 /* PDF 搜索高亮 */
-.textLayer mark.pdf-search-hl{background:#ff06;border-radius:2px;color:inherit;transition:background .2s}
+.textLayer mark.pdf-search-hl{background:#ff06;border-radius:2px}
 .textLayer mark.pdf-search-current{background:#ff9800;color:#fff;box-shadow:0 0 0 2px #ff9800}
 
 /* 标注样式 */
