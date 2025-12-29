@@ -4,7 +4,7 @@
 <p style="color: rgba(255,255,255,0.9); margin: 0 0 1.5em; font-size: 1.1em;">专业电子书阅读 · 智能标注 · 多格式支持</p>
 <p style="color: rgba(255,255,255,0.85); margin: 0 0 1.5em; line-height: 1.6; font-size: 0.95em;">让思源笔记变身专业电子书阅读器，支持 EPUB/PDF/TXT/在线小说多格式阅读<br>提供智能标注、多主题切换、词典查询、AI 翻译、卡包系统等功能，打造沉浸式阅读体验</p>
 <p style="margin: 0;">
-<img src="https://img.shields.io/badge/version-0.6.6-blue.svg" alt="Version" style="display: inline-block; margin: 0 4px;">
+<img src="https://img.shields.io/badge/version-0.6.7-blue.svg" alt="Version" style="display: inline-block; margin: 0 4px;">
 <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License" style="display: inline-block; margin: 0 4px;">
 <img src="https://img.shields.io/badge/SiYuan-3.0+-orange.svg" alt="SiYuan" style="display: inline-block; margin: 0 4px;">
 </p>
@@ -60,6 +60,25 @@
 ---
 
 ## 📝 最新更新
+
+### v0.6.7 (2025.12.29)
+
+#### 🎯 交互优化
+- **侧边栏统一** - 优化顶部按钮、插件设置按钮点击逻辑，统一打开思阅侧边栏
+- **目录快捷访问** - 阅读页面底部控制栏新增目录按钮，点击从底部弹出精致小窗，无需打开侧边栏
+
+#### 🛠️ 界面优化
+- **导航栏自适应** - 优化导航栏按钮自适应排布，响应式布局更流畅
+- **设置预览增强** - 设置预览新增折叠功能，优化空间利用，实时预览更直观
+- **搜索交互** - 优化搜索界面下拉按钮，点击空白处自动隐藏
+- **Tooltip 完善** - 统一各界面按钮 tooltip 显示，提示信息更清晰
+
+#### 🐛 问题修复
+- **目录滚动** - 修复翻页后目录滚动位置重置的问题
+- **侧边栏名称** - 修复侧边栏按钮名称显示为"设置"的问题，统一改为"思阅"
+- **封面显示** - 优化部分封面加载失败的显示逻辑
+
+---
 
 ### v0.6.6 (2025.12.29)
 

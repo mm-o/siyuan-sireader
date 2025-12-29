@@ -2,68 +2,65 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import type { ReaderSettings, FontFileInfo } from '@/composables/useSetting'
-import { PRESET_THEMES, UI_CONFIG, useSetting, useDocSearch, useNotebooks, createDialog } from '@/composables/useSetting'
+import { PRESET_THEMES, UI_CONFIG, useSetting, useDocSearch, useNotebooks } from '@/composables/useSetting'
 import { openTab } from 'siyuan'
 import BookSearch from './BookSearch.vue'
 import Bookshelf from './Bookshelf.vue'
 import { bookshelfManager } from '@/core/bookshelf'
-import { MotionPlugin } from '@vueuse/motion'
 import { usePlugin } from '@/main'
 import { useReaderState } from '@/core/foliate'
 import ReaderToc from './ReaderToc.vue'
 import DictMgr from './DictMgr.vue'
-import DeckMgr from './DeckMgr.vue'
 
-const props = defineProps<{
-  modelValue: ReaderSettings
-  i18n: any
-  onSave: () => Promise<void>
-}>()
+const props = defineProps<{ modelValue: ReaderSettings; i18n: any; onSave: () => Promise<void> }>()
+const emit = defineEmits<{ 'update:modelValue': [value: ReaderSettings] }>()
 
-const emit = defineEmits<{
-  'update:modelValue': [value: ReaderSettings]
-}>()
-
-// ===== 状态 =====
 const settings = ref<ReaderSettings>(props.modelValue)
 const activeTab = ref<'general' | 'appearance' | 'bookshelf' | 'search' | 'dictionary' | 'toc' | 'bookmark' | 'mark' | 'note' | 'deck'>('bookshelf')
+const previewExpanded = ref(localStorage.getItem('sr-preview-expanded') !== '0')
 const plugin = usePlugin()
 const { canShowToc } = useReaderState()
-const settingManager = useSetting(plugin)
-const { customFonts, isLoadingFonts } = settingManager
-
-// ===== 计算属性 =====
-const isNotebookMode = computed(() => settings.value.annotationMode === 'notebook')
-const tooltipDir = computed(() => {
-  const pos = settings.value.navPosition
-  return pos === 'left' ? 'e' : pos === 'right' ? 'w' : pos === 'top' ? 's' : 'n'
-})
-const tabs = computed(() => [{ id: 'bookshelf' as const, icon: 'lucide-library-big', tip: 'bookshelf' }, { id: 'search' as const, icon: 'lucide-book-search', tip: 'search' }, { id: 'deck' as const, icon: 'lucide-wallet-cards', tip: '卡包' }, ...(canShowToc.value ? [{ id: 'toc' as const, icon: 'lucide-scroll-text', tip: '目录' }, { id: 'bookmark' as const, icon: 'lucide-map-pin-check', tip: '书签' }, { id: 'mark' as const, icon: 'lucide-paint-bucket', tip: '标注' }, { id: 'note' as const, icon: 'lucide-map-pin-pen', tip: '笔记' }] : []), { id: 'general' as const, icon: 'lucide-settings-2', tip: 'tabGeneral' }, { id: 'appearance' as const, icon: 'lucide-paintbrush-vertical', tip: 'tabAppearance' }, { id: 'dictionary' as const, icon: 'lucide-book-text', tip: '词典' }])
-
-const previewStyle = computed(() => { const theme = settings.value.theme === 'custom' ? settings.value.customTheme : PRESET_THEMES[settings.value.theme]; if (!theme) return {}; const { textSettings: t, paragraphSettings: p, layoutSettings: l, visualSettings: v, viewMode } = settings.value, filters = [v.brightness !== 1 && `brightness(${v.brightness})`, v.contrast !== 1 && `contrast(${v.contrast})`, v.sepia > 0 && `sepia(${v.sepia})`, v.saturate !== 1 && `saturate(${v.saturate})`, v.invert && 'invert(1) hue-rotate(180deg)'].filter(Boolean).join(' '), fontFamily = t.fontFamily === 'custom' && t.customFont.fontFamily ? `"${t.customFont.fontFamily}", sans-serif` : (t.fontFamily || 'inherit'); return { color: theme.color, backgroundColor: theme.bgImg ? 'transparent' : theme.bg, backgroundImage: theme.bgImg ? `url("${theme.bgImg}")` : 'none', backgroundSize: 'cover', backgroundPosition: 'center', fontFamily, fontSize: `${t.fontSize}px`, letterSpacing: `${t.letterSpacing}em`, lineHeight: p.lineHeight, filter: filters || 'none', '--paragraph-spacing': p.paragraphSpacing, '--text-indent': p.textIndent, '--margin-h': `${l.marginHorizontal}px`, '--margin-v': `${l.marginVertical}px`, '--gap': `${l.gap}%`, '--header-footer': `${l.headerFooterMargin}px`, '--max-block': l.maxBlockSize > 0 ? `${l.maxBlockSize}px` : 'none', '--column-count': viewMode === 'double' ? 2 : 1 } })
-
-// ===== 核心方法 =====
-const save = async () => (emit('update:modelValue', settings.value), await props.onSave())
-const debouncedSave = (() => { let t: any; return () => (clearTimeout(t), t = setTimeout(save, 300)) })()
-const resetStyles = () => confirm(props.i18n.confirmReset || '确定要恢复默认设置吗？') && (settingManager.resetStyles(), save())
-
-// ===== 业务逻辑 =====
+const { customFonts, isLoadingFonts, loadCustomFonts, resetStyles: resetStylesRaw } = useSetting(plugin)
 const { notebooks, load: loadNotebooks } = useNotebooks()
 const { state: docSearch, search: searchDoc, select: selectDocRaw } = useDocSearch()
-const selectDoc = (d: any) => selectDocRaw(d, (doc) => (settings.value.parentDoc = doc, save()))
-const setFont = (f?: FontFileInfo) => { settings.value.textSettings.fontFamily = f ? 'custom' : 'inherit'; if (f) settings.value.textSettings.customFont = { fontFamily: f.displayName, fontFile: f.name }; else settings.value.textSettings.customFont = { fontFamily: '', fontFile: '' }; f ? debouncedSave() : save() }
-const handleReadOnline = (book: any) => openTab({ app: (plugin as any).app, custom: { icon: 'iconBook', title: book.name || '在线阅读', data: { bookInfo: book }, id: `${plugin.name}custom_tab_online_reader` } })
-
-// ===== 生命周期 =====
-onMounted(() => (settingManager.loadCustomFonts(), bookshelfManager.init()))
-watch(() => [activeTab.value, isNotebookMode.value], ([tab, notebook]) => tab === 'general' && notebook && loadNotebooks())
-watch(() => props.modelValue, (val) => settings.value = val, { deep: true })
-watch(() => canShowToc.value, (show) => !show && ['toc', 'bookmark', 'mark', 'note'].includes(activeTab.value) && (activeTab.value = 'bookshelf'))
-
-// ===== 配置常量 =====
 const { interfaceItems, customThemeItems, appearanceGroups } = UI_CONFIG
-const linkFormatDesc = computed(() => `${props.i18n?.linkFormatDesc || '可用变量：书名 作者 章节 位置 链接 文本 笔记 截图'}`)
 
+const tooltipDir = computed(() => ({ left: 'e', right: 'w', top: 's', bottom: 'n' }[settings.value.navPosition] || 'n'))
+const tabs = computed(() => [
+  { id: 'bookshelf' as const, icon: 'lucide-library-big', tip: 'bookshelf' },
+  { id: 'search' as const, icon: 'lucide-book-search', tip: 'search' },
+  { id: 'deck' as const, icon: 'lucide-wallet-cards', tip: '卡包' },
+  ...(canShowToc.value ? [
+    { id: 'toc' as const, icon: 'lucide-scroll-text', tip: '目录' },
+    { id: 'bookmark' as const, icon: 'lucide-map-pin-check', tip: '书签' },
+    { id: 'mark' as const, icon: 'lucide-paint-bucket', tip: '标注' },
+    { id: 'note' as const, icon: 'lucide-map-pin-pen', tip: '笔记' }
+  ] : []),
+  { id: 'general' as const, icon: 'lucide-settings-2', tip: 'tabGeneral' },
+  { id: 'appearance' as const, icon: 'lucide-paintbrush-vertical', tip: 'tabAppearance' },
+  { id: 'dictionary' as const, icon: 'lucide-book-text', tip: '词典' }
+])
+const previewStyle = computed(() => {
+  const theme = settings.value.theme === 'custom' ? settings.value.customTheme : PRESET_THEMES[settings.value.theme]
+  if (!theme) return {}
+  const { textSettings: t, paragraphSettings: p, layoutSettings: l, visualSettings: v, viewMode } = settings.value
+  const filters = [v.brightness !== 1 && `brightness(${v.brightness})`, v.contrast !== 1 && `contrast(${v.contrast})`, v.sepia > 0 && `sepia(${v.sepia})`, v.saturate !== 1 && `saturate(${v.saturate})`, v.invert && 'invert(1) hue-rotate(180deg)'].filter(Boolean).join(' ')
+  const fontFamily = t.fontFamily === 'custom' && t.customFont.fontFamily ? `"${t.customFont.fontFamily}", sans-serif` : t.fontFamily || 'inherit'
+  return { color: theme.color, backgroundColor: theme.bgImg ? 'transparent' : theme.bg, backgroundImage: theme.bgImg ? `url("${theme.bgImg}")` : 'none', backgroundSize: 'cover', backgroundPosition: 'center', fontFamily, fontSize: `${t.fontSize}px`, letterSpacing: `${t.letterSpacing}em`, lineHeight: p.lineHeight, filter: filters || 'none', '--paragraph-spacing': p.paragraphSpacing, '--text-indent': p.textIndent, '--margin-h': `${l.marginHorizontal}px`, '--margin-v': `${l.marginVertical}px`, '--gap': `${l.gap}%`, '--header-footer': `${l.headerFooterMargin}px`, '--max-block': l.maxBlockSize > 0 ? `${l.maxBlockSize}px` : 'none', '--column-count': viewMode === 'double' ? 2 : 1 }
+})
+
+const save = async () => (emit('update:modelValue', settings.value), await props.onSave())
+const debouncedSave = (() => { let t: any; return () => (clearTimeout(t), t = setTimeout(save, 300)) })()
+const resetStyles = () => confirm(props.i18n.confirmReset || '确定要恢复默认设置吗？') && (resetStylesRaw(), save())
+const selectDoc = (d: any) => selectDocRaw(d, (doc) => (settings.value.parentDoc = doc, save()))
+const setFont = (f?: FontFileInfo) => (settings.value.textSettings.fontFamily = f ? 'custom' : 'inherit', settings.value.textSettings.customFont = f ? { fontFamily: f.displayName, fontFile: f.name } : { fontFamily: '', fontFile: '' }, f ? debouncedSave() : save())
+const handleReadOnline = (book: any) => openTab({ app: (plugin as any).app, custom: { icon: 'iconBook', title: book.name || '在线阅读', data: { bookInfo: book }, id: `${plugin.name}custom_tab_online_reader` } })
+const togglePreview = () => (previewExpanded.value = !previewExpanded.value, localStorage.setItem('sr-preview-expanded', previewExpanded.value ? '1' : '0'))
+
+onMounted(() => (loadCustomFonts(), bookshelfManager.init()))
+watch(() => [activeTab.value, settings.value.annotationMode === 'notebook'], ([tab, notebook]) => tab === 'general' && notebook && loadNotebooks())
+watch(() => props.modelValue, (val) => settings.value = val, { deep: true })
+watch(canShowToc, (show) => !show && ['toc', 'bookmark', 'mark', 'note'].includes(activeTab.value) && (activeTab.value = 'bookshelf'))
 </script>
 
 <template>
@@ -82,13 +79,18 @@ const linkFormatDesc = computed(() => `${props.i18n?.linkFormatDesc || '可用�
 
     <main class="sr-content">
       <!-- 样式预览 -->
-      <div v-if="activeTab === 'appearance'" class="sr-preview" :style="previewStyle">
-        <div class="sr-preview-hf">{{ i18n.livePreview || '实时预览' }}</div>
-        <div class="sr-preview-body">
-          <p>春江潮水连海平，海上明月共潮生。</p>
-          <p>滟滟随波千万里，何处春江无月明。</p>
+      <div v-if="activeTab === 'appearance'" class="sr-preview" :class="{expanded:previewExpanded}" :style="previewStyle">
+        <div class="sr-preview-hf" @click="togglePreview">
+          <span>{{ i18n.livePreview || '实时预览' }}</span>
+          <svg class="sr-preview-toggle"><use :xlink:href="previewExpanded?'#iconContract':'#iconExpand'"/></svg>
         </div>
-        <div class="sr-preview-hf">{{ settings.viewMode === 'double' ? '双页' : settings.viewMode === 'scroll' ? '连续滚动' : '单页' }}</div>
+        <Transition name="expand">
+          <div v-show="previewExpanded" class="sr-preview-body">
+            <p>春江潮水连海平，海上明月共潮生。</p>
+            <p>滟滟随波千万里，何处春江无月明。</p>
+          </div>
+        </Transition>
+        <div v-if="previewExpanded" class="sr-preview-hf">{{ settings.viewMode === 'double' ? '双页' : settings.viewMode === 'scroll' ? '连续滚动' : '单页' }}</div>
       </div>
 
       <Transition name="slide" mode="out-in">
@@ -163,7 +165,7 @@ const linkFormatDesc = computed(() => `${props.i18n?.linkFormatDesc || '可用�
               <label class="sr-item">
                 <span class="sr-label">
                   <b>{{ i18n.linkFormat || '链接格式' }}</b>
-                  <small>{{ linkFormatDesc }}</small>
+                  <small>{{ i18n?.linkFormatDesc || '可用变量：书名 作者 章节 位置 链接 文本 笔记 截图' }}</small>
                 </span>
               </label>
               <textarea v-model="settings.linkFormat" class="b3-text-field" rows="2" @input="debouncedSave" style="width:100%;resize:vertical;font-size:12px"/>
@@ -261,15 +263,17 @@ const linkFormatDesc = computed(() => `${props.i18n?.linkFormatDesc || '可用�
   &.nav-top{flex-direction:column}
   &.nav-bottom{flex-direction:column-reverse}
 }
-.sr-nav{background:var(--b3-theme-surface);border-radius:8px;padding:4px;display:flex;gap:4px;flex-shrink:0;align-items:center;
-  .nav-left &,.nav-right &{width:40px;flex-direction:column;margin:8px 0}
+.sr-nav{background:var(--b3-theme-surface);border-radius:8px;padding:4px;display:flex;flex-shrink:0;align-items:center;
+  .nav-left &,.nav-right &{width:40px;flex-direction:column;margin:8px 0;gap:4px}
   .nav-left &{margin-left:8px}
   .nav-right &{margin-right:8px}
-  .nav-top &,.nav-bottom &{height:40px;flex-direction:row;padding:4px 8px;margin:0 8px}
+  .nav-top &,.nav-bottom &{height:40px;flex-direction:row;padding:4px 8px;margin:0 8px;gap:clamp(2px,0.5vw,4px)}
   .nav-top &{margin-top:8px}
   .nav-bottom &{margin-bottom:8px}
 }
-.sr-nav-btn{width:32px;height:32px;display:flex;align-items:center;justify-content:center;border:none;background:transparent;border-radius:8px;cursor:pointer;transition:all .15s;color:var(--b3-theme-on-surface);flex-shrink:0;svg{width:18px;height:18px}
+.sr-nav-btn{display:flex;align-items:center;justify-content:center;border:none;background:transparent;border-radius:8px;cursor:pointer;transition:all .15s;color:var(--b3-theme-on-surface);flex-shrink:1;min-width:0;
+  .nav-left &,.nav-right &{width:32px;height:32px;flex-shrink:0;svg{width:18px;height:18px}}
+  .nav-top &,.nav-bottom &{width:clamp(24px,8vw,32px);height:clamp(24px,8vw,32px);svg{width:clamp(14px,4vw,18px);height:clamp(14px,4vw,18px)}}
   &:hover{background:var(--b3-list-hover)}
   &.active{background:var(--b3-theme-primary);color:var(--b3-theme-on-primary)}
 }
@@ -278,8 +282,10 @@ const linkFormatDesc = computed(() => `${props.i18n?.linkFormatDesc || '可用�
 .sr-preview {
   position: sticky; top: 0; z-index: 10; margin: 20px 20px 0;
   background: var(--b3-theme-surface); border-radius: 8px; overflow: hidden;
-  display: flex; flex-direction: column; max-height: var(--max-block);
+  display: flex; flex-direction: column; transition: max-height .3s;
   column-count: var(--column-count, 1); column-gap: var(--gap);
+  max-height: 50px;
+  &.expanded { max-height: min(300px, var(--max-block)); }
   p { 
     margin: 0; padding: var(--margin-v) var(--margin-h);
     text-indent: calc(1em * var(--text-indent, 0)); break-inside: avoid;
@@ -287,28 +293,33 @@ const linkFormatDesc = computed(() => `${props.i18n?.linkFormatDesc || '可用�
   }
 }
 .sr-preview-hf {
-  height: var(--header-footer); display: flex; align-items: center; justify-content: center;
-  font-size: 10px; opacity: 0.4; border: 1px dashed currentColor; border-width: 1px 0 0;
-  &:first-child { border-width: 0 0 1px; }
+  height: 50px; display: flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer;
+  font-size: 12px; opacity: 0.6; border: 1px dashed currentColor; border-width: 1px 0 0; user-select: none;
+  &:first-child { border-width: 0 0 1px; font-weight: 500; }
+  &:hover { opacity: 0.8; background: var(--b3-list-hover); }
 }
-.sr-preview-body { flex: 1; overflow: auto; }
+.sr-preview-toggle { width: 14px; height: 14px; transition: transform .3s; }
+.sr-preview-body { flex: 1; overflow: auto; min-height: 0; }
+.expand-enter-active, .expand-leave-active { transition: all .3s; }
+.expand-enter-from, .expand-leave-to { opacity: 0; max-height: 0; }
 
 .sr-section{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:20px}
-.sr-group { background: var(--b3-theme-surface); border-radius: 8px; padding: 18px; box-shadow: 0 1px 3px #0000000d; transition: box-shadow .3s;
+.sr-group { background: var(--b3-theme-surface); border-radius: 8px; padding: 18px; box-shadow: 0 1px 3px #0000000d; transition: box-shadow .3s; container-type: inline-size;
   &:hover { box-shadow: 0 4px 10px #00000014; }
 }
 .sr-title { font-size: 15px; font-weight: 600; color: var(--b3-theme-primary); margin: 0 0 14px; }
-.sr-item { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 10px 0;
+.sr-item { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 10px 0; flex-wrap: wrap;
   &:not(:last-child) { border-bottom: 1px solid var(--b3-border-color); }
-  b { font-size: 13px; font-weight: 500; }
+  b { font-size: 13px; font-weight: 500; min-width: max-content; }
+  @container (max-width: 500px) { gap: 10px; }
 }
 .sr-label { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px;
   small { font-size: 11px; opacity: .7; line-height: 1.4; }
 }
 .b3-select { min-width: 130px; }
-.sr-slider { display: flex; align-items: center; gap: 10px;
-  input { width: 130px; }
-  em { min-width: 55px; text-align: right; font-size: 12px; font-weight: 500; color: var(--b3-theme-primary); font-style: normal; }
+.sr-slider { display: flex; align-items: center; gap: 10px; flex-shrink: 0;
+  input { width: clamp(100px, 20vw, 130px); flex-shrink: 1; }
+  em { min-width: 50px; text-align: right; font-size: 12px; font-weight: 500; color: var(--b3-theme-primary); font-style: normal; white-space: nowrap; }
 }
 .sr-color { width: 55px; height: 34px; padding: 3px; border-radius: 4px; cursor: pointer; border: 1px solid var(--b3-border-color); }
 .sr-reset { width: 100%; margin-top: 14px; padding: 9px; font-size: 12px; transition: all .2s;

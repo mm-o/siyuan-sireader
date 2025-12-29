@@ -358,11 +358,12 @@ watch(showThumbnail,v=>v&&nextTick(()=>{
 
 // ===== 生命周期 =====
 const refresh=()=>{refreshKey.value++;props.mode==='deck'&&loadDeckCards().then(v=>deckCards.value=v)}
-const handleSwitch=()=>{props.mode==='toc'?requestAnimationFrame(initToc):refresh()}
+const onMarks=()=>props.mode==='toc'?requestAnimationFrame(addBookmarkButtons):refresh()
+const onSwitch=()=>props.mode==='toc'?requestAnimationFrame(initToc):refresh()
 watch(()=>activeView.value?.book,book=>book?.toc&&props.mode==='toc'?requestAnimationFrame(initToc):cleanupToc(),{immediate:true})
-watch(()=>props.mode,handleSwitch)
-onMounted(()=>{['sireader:marks-updated','sireader:tab-switched'].forEach(e=>window.addEventListener(e,handleSwitch));props.mode==='deck'&&refresh()})
-onUnmounted(()=>{cleanupToc();obs?.disconnect();['sireader:marks-updated','sireader:tab-switched'].forEach(e=>window.removeEventListener(e,handleSwitch))})
+watch(()=>props.mode,onSwitch)
+onMounted(()=>{window.addEventListener('sireader:marks-updated',onMarks);window.addEventListener('sireader:tab-switched',onSwitch);props.mode==='deck'&&refresh()})
+onUnmounted(()=>{cleanupToc();obs?.disconnect();window.removeEventListener('sireader:marks-updated',onMarks);window.removeEventListener('sireader:tab-switched',onSwitch)})
 </script>
 
 <style scoped lang="scss">

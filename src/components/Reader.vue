@@ -7,6 +7,13 @@
     
     <div ref="viewerContainerRef" class="viewer-container" :class="{'has-pdf-toolbar':isPdfMode}"></div>
     
+    <!-- 目录弹窗 -->
+    <Transition name="toc-popup">
+      <div v-if="showToc&&!loading" class="reader-toc-popup" @click.stop>
+        <ReaderToc v-model:mode="tocMode" :i18n="i18n" />
+      </div>
+    </Transition>
+    
     <!-- 搜索面板 -->
     <Transition name="search-slide">
       <div v-if="showSearch&&!loading" class="reader-search" @click.stop>
@@ -27,6 +34,7 @@
         <span class="toolbar-page-total">/ {{totalPages}}</span>
       </div>
       <button v-if="!loading" class="toolbar-btn b3-tooltips b3-tooltips__n" @click.stop="handleNext" :aria-label="i18n.nextChapter||'下一章'"><svg><use xlink:href="#iconRight"/></svg></button>
+      <button v-if="!loading" class="toolbar-btn b3-tooltips b3-tooltips__n" @click.stop="openToc" :aria-label="i18n.toc||'目录'"><svg><use xlink:href="#iconList"/></svg></button>
       <button v-if="!loading" class="toolbar-btn b3-tooltips b3-tooltips__n" :class="{active:hasBookmark}" @click.stop="toggleBookmark" :aria-label="hasBookmark?(i18n.removeBookmark||'删除书签'):(i18n.addBookmark||'添加书签')"><svg><use xlink:href="#iconBookmark"/></svg></button>
       <button v-if="!loading" class="toolbar-btn b3-tooltips b3-tooltips__n" :class="{active:showSearch}" @click.stop="toggleSearch" :aria-label="i18n.search||'搜索'"><svg><use xlink:href="#iconSearch"/></svg></button>
       <button v-if="isMobile()" class="toolbar-btn b3-tooltips b3-tooltips__n" @click.stop="handleClose" aria-label="关闭"><svg><use xlink:href="#iconClose"/></svg></button>
@@ -51,6 +59,7 @@ import { createShapeToolManager, type ShapeToolManager } from '@/core/pdf/shape'
 import { saveMobilePosition, getMobilePosition, isMobile } from '@/core/mobile'
 import PdfToolbar from './PdfToolbar.vue'
 import MarkPanel from './MarkPanel.vue'
+import ReaderToc from './ReaderToc.vue'
 import { gotoPDF, gotoEPUB, restorePosition as restorePos, initJump } from '@/utils/jump'
 import { copyMark as copyMarkUtil } from '@/utils/copy'
 
@@ -111,6 +120,8 @@ const currentView = ref<any>(null)
 const pageInput = ref(1)
 const totalPages = ref(0)
 const showSearch = ref(false)
+const showToc = ref(false)
+const tocMode = ref<'toc' | 'bookmark' | 'mark' | 'note' | 'deck'>('toc')
 const searchQuery = ref('')
 const searchResults = ref<any[]>([])
 const searchCurrentIndex = ref(0)
@@ -421,6 +432,9 @@ const getBookUrl=()=>(window as any).__currentBookUrl||props.bookInfo?.bookUrl||
 const getCurrentPosition=()=>isPdfMode.value?{page:pdfViewer.value?.getCurrentPage()}:{cfi:reader?.getLocation()?.cfi}
 const savePosition=()=>{if(!isMobile())return;const url=getBookUrl();if(url)saveMobilePosition(url,getCurrentPosition())}
 
+// 打开目录
+const openToc = () => { showToc.value = !showToc.value }
+
 // 关闭
 const handleClose=()=>{savePosition();window.dispatchEvent(new CustomEvent('reader:close'))}
 
@@ -493,6 +507,9 @@ onUnmounted(async()=>{savePosition();clearActiveReader();await markManager.value
 .search-count{font-size:11px;color:var(--b3-theme-on-surface-variant);min-width:40px;text-align:center;opacity:.7}
 .search-slide-enter-active,.search-slide-leave-active{transition:all .2s}
 .search-slide-enter-from,.search-slide-leave-to{opacity:0;transform:translate(-50%,-10px)}
+.reader-toc-popup{position:absolute;bottom:60px;left:50%;transform:translateX(-50%);width:min(360px,90vw);max-height:min(480px,70vh);background:var(--b3-theme-surface);border:1px solid var(--b3-border-color);border-radius:8px;box-shadow:0 4px 20px #0003;z-index:1002;overflow:hidden;display:flex;flex-direction:column}
+.toc-popup-enter-active,.toc-popup-leave-active{transition:all .2s}
+.toc-popup-enter-from,.toc-popup-leave-to{opacity:0;transform:translate(-50%,10px)}
 .sr-selection-menu{position:fixed;z-index:10000;display:flex;gap:4px;padding:6px;background:var(--b3-theme-surface);border:1px solid var(--b3-border-color);border-radius:8px;box-shadow:0 4px 16px #0003}
 .sr-btn{width:32px;height:32px;display:flex;align-items:center;justify-content:center;border:none;background:transparent;border-radius:8px;cursor:pointer;transition:all .15s;color:var(--b3-theme-on-surface);svg{width:16px;height:16px}&:hover{background:var(--b3-list-hover);color:var(--b3-theme-primary)}}
 </style>

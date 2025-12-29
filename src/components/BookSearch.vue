@@ -1,5 +1,5 @@
 <template>
-  <div class="sr-search">
+  <div class="sr-search" @click="showSourceMenu = false">
     <div class="sr-toolbar">
       <input v-model="keyword" :placeholder="i18n.searchPlaceholder || '输入书名搜索'" @keyup.enter="search" :disabled="searching">
       <div class="sr-select">
@@ -30,7 +30,10 @@
              :initial="{ opacity: 0, y: 15 }"
              :enter="{ opacity: 1, y: 0, transition: { delay: results.indexOf(book) * 20 } }"
              class="sr-card" @click="showDetail(book)">
-          <img v-if="book.coverUrl" :src="book.coverUrl" @error="e => e.target.src='/icons/book-placeholder.svg'" class="sr-cover">
+          <div class="sr-cover-wrap">
+            <img v-if="shouldShowCover(book)" :src="book.coverUrl" @error="handleCoverError(book)" class="sr-cover">
+            <div v-else class="sr-text-cover">{{ book.name }}</div>
+          </div>
           <div class="sr-info">
             <div class="sr-title">{{ book.name }}</div>
             <div class="sr-author">{{ book.author }}</div>
@@ -164,6 +167,7 @@ const resultsContainer = ref<HTMLElement>()
 const hasMore = ref(false)
 const searchIterator = ref<AsyncGenerator<SearchResult[]> | null>(null)
 const annaEnabled = ref(localStorage.getItem('anna_enabled') === 'true')
+const failedCovers = new Set<string>()
 
 const enabledSources = computed(() => bookSourceManager.getEnabledSources())
 const selectedSourceName = computed(() => {
@@ -172,6 +176,8 @@ const selectedSourceName = computed(() => {
   const src = enabledSources.value.find(s => s.bookSourceUrl === selectedSource.value)
   return src?.bookSourceName || ''
 })
+const shouldShowCover = (book: any) => book.coverUrl && !failedCovers.has(book.coverUrl)
+const handleCoverError = (book: any) => failedCovers.add(book.coverUrl)
 
 const search = async () => {
   if (!keyword.value.trim()) return
@@ -284,7 +290,9 @@ onUnmounted(() => window.removeEventListener('anna-toggle', handleAnnaToggle))
 .sr-results{flex:1;overflow-y:auto;padding:12px 8px;min-height:0}
 .sr-list{display:flex;flex-direction:column;gap:8px}
 .sr-card{display:flex;gap:12px;padding:12px;background:var(--b3-theme-surface);border-radius:6px;cursor:pointer;transition:transform .15s;&:hover{transform:translateY(-2px)}}
-.sr-cover{width:80px;height:112px;border-radius:4px;flex-shrink:0;object-fit:cover;background:var(--b3-theme-background)}
+.sr-cover-wrap{width:80px;height:112px;border-radius:4px;flex-shrink:0;overflow:hidden;background:linear-gradient(135deg,var(--b3-theme-primary-lightest),var(--b3-theme-surface-lighter))}
+.sr-cover{width:100%;height:100%;object-fit:cover}
+.sr-text-cover{width:100%;height:100%;display:flex;align-items:center;justify-content:center;padding:8px;font-size:12px;font-weight:600;text-align:center;line-height:1.3;color:var(--b3-theme-on-surface);word-break:break-word;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical}
 .sr-info{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
 .sr-title{font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sr-author{font-size:11px;opacity:.6}
@@ -325,7 +333,7 @@ onUnmounted(() => window.removeEventListener('anna-toggle', handleAnnaToggle))
 
 @media (max-width:640px) {
   .sr-card{flex-direction:column}
-  .sr-cover{width:100%;height:180px}
+  .sr-cover-wrap{width:100%;height:180px}
   .sr-detail{width:100%}
 }
 </style>

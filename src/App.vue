@@ -22,9 +22,7 @@ const { settings, isLoaded } = useSetting(plugin)
 let settingsApp: any = null
 let mobileReaderApp: any = null
 
-const openSetting = () => {
-  document.querySelector('.dock__item[aria-label*="思阅"]')?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
-}
+const openSetting = () => document.querySelector<HTMLElement>(`.dock__item[data-title="${plugin.i18n?.name || '思阅'}"]`)?.click()
 
 // ===== 阅读器核心 =====
 const FORMATS = ['.epub', '.pdf', '.mobi', '.azw3', '.azw', '.fb2', '.cbz', '.txt']
@@ -393,7 +391,7 @@ plugin.addDock({
     position: 'RightTop', 
     size: { width: 680, height: 580 }, 
     icon: iconId, 
-    title: plugin.i18n?.settingsTitle || '思阅设置' 
+    title: plugin.i18n?.name || '思阅' 
   },
   data: { plugin },
   init() {

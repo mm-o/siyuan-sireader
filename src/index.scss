@@ -494,6 +494,7 @@
   button {
     width: 28px; height: 28px; flex-shrink: 0; border: none; background: none;
     cursor: pointer; transition: all .15s; color: var(--b3-theme-on-surface);
+    position: relative; z-index: 1;
     svg { width: 16px; height: 16px; }
     &:hover { color: var(--b3-theme-primary); transform: scale(1.08); }
     &:active { transform: scale(.92); }

@@ -4,7 +4,7 @@
 <p style="color: rgba(255,255,255,0.9); margin: 0 0 1.5em; font-size: 1.1em;">Professional eBook Reader · Smart Annotation · Multi-format Support</p>
 <p style="color: rgba(255,255,255,0.85); margin: 0 0 1.5em; line-height: 1.6; font-size: 0.95em;">Transform SiYuan Notes into a professional eBook reader<br>Support EPUB/PDF/TXT/Online novels with smart annotation, multi-theme switching, dictionary lookup, AI translation, deck system, and more for an immersive reading experience</p>
 <p style="margin: 0;">
-<img src="https://img.shields.io/badge/version-0.6.6-blue.svg" alt="Version" style="display: inline-block; margin: 0 4px;">
+<img src="https://img.shields.io/badge/version-0.6.7-blue.svg" alt="Version" style="display: inline-block; margin: 0 4px;">
 <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License" style="display: inline-block; margin: 0 4px;">
 <img src="https://img.shields.io/badge/SiYuan-3.0+-orange.svg" alt="SiYuan" style="display: inline-block; margin: 0 4px;">
 </p>
@@ -60,6 +60,25 @@
 ---
 
 ## 📝 Latest Updates
+
+### v0.6.7 (2025.12.29)
+
+#### 🎯 Interaction Optimization
+- **Unified Sidebar** - Optimize top button and plugin settings button click logic, unified to open SiReader sidebar
+- **Quick TOC Access** - Add TOC button to reading page bottom toolbar, click to popup compact window from bottom, no need to open sidebar
+
+#### 🛠️ UI Optimization
+- **Navigation Adaptive** - Optimize navigation button adaptive layout, responsive layout more smooth
+- **Settings Preview Enhancement** - Settings preview add collapse function, optimize space utilization, real-time preview more intuitive
+- **Search Interaction** - Optimize search interface dropdown button, click blank area to auto hide
+- **Tooltip Complete** - Unify all interface button tooltip display, prompt information more clear
+
+#### 🐛 Bug Fixes
+- **TOC Scroll** - Fix TOC scroll position reset after page turn
+- **Sidebar Name** - Fix sidebar button name display as "Settings", unified to "SiReader"
+- **Cover Display** - Optimize cover loading failure display logic
+
+---
 
 ### v0.6.6 (2025.12.29)
 
