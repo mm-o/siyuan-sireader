@@ -11,7 +11,7 @@ export interface PDFAnnotation {
   rects: { x: number; y: number; w: number; h: number }[]
   text: string
   color: HighlightColor
-  style?: 'highlight' | 'underline' | 'outline' | 'squiggly'
+  style?: 'highlight' | 'underline' | 'outline' | 'dotted' | 'dashed' | 'double' | 'squiggly'
   note?: string
   timestamp: number
 }

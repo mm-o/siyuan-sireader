@@ -51,7 +51,7 @@ const mountReader = async (el: HTMLElement, props: any) => {
   openEpubTab: (file: File, title?: string) => openTab({
     app: (plugin as any).app,
     custom: {
-      icon: 'iconBook',
+      icon: 'siyuan-reader-icon',
       title: title || file.name.replace(/\.[^.]+$/, ''),
       data: { file },
       id: `${plugin.name}epub_reader`
@@ -60,7 +60,7 @@ const mountReader = async (el: HTMLElement, props: any) => {
   openOnlineTab: (bookInfo: any) => openTab({
     app: (plugin as any).app,
     custom: {
-      icon: 'iconBook',
+      icon: 'siyuan-reader-icon',
       title: bookInfo.name || '在线阅读',
       data: { bookInfo },
       id: `${plugin.name}custom_tab_online_reader`
@@ -115,7 +115,7 @@ const handleEbookLink = async (e: MouseEvent) => {
     // 查找已打开的标签页
     const tab = Array.from(document.querySelectorAll('.layout-tab-bar .item')).find(t => (t.getAttribute('data-title') || t.querySelector('.item__text')?.textContent) === book.name)
     if (tab) return (tab as HTMLElement).click(), requestAnimationFrame(() => window.dispatchEvent(new CustomEvent('sireader:goto', { detail: { cfi: parsed.cfi, id: parsed.id } })))
-    return openTab({ app: (plugin as any).app, custom: { icon: 'iconBook', title: book.name, data: { bookInfo: { ...book, epubCfi: parsed.cfi } }, id: `${plugin.name}custom_tab_online_reader` }, position: { rightTab: 'right', bottomTab: 'bottom' }[settings.value.openMode] })
+    return openTab({ app: (plugin as any).app, custom: { icon: 'siyuan-reader-icon', title: book.name, data: { bookInfo: { ...book, epubCfi: parsed.cfi } }, id: `${plugin.name}custom_tab_online_reader` }, position: { rightTab: 'right', bottomTab: 'bottom' }[settings.value.openMode] })
   }
   
   // 处理普通文件链接
@@ -127,7 +127,7 @@ const handleEbookLink = async (e: MouseEvent) => {
   openTab({
     app: (plugin as any).app,
     custom: {
-      icon: 'iconBook',
+      icon: 'siyuan-reader-icon',
       title: file.name.replace(/\.[^.]+$/, ''),
       data: { file, url: url.split('#')[0], blockId: link.closest('[data-node-id]')?.getAttribute('data-node-id') },
       id: `${plugin.name}epub_reader`

@@ -7,13 +7,13 @@ import{loadBookData,saveBookData}from'./bookshelf'
 
 type Format='pdf'|'epub'|'txt'
 type HighlightColor='yellow'|'red'|'green'|'blue'|'purple'|'orange'|'pink'
-type MarkStyle='highlight'|'underline'|'outline'|'squiggly'
+type MarkStyle='highlight'|'underline'|'outline'|'dotted'|'dashed'|'double'|'squiggly'
 type MarkType='bookmark'|'highlight'|'note'|'vocab'
 
-interface Mark{id:string;type:MarkType;format:Format;cfi?:string;section?:number;page?:number;rects?:any[];text?:string;color?:HighlightColor;style?:MarkStyle;note?:string;title?:string;timestamp:number;progress?:number}
+interface Mark{id:string;type:MarkType;format:Format;cfi?:string;section?:number;page?:number;rects?:any[];text?:string;color?:HighlightColor;style?:MarkStyle;note?:string;title?:string;timestamp:number;progress?:number;textOffset?:number}
 
 export const COLORS=[{name:'黄色',color:'yellow'as const,bg:'#ffeb3b'},{name:'红色',color:'red'as const,bg:'#ef5350'},{name:'绿色',color:'green'as const,bg:'#66bb6a'},{name:'蓝色',color:'blue'as const,bg:'#42a5f5'},{name:'紫色',color:'purple'as const,bg:'#ab47bc'},{name:'橙色',color:'orange'as const,bg:'#ff9800'},{name:'粉色',color:'pink'as const,bg:'#ec407a'}]
-export const STYLES=[{type:'highlight'as const,name:'高亮',text:'A'},{type:'underline'as const,name:'下划线',text:'A'},{type:'outline'as const,name:'边框',text:'A'},{type:'squiggly'as const,name:'波浪线',text:'A'}]
+export const STYLES=[{type:'highlight'as const,name:'高亮',text:'A'},{type:'underline'as const,name:'下划线',text:'A'},{type:'outline'as const,name:'边框',text:'A'},{type:'dotted'as const,name:'点线',text:'A',pdfOnly:true},{type:'dashed'as const,name:'虚线',text:'A',pdfOnly:true},{type:'double'as const,name:'双线',text:'A',pdfOnly:true},{type:'squiggly'as const,name:'波浪线',text:'A',epubOnly:true}]
 export const getColorMap=()=>Object.fromEntries(COLORS.map(c=>[c.color,c.bg]))
 export const formatTime=(ts:number)=>{const d=new Date(ts);return`${d.getFullYear()}-${(d.getMonth()+1).toString().padStart(2,'0')}-${d.getDate().toString().padStart(2,'0')}`}
 
@@ -220,8 +220,12 @@ export class MarkManager{
       const m=this.marks.find(mark=>mark.cfi===annotation.value)
       const color=getColorBg(m?.color)
       const style=m?.style||'highlight'
+      // EPUB支持的样式：highlight, underline, outline, squiggly
+      // PDF新增样式映射到EPUB已有样式
+      const styleMap:Record<string,string>={dotted:'underline',dashed:'underline',double:'underline'}
+      const epubStyle=styleMap[style]||style
       const styles={underline:[Overlayer.underline,{color,width:2}],outline:[Overlayer.outline,{color,width:3}],squiggly:[Overlayer.squiggly,{color,width:2}],highlight:[Overlayer.highlight,{color}]}
-      const[fn,opts]=styles[style]||styles.highlight
+      const[fn,opts]=styles[epubStyle]||styles.highlight
       draw(fn,opts)
       if(m?.note&&range)this.renderNote(range,m)
     })as EventListener)
@@ -306,7 +310,8 @@ export class MarkManager{
         const div=document.createElement('div'),base=`position:absolute;left:${vx}px;top:${vy}px;width:${vw}px;height:${vh}px;pointer-events:auto;cursor:pointer`
         div.className=`pdf-highlight pdf-${style}`
         div.dataset.id=m.id
-        div.style.cssText=style==='highlight'?`${base};background:${bg};opacity:0.3`:style==='underline'?`${base};border-bottom:2px solid ${bg};opacity:0.8`:style==='outline'?`${base};border:2px solid ${bg};opacity:0.8`:`${base};border-bottom:2px wavy ${bg};opacity:0.8`
+        const w=style==='double'?'4px':'2px'
+        div.style.cssText=style==='highlight'?`${base};background:${bg};opacity:0.3`:style==='underline'?`${base};border-bottom:2px solid ${bg};opacity:0.8`:style==='outline'?`${base};border:2px solid ${bg};opacity:0.8`:`${base};border-bottom:${w} ${style} ${bg};opacity:0.8`
         div.onclick=()=>this.onAnnotationClick?.(m)
         layer.appendChild(div)
         if(m.note&&idx===m.rects!.length-1)this.createNoteMarker(m,{x:vx,y:vy,w:vw,h:vh},layer)
@@ -314,30 +319,21 @@ export class MarkManager{
     })
   }
 
-  renderTxt(doc:Document,section:number){
+  renderTxt(doc:Document,section:number,markId?:string){
     if(this.format!=='txt'||!doc?.body)return
     try{
-      doc.querySelectorAll('[data-txt-mark],[data-note-marker]').forEach(el=>el.remove())
-      this.marks.filter(m=>m.section===section).forEach(m=>cleanTooltips(m.id))
-      this.marks.filter(m=>m.section===section&&m.type!=='bookmark').forEach(m=>{
-        const walker=doc.createTreeWalker(doc.body,NodeFilter.SHOW_TEXT)
-        let node:Node|null
-        while((node=walker.nextNode())){
-          const text=node.textContent||''
-          const idx=text.indexOf(m.text||'')
-          if(idx!==-1&&text.length>10){
-            const range=doc.createRange()
+      (markId?this.marks.filter(m=>m.id===markId&&m.section===section):this.marks.filter(m=>m.section===section&&m.type!=='bookmark'&&!doc.querySelector(`[data-mark-id="${m.id}"]`))).forEach(m=>{
+        const walker=doc.createTreeWalker(doc.body,NodeFilter.SHOW_TEXT,{acceptNode:n=>n.parentElement?.hasAttribute('data-txt-mark')?NodeFilter.FILTER_REJECT:NodeFilter.FILTER_ACCEPT})
+        for(let node:Node|null;node=walker.nextNode();){
+          const idx=(node.textContent||'').indexOf(m.text||'')
+          if(idx>-1&&node.textContent!.length>10){
+            const range=doc.createRange(),span=doc.createElement('span'),color=getColorBg(m.color),s=m.style||'highlight'
             range.setStart(node,idx)
             range.setEnd(node,idx+(m.text?.length||0))
-            const span=doc.createElement('span')
-            span.setAttribute('data-txt-mark','true')
-            const color=getColorBg(m.color),style=m.style||'highlight'
-            if(style==='highlight')span.style.backgroundColor=color
-            else if(style==='underline')Object.assign(span.style,{borderBottom:`2px solid ${color}`,paddingBottom:'2px'})
-            else if(style==='outline')Object.assign(span.style,{border:`2px solid ${color}`,padding:'0 2px',borderRadius:'2px'})
-            else Object.assign(span.style,{textDecoration:'underline wavy',textDecorationColor:color})
-            span.style.cursor='pointer'
-            span.onclick=(e)=>{e.stopPropagation();const r=span.getBoundingClientRect(),iframe=doc.defaultView?.frameElement as HTMLIFrameElement,ir=iframe?.getBoundingClientRect();window.dispatchEvent(new CustomEvent('txt-annotation-click',{detail:{mark:m,x:(ir?.left||0)+r.left+r.width/2,y:(ir?.top||0)+r.top+r.height}}))}
+            span.setAttribute('data-txt-mark','')
+            span.setAttribute('data-mark-id',m.id)
+            Object.assign(span.style,s==='highlight'?{backgroundColor:color}:s==='underline'?{borderBottom:`2px solid ${color}`,paddingBottom:'2px'}:s==='outline'?{border:`2px solid ${color}`,padding:'0 2px',borderRadius:'2px'}:{textDecoration:'underline wavy',textDecorationColor:color},{cursor:'pointer'})
+            span.onclick=e=>{e.stopPropagation();const r=span.getBoundingClientRect(),ir=(doc.defaultView?.frameElement as HTMLIFrameElement)?.getBoundingClientRect();window.dispatchEvent(new CustomEvent('txt-annotation-click',{detail:{mark:m,x:(ir?.left||0)+r.left+r.width/2,y:(ir?.top||0)+r.top+r.height}}))}
             range.surroundContents(span)
             break
           }
@@ -348,34 +344,30 @@ export class MarkManager{
 
   bindTxtDocEvents(doc:Document,section:number){
     if(!doc?.body||(doc as any).__txtEventsBound)return
-    try{
-      doc.addEventListener('mouseup',(e:MouseEvent)=>window.dispatchEvent(new CustomEvent('txt-selection',{detail:{doc,event:e}})))
-      this.renderTxt(doc,section)
-      ;(doc as any).__txtEventsBound=true
-    }catch(e){console.error('[Mark] bindTxtDocEvents:',e)}
+    try{doc.addEventListener('mouseup',e=>window.dispatchEvent(new CustomEvent('txt-selection',{detail:{doc,event:e}})));this.renderTxt(doc,section);(doc as any).__txtEventsBound=true}catch(e){console.error('[Mark] bindTxtDocEvents:',e)}
   }
 
-  private refreshTxt(){
-    const contents=this.view?.renderer?.getContents?.()
-    if(!contents)return
-    const section=this.view?.lastLocation?.section||0
-    contents.forEach(({doc}:any)=>{if(doc)this.renderTxt(doc,section)})
+  private txtOp(m:Mark,op:'add'|'update'|'delete'){
+    const c=this.view?.renderer?.getContents?.()
+    c&&m.section===this.view?.lastLocation?.section&&c.forEach(({doc}:any)=>doc&&(op!=='add'&&doc.querySelectorAll(`[data-mark-id="${m.id}"]`).forEach((el:HTMLElement)=>{while(el.firstChild)el.parentNode?.insertBefore(el.firstChild,el);el.remove()}),op!=='delete'&&this.renderTxt(doc,m.section!,m.id)))
   }
 
-  async addHighlight(loc:string|number,text:string,color:HighlightColor,style:MarkStyle='highlight',rects?:any[]):Promise<Mark>{
-    const m=this.add({type:'highlight',[typeof loc==='string'?'cfi':this.format==='pdf'?'page':'section']:loc,text:text.substring(0,200),color,style,rects})
+  private refreshTxt(){this.view?.renderer?.getContents?.()?.forEach(({doc}:any)=>doc&&this.renderTxt(doc,this.view?.lastLocation?.section||0))}
+
+  async addHighlight(loc:string|number,text:string,color:HighlightColor,style:MarkStyle='highlight',rects?:any[],textOffset?:number):Promise<Mark>{
+    const m=this.add({type:'highlight',[typeof loc==='string'?'cfi':this.format==='pdf'?'page':'section']:loc,text:text.substring(0,200),color,style,rects,textOffset})
     if(this.format==='pdf')this.renderPdf(m.page!)
-    else if(this.format==='txt')this.refreshTxt()
+    else if(this.format==='txt')this.txtOp(m,'add')
     else if(m.cfi)await this.view?.addAnnotation?.({value:m.cfi,color:m.color,note:m.note}).catch(()=>{})
     this.save()
     window.dispatchEvent(new Event('sireader:marks-updated'))
     return m
   }
 
-  async addNote(loc:string|number,note:string,text:string,color:HighlightColor='blue',style:MarkStyle='outline',rects?:any[]):Promise<Mark>{
-    const m=this.add({type:'note',[typeof loc==='string'?'cfi':this.format==='pdf'?'page':'section']:loc,text:text.substring(0,200),note,color,style,rects})
+  async addNote(loc:string|number,note:string,text:string,color:HighlightColor='blue',style:MarkStyle='outline',rects?:any[],textOffset?:number):Promise<Mark>{
+    const m=this.add({type:'note',[typeof loc==='string'?'cfi':this.format==='pdf'?'page':'section']:loc,text:text.substring(0,200),note,color,style,rects,textOffset})
     if(this.format==='pdf')this.renderPdf(m.page!)
-    else if(this.format==='txt')this.refreshTxt()
+    else if(this.format==='txt')this.txtOp(m,'add')
     else if(m.cfi)await this.view?.addAnnotation?.({value:m.cfi,color:m.color,note:m.note}).catch(()=>{})
     this.save()
     window.dispatchEvent(new Event('sireader:marks-updated'))
@@ -397,7 +389,7 @@ export class MarkManager{
     if(!m)return false
     Object.assign(m,updates)
     if(this.format==='pdf')this.renderPdf(m.page!)
-    else if(this.format==='txt')this.refreshTxt()
+    else if(this.format==='txt')this.txtOp(m,'update')
     else if(m.cfi){
       await this.view?.deleteAnnotation?.({value:m.cfi}).catch(()=>{})
       await this.view?.addAnnotation?.({value:m.cfi,color:m.color,note:m.note}).catch(()=>{})
@@ -435,7 +427,7 @@ export class MarkManager{
       }catch(e){console.error('[Mark]',e)}
     }
     if(this.format==='pdf')this.renderPdf(m.page!)
-    else if(this.format==='txt')this.refreshTxt()
+    else if(this.format==='txt'){cleanTooltips(m.id);this.txtOp(m,'delete')}
     else{
       if(m.cfi)await this.view?.deleteAnnotation?.({value:m.cfi}).catch(()=>{})
       cleanTooltips(m.id)
@@ -483,8 +475,8 @@ export class MarkManager{
   getShapeAnnotations=()=>this.getManager('shape')?.toJSON?.()||[]
   
   async goTo(m:Mark){
-    if(this.format==='pdf'&&m.page)window.dispatchEvent(new CustomEvent('sireader:goto',{detail:{cfi:`#page-${m.page}`,id:m.id}}))
-    else window.dispatchEvent(new CustomEvent('sireader:goto',{detail:{cfi:m.cfi||`section-${m.section}`,id:m.id}}))
+    const d=this.format==='pdf'&&m.page?{cfi:`#page-${m.page}`,id:m.id}:this.format==='txt'&&m.section!==undefined?{section:m.section,textOffset:m.textOffset,text:m.text,id:m.id}:{cfi:m.cfi||`section-${m.section}`,id:m.id}
+    window.dispatchEvent(new CustomEvent('sireader:goto',{detail:d}))
   }
 
   updateProgress(){

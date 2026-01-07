@@ -54,7 +54,7 @@ const debouncedSave = (() => { let t: any; return () => (clearTimeout(t), t = se
 const resetStyles = () => confirm(props.i18n.confirmReset || '确定要恢复默认设置吗？') && (resetStylesRaw(), save())
 const selectDoc = (d: any) => selectDocRaw(d, (doc) => (settings.value.parentDoc = doc, save()))
 const setFont = (f?: FontFileInfo) => (settings.value.textSettings.fontFamily = f ? 'custom' : 'inherit', settings.value.textSettings.customFont = f ? { fontFamily: f.displayName, fontFile: f.name } : { fontFamily: '', fontFile: '' }, f ? debouncedSave() : save())
-const handleReadOnline = (book: any) => openTab({ app: (plugin as any).app, custom: { icon: 'iconBook', title: book.name || '在线阅读', data: { bookInfo: book }, id: `${plugin.name}custom_tab_online_reader` } })
+const handleReadOnline = (book: any) => openTab({ app: (plugin as any).app, custom: { icon: 'siyuan-reader-icon', title: book.name || '在线阅读', data: { bookInfo: book }, id: `${plugin.name}custom_tab_online_reader` } })
 const togglePreview = () => (previewExpanded.value = !previewExpanded.value, localStorage.setItem('sr-preview-expanded', previewExpanded.value ? '1' : '0'))
 
 onMounted(() => (loadCustomFonts(), bookshelfManager.init()))

@@ -144,12 +144,26 @@ export const gotoEPUB=(cfi:string,id:string|undefined,reader:any,markManager:any
   setTimeout(tryFlash,800)
 }
 
+// TXT跳转并高亮
+export const gotoTXT=(s:number,o:number|undefined,t:string|undefined,id:string|undefined,v:any)=>{
+  v?.goTo(s)
+  setTimeout(()=>v?.renderer?.getContents?.()?.forEach(({doc}:any)=>{
+    const target=id?doc?.querySelector(`[data-mark-id="${id}"]`):o!==undefined&&t?(()=>{
+      let off=0,r:HTMLElement|null=null
+      const w=doc.createTreeWalker(doc.body,NodeFilter.SHOW_TEXT)
+      for(let n:Node|null;n=w.nextNode();)if(off+=(n.textContent||'').length,off>o&&(n.textContent||'').includes(t)){r=n.parentElement?.closest('[data-txt-mark]');break}
+      return r
+    })():null
+    target&&(target.scrollIntoView({block:'center'}),flashElement(target,'epub-highlight--flash'))
+  }),300)
+}
+
 // 统一跳转入口 - 自动判断类型并跳转闪烁
 export const jump=(item:any,activeView:any,activeReader:any,marks:any)=>{
   const ctx=getJumpContext(activeView,activeReader,marks)
   if(ctx.isPdf&&item.page)gotoPDF(item.page,item.id,ctx.pdfViewer,ctx.markManager,ctx.shapeManager)
   else if(item.cfi)gotoEPUB(item.cfi,item.id,ctx.reader,ctx.markManager)
-  else if(item.section!==undefined)ctx.view?.goTo(item.section)
+  else if(item.section!==undefined)gotoTXT(item.section,item.textOffset,item.text,item.id,ctx.view)
   else if(typeof item==='number'&&ctx.isPdf)gotoPDF(item,undefined,ctx.pdfViewer,ctx.markManager,ctx.shapeManager)
 }
 export const restorePosition=async(bookUrl:string,reader:any,pdfViewer:any,getMobilePosition:any)=>{
@@ -159,8 +173,8 @@ export const restorePosition=async(bookUrl:string,reader:any,pdfViewer:any,getMo
   else if(pos?.page&&pdfViewer)pdfViewer.goToPage(pos.page)
 }
 
-// 初始化跳转（打开书籍时）
 export const initJump=(cfi:string,isPdf:boolean)=>{
   if(!cfi)return
-  setTimeout(()=>window.dispatchEvent(new CustomEvent('sireader:goto',{detail:{cfi}})),500)
+  const m=cfi.match(/#txt-(\d+)-(\d+)/)
+  setTimeout(()=>window.dispatchEvent(new CustomEvent('sireader:goto',{detail:m?{section:parseInt(m[1]),textOffset:parseInt(m[2])}:{cfi}})),500)
 }

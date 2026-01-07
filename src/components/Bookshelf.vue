@@ -144,6 +144,10 @@ const readBook = async (book: BookIndex) => {
   const full = await bookshelfManager.getBook(book.bookUrl)
   if (!full) return showMessage('加载失败', 3000, 'error')
   
+  // 检查是否已打开
+  const tab = Array.from(document.querySelectorAll('.layout-tab-bar .item')).find(t => (t.getAttribute('data-title') || t.querySelector('.item__text')?.textContent) === full.name)
+  if (tab) return (tab as HTMLElement).click()
+  
   if (full.format === 'online' && full.origin && !full.chapters?.length) {
     try {
       const info = await bookSourceManager.getBookInfo(full.origin, full.bookUrl)

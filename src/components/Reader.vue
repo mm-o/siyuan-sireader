@@ -126,7 +126,7 @@ const searchQuery = ref('')
 const searchResults = ref<any[]>([])
 const searchCurrentIndex = ref(0)
 let reader: FoliateReader | null = null
-let currentSelection: { text: string; cfi?: string; section?: number; page?: number; rects?: any[] } | null = null
+let currentSelection: { text: string; cfi?: string; section?: number; page?: number; rects?: any[]; textOffset?: number } | null = null
 let pdfSource: ArrayBuffer | null = null
 let inkToolManager: InkToolManager | null = null
 let shapeToolManager: ShapeToolManager | null = null
@@ -312,22 +312,20 @@ const checkSelection=(txtDoc?:Document,e?:MouseEvent)=>{
     const sel=doc.defaultView?.getSelection()
     if(!sel||sel.isCollapsed||!sel.toString().trim())return false
     try{
-      const range=sel.getRangeAt(0)
-      const rect=range.getBoundingClientRect()
-      const {x,y}=getCoords(rect,doc)
-      const text=sel.toString().trim()
-      const cfi=index!==undefined?reader!.getView().getCFI(index,range):undefined
-      const section=index===undefined?currentView.value?.lastLocation?.section||0:undefined
-      currentSelection={text,cfi,section}
-      markPanelRef.value?.showMenu({text,location:{format:isPdfMode.value?'pdf':'epub',cfi,section}},x+(index===undefined?rect.width/2:0),y)
+      const range=sel.getRangeAt(0),rect=range.getBoundingClientRect(),{x,y}=getCoords(rect,doc),text=sel.toString().trim(),cfi=index!==undefined?reader!.getView().getCFI(index,range):undefined,section=index===undefined?currentView.value?.lastLocation?.section||0:undefined
+      let textOffset:number|undefined
+      if(section!==undefined&&!cfi){
+        let o=0
+        const w=doc.createTreeWalker(doc.body,NodeFilter.SHOW_TEXT)
+        for(let n:Node|null;n=w.nextNode();){if(n===range.startContainer){textOffset=o+range.startOffset;break}o+=(n.textContent||'').length}
+      }
+      currentSelection={text,cfi,section,textOffset}
+      markPanelRef.value?.showMenu({text,location:{format:isPdfMode.value?'pdf':'epub',cfi,section,textOffset}},x+(index===undefined?rect.width/2:0),y)
       return true
     }catch{return false}
   }
-  if(reader){
-    const contents=reader.getView().renderer?.getContents?.()
-    if(!contents)return
-    for(const{doc,index}of contents)if(processSelection(doc,index))return
-  }else if(currentView.value&&txtDoc&&processSelection(txtDoc))return
+  if(reader){const c=reader.getView().renderer?.getContents?.();if(!c)return;for(const{doc,index}of c)if(processSelection(doc,index))return}
+  else if(currentView.value&&txtDoc&&processSelection(txtDoc))return
 }
 
 // 复制文本处理
@@ -455,15 +453,14 @@ const handlePdfPageUp=()=>handlePrev()
 const handlePdfPageDown=()=>handleNext()
 
 const handleGoto=(e:CustomEvent)=>{
-  const{cfi,id}=e.detail
-  if(!cfi)return
-  
-  if(isPdfMode.value&&cfi.startsWith('#page-')){
-    const p=parseInt(cfi.slice(6))
-    if(p)gotoPDF(p,id,pdfViewer.value,markManager.value,shapeToolManager)
-  }else{
-    gotoEPUB(cfi,id,reader,markManager.value)
-  }
+  const{cfi,id,section,textOffset,text}=e.detail
+  if(isPdfMode.value&&cfi?.startsWith('#page-'))gotoPDF(parseInt(cfi.slice(6)),id,pdfViewer.value,markManager.value,shapeToolManager)
+  else if(section!==undefined||cfi?.startsWith('#txt-')){
+    const m=cfi?.match(/#txt-(\d+)-(\d+)/)
+    const s=section!==undefined?section:m?parseInt(m[1]):0
+    const o=textOffset!==undefined?textOffset:m?parseInt(m[2]):undefined
+    import('@/utils/jump').then(({gotoTXT})=>gotoTXT(s,o,text,id,currentView.value))
+  }else if(cfi)gotoEPUB(cfi,id,reader,markManager.value)
 }
 
 // 快捷键
@@ -525,9 +522,8 @@ onUnmounted(async()=>{savePosition();clearActiveReader();await markManager.value
 .textLayer mark.pdf-search-current{background:#ff9800;color:#fff;box-shadow:0 0 0 2px #ff9800}
 
 /* 标注样式 */
-.pdf-highlight,.pdf-underline,.pdf-outline,.pdf-squiggly{pointer-events:auto!important}
-.pdf-underline,.pdf-outline{background:transparent!important}
-.pdf-squiggly{background:transparent!important;border-bottom-style:wavy!important}
+.pdf-highlight,.pdf-underline,.pdf-outline,.pdf-dotted,.pdf-dashed,.pdf-double{pointer-events:auto!important}
+.pdf-underline,.pdf-outline,.pdf-dotted,.pdf-dashed,.pdf-double{background:transparent!important}
 
 /* 闪烁动画 - 2次闪烁 */
 .pdf-highlight--flash,.epub-highlight--flash{animation:flash 1.2s ease-in-out 1}

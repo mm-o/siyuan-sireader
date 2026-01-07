@@ -1,59 +1,22 @@
-// 统一的标注复制工具
-export const copyMark=async(item:any,context:{
-  bookUrl:string
-  bookInfo?:any
-  settings?:any
-  isPdf:boolean
-  reader?:any
-  pdfViewer?:any
-  shapeCache?:Map<string,string>
-  showMsg:(msg:string,type?:string)=>void
-})=>{
-  const{bookUrl,bookInfo,settings,isPdf,reader,pdfViewer,shapeCache,showMsg}=context
+export const copyMark=async(item:any,ctx:{bookUrl:string;bookInfo?:any;settings?:any;isPdf:boolean;reader?:any;pdfViewer?:any;shapeCache?:Map<string,string>;showMsg:(msg:string,type?:string)=>void})=>{
+  const{bookUrl,bookInfo,settings,isPdf,reader,pdfViewer,shapeCache,showMsg}=ctx
   const copy=(t:string,msg='已复制')=>navigator.clipboard.writeText(t).then(()=>showMsg(msg))
-  
   if(!bookUrl||bookUrl.startsWith('file://'))return copy(item.text||item.note||'','本地文件仅复制文本')
-  
   const page=item.page||(isPdf?pdfViewer?.getCurrentPage():null)
-  const cfi=item.cfi||(isPdf&&page?`#page-${page}`:'')
+  const cfi=item.cfi||(isPdf&&page?`#page-${page}`:item.section!==undefined?`#txt-${item.section}-${item.textOffset||0}`:'')
   if(!cfi)return copy(item.text||item.note||'','仅复制文本')
-  
-  const{formatBookLink}=await import('@/composables/useSetting')
-  const{formatAuthor,getChapterName}=await import('@/core/MarkManager')
-  const book=isPdf?null:reader?.getBook()
-  const toc=isPdf?pdfViewer?.getPDF?.()?.toc:book?.toc
+  const{formatBookLink}=await import('@/composables/useSetting'),{formatAuthor,getChapterName}=await import('@/core/MarkManager')
+  const book=isPdf?null:reader?.getBook(),toc=isPdf?pdfViewer?.getPDF?.()?.toc:book?.toc
   const chapter=getChapterName({cfi:item.cfi,page,isPdf,toc,location:reader?.getLocation()})||'📒'
-  const tpl=settings?.linkFormat||'> [!NOTE] 📑 书名\n> [章节](链接) 文本\n> 截图\n> 笔记'
-  
   let img=''
   if(item.shapeType&&isPdf&&pdfViewer){
     const hdKey=`${item.id}_${item.shapeType}_hd`
-    // 优先使用缓存（如果有）
     if(shapeCache?.has(hdKey)){
-      const blob=await fetch(shapeCache.get(hdKey)!).then(r=>r.blob())
-      const file=new File([blob],`shape_${item.id}.png`,{type:'image/png'})
-      const{upload}=await import('@/api')
-      const res=await upload('/assets/',[file])
+      const blob=await fetch(shapeCache.get(hdKey)!).then(r=>r.blob()),file=new File([blob],`shape_${item.id}.png`,{type:'image/png'}),{upload}=await import('@/api'),res=await upload('/assets/',[file])
       img=res.succMap?.[file.name]?`![](${res.succMap[file.name]})`:''
-    }
-    // 否则实时生成
-    else{
-      img=await generateShapeScreenshot(item,page,pdfViewer)
-    }
+    }else img=await generateShapeScreenshot(item,page,pdfViewer)
   }
-  
-  copy(formatBookLink(
-    bookUrl,
-    book?.metadata?.title||bookInfo?.name||'',
-    formatAuthor(book?.metadata?.author||bookInfo?.author),
-    chapter,
-    cfi,
-    item.text||'',
-    tpl,
-    item.note||'',
-    img,
-    item.id||''
-  ))
+  copy(formatBookLink(bookUrl,book?.metadata?.title||bookInfo?.name||'',formatAuthor(book?.metadata?.author||bookInfo?.author),chapter,cfi,item.text||'',settings?.linkFormat||'> [!NOTE] 📑 书名\n> [章节](链接) 文本\n> 截图\n> 笔记',item.note||'',img,item.id||''))
 }
 
 // 生成形状标注截图（通用方法）

@@ -186,7 +186,7 @@ const keyword=ref(''),filterColor=ref(''),showColorMenu=ref(false),showThumbnail
 const isReverse=ref(false),isAtTop=ref(true),refreshKey=ref(0)
 const deckCards=ref<any[]>([]),expandedDeck=ref<string|null>(null),expandedGroup=ref<number|null>(null)
 const editingId=ref<string|null>(null),editText=ref(''),editNote=ref(''),editColor=ref('yellow')
-const editStyle=ref<'highlight'|'underline'|'outline'|'squiggly'>('highlight')
+const editStyle=ref<'highlight'|'underline'|'outline'|'dotted'|'dashed'|'double'|'squiggly'>('highlight')
 const editShapeType=ref<'rect'|'circle'|'triangle'>('rect')
 const shapes=[{type:'rect',label:'矩形',icon:'#iconSquareDashed'},{type:'circle',label:'圆形',icon:'#iconCircleDashed'},{type:'triangle',label:'三角形',icon:'#iconTriangleDashed'}]
 const loadedThumbs=ref<Record<number,string>>({})
@@ -203,7 +203,7 @@ const isPdfMode=computed(()=>(activeView.value as any)?.isPdf||false)
 const pageCount=computed(()=>(activeView.value as any)?.pageCount||0)
 const data=computed(()=>{
   refreshKey.value
-  if(!marks.value)return{bookmarks:[],marks:[],notes:[],deck:[]}
+  if(!marks.value)return{bookmarks:[],marks:[],notes:[],deck:deckCards.value}
   const inks=marks.value.getInkAnnotations?.()||[]
   const inksByPage=inks.reduce((acc:any,ink:any)=>{
     if(!acc[ink.page])acc[ink.page]={page:ink.page,type:'ink-group',inks:[],timestamp:ink.timestamp,text:`墨迹标注 - 第${ink.page}页`}
