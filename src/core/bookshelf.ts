@@ -50,6 +50,9 @@ export interface Book {
   identifier?: string
   subjects?: string[]
   series?: any
+  // 绑定文档
+  bindDocId?: string
+  bindDocName?: string
 }
 
 export interface BookIndex {
@@ -76,7 +79,7 @@ export interface UpdateResult {
 export type SortType = 'time' | 'name' | 'author' | 'update'
 
 export const STORAGE_PATH = {
-  BOOKS: '/data/storage/petal/siyuan-sireader/books/',
+  BOOKS: '/data/storage/petal/siyuan-sireader/books',
   INDEX: '/data/storage/petal/siyuan-sireader/index.json',
 }
 
@@ -87,7 +90,7 @@ class BookshelfManager {
 
   async init(force = false) {
     if (this.initialized && !force) return
-    await putFile(STORAGE_PATH.BOOKS, true, new File([], '')).catch(() => {})
+    await putFile(`${STORAGE_PATH.BOOKS}/`, true, new File([], '')).catch(() => {})
     try {
       const data = await getFile(STORAGE_PATH.INDEX)
       this.index = Array.isArray(data) ? data : []
@@ -116,7 +119,7 @@ class BookshelfManager {
 
   private async saveCoverFile(name: string, hash: string, blob: Blob) {
     const fileName = this.getFileName(name, hash, 'jpg')
-    const path = `${STORAGE_PATH.BOOKS}${fileName}`
+    const path = `${STORAGE_PATH.BOOKS}/${fileName}`
     await putFile(path, false, new File([blob], fileName, { type: 'image/jpeg' }))
     return path
   }
@@ -145,7 +148,7 @@ class BookshelfManager {
       if (!idx) return null
       const hash = this.getHash(bookUrl)
       const fileName = this.getFileName(idx.name, hash, 'json')
-      const book = await getFile(`${STORAGE_PATH.BOOKS}${fileName}`) as Book
+      const book = await getFile(`${STORAGE_PATH.BOOKS}/${fileName}`) as Book
       return book || null
     } catch { return null }
   }
@@ -155,7 +158,7 @@ class BookshelfManager {
     const hasFile = ['epub', 'mobi', 'azw3', 'fb2', 'pdf', 'cbz'].includes(book.format)
     const fileName = this.getFileName(book.name, hash, 'json')
     const data = { ...book, chapters: hasFile ? [] : book.chapters, coverUrl: undefined }
-    await putFile(`${STORAGE_PATH.BOOKS}${fileName}`, false, new File([JSON.stringify(data, null, 2)], fileName, { type: 'application/json' }))
+    await putFile(`${STORAGE_PATH.BOOKS}/${fileName}`, false, new File([JSON.stringify(data, null, 2)], fileName, { type: 'application/json' }))
     this.updateIndex(book, await this.processCover(hash, book.coverUrl || '', book.name))
     await this.saveIndex()
   }
@@ -306,7 +309,7 @@ class BookshelfManager {
     const bookUrl = `${format}://${file.name}_${file.size}`
     const hash = this.getHash(bookUrl)
     const fileName = this.getFileName(name, hash, format)
-    const filePath = `${STORAGE_PATH.BOOKS}${fileName}`
+    const filePath = `${STORAGE_PATH.BOOKS}/${fileName}`
     
     await putFile(filePath, false, file)
     
@@ -334,7 +337,7 @@ class BookshelfManager {
     const idx = this.index.find(b => b.bookUrl === bookUrl)
     if (idx) {
       const hash = this.getHash(bookUrl)
-      const base = `${STORAGE_PATH.BOOKS}${this.sanitizeName(idx.name)}_${hash}`
+      const base = `${STORAGE_PATH.BOOKS}/${this.sanitizeName(idx.name)}_${hash}`
       await Promise.all([`${base}.json`, `${base}.jpg`, `${base}.${idx.format}`].map(p => removeFile(p).catch(() => {})))
     }
     this.index = this.index.filter(b => b.bookUrl !== bookUrl)
@@ -429,31 +432,14 @@ let plugin: any
 
 export const initBookDataPlugin = (p: any) => plugin = p
 
-const hash = (s: string) => { let h = 0; for (let i = 0; i < s.length; i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0; return Math.abs(h).toString(36) }
-const sanitize = (n: string) => (n || 'book').replace(/[<>:"/\\|?*\x00-\x1f《》【】「」『』（）()[\]{}]/g, '').replace(/\s+/g, '_').replace(/[._-]+/g, '_').replace(/^[._-]+|[._-]+$/g, '').slice(0, 50) || 'book'
-
-const cache = new Map<string, any>()
-
-export const loadBookData = async (bookUrl: string, bookName?: string) => {
-  if (!plugin) return {}
-  try {
-    if (!bookName) bookName = (await bookshelfManager.getBook(bookUrl))?.name
-    const fileName = `${sanitize(bookName || 'book')}_${hash(bookUrl)}.json`
-    if (cache.has(fileName)) return JSON.parse(JSON.stringify(cache.get(fileName)))
-    const data = await plugin.loadData(`books/${fileName}`) || {}
-    cache.set(fileName, data)
-    return JSON.parse(JSON.stringify(data))
-  } catch { return {} }
+export const loadBookData = async (bookUrl: string) => {
+  const book = await bookshelfManager.getBook(bookUrl)
+  return book || {}
 }
 
-export const saveBookData = async (bookUrl: string, data: any, bookName?: string) => {
-  if (!plugin) return
-  try {
-    bookName = bookName || (await bookshelfManager.getBook(bookUrl))?.name
-    const fileName = `${sanitize(bookName || 'book')}_${hash(bookUrl)}.json`
-    const existing = cache.has(fileName) ? JSON.parse(JSON.stringify(cache.get(fileName))) : await plugin.loadData(`books/${fileName}`) || {}
-    Object.entries(data).forEach(([k, v]) => v !== undefined && (existing[k] = v))
-    await plugin.saveData(`books/${fileName}`, existing)
-    cache.set(fileName, JSON.parse(JSON.stringify(existing)))
-  } catch (e) { console.error('[Data]', e) }
+export const saveBookData = async (bookUrl: string, data: any) => {
+  const book = await bookshelfManager.getBook(bookUrl)
+  if (!book) return
+  Object.entries(data).forEach(([k, v]) => v !== undefined && ((book as any)[k] = v))
+  await bookshelfManager.saveBook(book)
 }

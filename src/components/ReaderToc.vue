@@ -1,15 +1,15 @@
 <template>
-  <div class="sr-toc">
+  <div class="sr-toc" @click="showColorMenu=false;showBindMenu=false">
     <!-- 工具栏 -->
     <div class="sr-toolbar">
       <input v-model="keyword" :placeholder="placeholders[mode]">
       <div v-if="mode==='mark'" class="sr-select">
-        <button class="b3-tooltips b3-tooltips__sw" @click="showColorMenu=!showColorMenu" :aria-label="filterColor||'全部'">
-          <svg><use xlink:href="#lucide-palette"/></svg>
+        <button class="b3-tooltips b3-tooltips__sw" @click.stop="showColorMenu=!showColorMenu" :aria-label="filterColor||'全部'">
+          <svg><use xlink:href="#lucide-sliders-horizontal"/></svg>
         </button>
         <Transition name="menu">
-          <div v-if="showColorMenu" class="sr-menu" @click="showColorMenu=false">
-            <div v-for="(c,i) in colorMenu" :key="i" :class="['sr-menu-item',{active:c.active}]" @click="filterColor=c.value">
+          <div v-if="showColorMenu" class="sr-menu" @click.stop>
+            <div v-for="(c,i) in colorMenu" :key="i" :class="['sr-menu-item',{active:c.active}]" @click="filterColor=c.value;showColorMenu=false">
               <span v-if="c.color" class="dot" :style="{background:c.color}"></span>{{ c.label }}
             </div>
           </div>
@@ -24,6 +24,15 @@
       <button class="b3-tooltips b3-tooltips__sw" @click="toggleScroll" :aria-label="isAtTop?'底部':'顶部'">
         <svg><use :xlink:href="isAtTop?'#lucide-panel-top-open':'#lucide-panel-top-close'"/></svg>
       </button>
+      <div v-if="mode==='mark'||mode==='note'" class="sr-select">
+        <button class="b3-tooltips b3-tooltips__sw" @click.stop="showBindMenu=!showBindMenu" :aria-label="bindDocName||'绑定文档'"><svg><use xlink:href="#iconRef"/></svg></button>
+        <div v-if="showBindMenu" class="sr-menu sr-bind-menu" @click.stop>
+          <div v-if="bindDocId" class="sr-bind-current"><div class="sr-bind-info"><div>{{ bindDocName }}</div><div class="sr-bind-id">{{ bindDocId }}</div></div><button @click="unbindDoc">×</button></div>
+          <input v-model="bindSearch" placeholder="搜索文档..." @input="searchBindDoc">
+          <div v-for="d in bindResults" :key="d.path" class="sr-menu-item" @click="bindDoc(d)">{{ d.hPath||'无标题' }}</div>
+          <div v-if="bindSearch&&!bindResults.length" class="sr-empty-small">未找到</div>
+        </div>
+      </div>
     </div>
 
     <!-- 内容区 -->
@@ -122,6 +131,8 @@
                     <div v-else class="sr-btns">
                       <button v-if="item.type==='shape-group'" @click.stop="copyMark(sub)" class="b3-tooltips b3-tooltips__nw" :aria-label="props.i18n?.copy||'复制'"><svg><use xlink:href="#iconCopy"/></svg></button>
                       <button v-if="item.type==='shape-group'" @click.stop="startEdit(sub)" class="b3-tooltips b3-tooltips__nw" :aria-label="props.i18n?.edit||'编辑'"><svg><use xlink:href="#iconEdit"/></svg></button>
+                      <button v-if="sub.blockId" @click.stop="openBlock(sub.blockId)" @mouseenter="onBlockEnter($event,sub.blockId)" @mouseleave="hideFloat" class="b3-tooltips b3-tooltips__nw" aria-label="打开块"><svg><use xlink:href="#iconRef"/></svg></button>
+                      <button v-else @click.stop="importMark(sub)" class="b3-tooltips b3-tooltips__nw" :aria-label="props.i18n?.import||'导入'"><svg><use xlink:href="#iconDownload"/></svg></button>
                       <button @click.stop="deleteMark(sub)" class="b3-tooltips b3-tooltips__nw" :aria-label="props.i18n?.delete||'删除'"><svg><use xlink:href="#iconTrashcan"/></svg></button>
                     </div>
                   </div>
@@ -131,6 +142,8 @@
               <div v-if="!isEditing(item)&&(!item.type||item.type==='highlight'||item.type==='note')" class="sr-btns">
                 <button @click.stop="copyMark(item)" class="b3-tooltips b3-tooltips__nw" :aria-label="props.i18n?.copy||'复制'"><svg><use xlink:href="#iconCopy"/></svg></button>
                 <button @click.stop="startEdit(item)" class="b3-tooltips b3-tooltips__nw" :aria-label="props.i18n?.edit||'编辑'"><svg><use xlink:href="#iconEdit"/></svg></button>
+                <button v-if="item.blockId" @click.stop="openBlock(item.blockId)" @mouseenter="onBlockEnter($event,item.blockId)" @mouseleave="hideFloat" class="b3-tooltips b3-tooltips__nw" aria-label="打开块"><svg><use xlink:href="#iconRef"/></svg></button>
+                <button v-else @click.stop="importMark(item)" class="b3-tooltips b3-tooltips__nw" :aria-label="props.i18n?.import||'导入'"><svg><use xlink:href="#iconDownload"/></svg></button>
                 <button @click.stop="deleteMark(item)" class="b3-tooltips b3-tooltips__nw" :aria-label="props.i18n?.delete||'删除'"><svg><use xlink:href="#iconTrashcan"/></svg></button>
               </div>
             </div>
@@ -169,9 +182,11 @@ import { loadDeckCards, getDeckCards, removeFromDeck, renderDictCard, getDictNam
 import { COLORS, STYLES, getColorMap, formatTime } from '@/core/MarkManager'
 import { useReaderState } from '@/core/foliate'
 import { jump } from '@/utils/jump'
-import { copyMark as copyMarkUtil } from '@/utils/copy'
+import { copyMark as copyMarkUtil, openBlock, showFloat, hideFloat } from '@/utils/copy'
 import { drawInk, renderInkCanvas as renderInkUtil } from '@/core/pdf/ink'
 import { drawShape as drawShapeUtil, renderShapeCanvas as renderShapeUtil } from '@/core/pdf/shape'
+import { searchDocs } from '@/composables/useSetting'
+import { bookshelfManager } from '@/core/bookshelf'
 
 const props = withDefaults(defineProps<{ mode: 'toc'|'bookmark'|'mark'|'note'|'deck'; i18n?: any }>(), { i18n: () => ({}) })
 const emit = defineEmits(['update:mode'])
@@ -191,6 +206,7 @@ const editShapeType=ref<'rect'|'circle'|'triangle'>('rect')
 const shapes=[{type:'rect',label:'矩形',icon:'#iconSquareDashed'},{type:'circle',label:'圆形',icon:'#iconCircleDashed'},{type:'triangle',label:'三角形',icon:'#iconTriangleDashed'}]
 const loadedThumbs=ref<Record<number,string>>({})
 const shapePreviewCache=new Map<string,string>()
+const showBindMenu=ref(false),bindSearch=ref(''),bindResults=ref<any[]>([]),bindDocId=ref(''),bindDocName=ref('')
 
 // ===== 常量 =====
 const colors=getColorMap()
@@ -313,6 +329,8 @@ const removeBookmark=(item:any)=>{marks.value?.deleteBookmark?.(getKey(item));sh
 const startEdit=(item:any)=>{editingId.value=getKey(item);editText.value=item.text||'';editNote.value=item.note||'';editColor.value=item.color||'yellow';editStyle.value=item.style||'highlight';editShapeType.value=item.shapeType||'rect';nextTick(()=>editNoteRef.value?.focus?.())}
 const cancelEdit=()=>editingId.value=null
 const saveEdit=async(item:any)=>{if(!marks.value)return showMsg('标记系统未初始化','error');if(item.type==='shape-group'||item.type==='ink-group')return showMsg('请编辑具体的标注项','error');try{const updates:any={color:editColor.value,note:editNote.value.trim()||undefined};if(item.type==='shape')updates.shapeType=editShapeType.value;else{updates.text=editText.value.trim();updates.style=editStyle.value}await marks.value.updateMark(item,updates);showMsg('已更新');editingId.value=null;refreshKey.value++}catch(e){console.error(e);showMsg('保存失败','error')}}
+const importMark=async(item:any)=>{const{importMark:doImport}=await import('@/utils/copy');const u=getUrl();await doImport(item,{bookUrl:u||'',bookInfo:u?await bookshelfManager.getBook(u):null,isPdf:(activeView.value as any)?.isPdf||false,reader:activeReader.value,pdfViewer:(activeView.value as any)?.viewer,shapeCache,showMsg,i18n:props.i18n,marks:marks.value});refreshKey.value++}
+const onBlockEnter=(e:MouseEvent,id:string)=>showFloat(id,e.target as HTMLElement)
 const deleteMark=async(item:any)=>{if(!marks.value)return showMsg('标记系统未初始化','error');try{if(item.type==='shape-group'){for(const s of item.shapes||[])await marks.value.deleteMark(s);showMsg('已删除');refreshKey.value++;return}if(item.type==='ink-group'){for(const i of item.inks||[])await marks.value.deleteMark(i);showMsg('已删除');refreshKey.value++;return}if(await marks.value.deleteMark(item)){showMsg('已删除');refreshKey.value++}}catch{showMsg('删除失败','error')}}
 
 // 统一跳转 - 完全由jump.ts负责
@@ -325,6 +343,14 @@ const isExpanded=(item:any)=>expandedGroup.value===item.groupId
 const removeDeckCard=async(id:string)=>{await removeFromDeck(id);showMsg('已删除')}
 const toggleScroll=()=>contentRef.value?.scrollTo({top:contentRef.value.scrollTop<50?contentRef.value.scrollHeight:0,behavior:'smooth'})
 const onScroll=(e:Event)=>isAtTop.value=(e.target as HTMLElement).scrollTop<50
+
+// ===== 绑定文档 =====
+const getUrl=()=>(window as any).__currentBookUrl
+const getId=(d:any)=>d.path?.split('/').pop()?.replace('.sy','')||d.id
+const searchBindDoc=async()=>{bindResults.value=bindSearch.value.trim()?await searchDocs(bindSearch.value.trim()):[]}
+const bindDoc=async(d:any)=>{const u=getUrl(),id=getId(d);if(!u||!id)return showMsg(u?'文档ID无效':'未找到书籍','error');const book=await bookshelfManager.getBook(u);if(!book)return showMsg('未找到书籍','error');book.bindDocId=id;book.bindDocName=d.hPath||d.content||'无标题';await bookshelfManager.saveBook(book);bindDocId.value=id;bindDocName.value=book.bindDocName;showMsg('已绑定');showBindMenu.value=bindSearch.value='';bindResults.value=[]}
+const unbindDoc=async()=>{const u=getUrl();if(!u)return;const book=await bookshelfManager.getBook(u);if(!book)return;book.bindDocId='';book.bindDocName='';await bookshelfManager.saveBook(book);bindDocId.value=bindDocName.value='';showMsg('已解绑')}
+const loadBindDoc=async()=>{const u=getUrl();if(!u)return;const book=await bookshelfManager.getBook(u);if(book){bindDocId.value=book.bindDocId||'';bindDocName.value=book.bindDocName||''}}
 
 // ===== Canvas渲染 =====
 const inkCache=new Map(),shapeCache=shapePreviewCache
@@ -359,10 +385,10 @@ watch(showThumbnail,v=>v&&nextTick(()=>{
 // ===== 生命周期 =====
 const refresh=()=>{refreshKey.value++;props.mode==='deck'&&loadDeckCards().then(v=>deckCards.value=v)}
 const onMarks=()=>props.mode==='toc'?requestAnimationFrame(addBookmarkButtons):refresh()
-const onSwitch=()=>props.mode==='toc'?requestAnimationFrame(initToc):refresh()
+const onSwitch=()=>{props.mode==='toc'?requestAnimationFrame(initToc):refresh();loadBindDoc()}
 watch(()=>activeView.value?.book,book=>book?.toc&&props.mode==='toc'?requestAnimationFrame(initToc):cleanupToc(),{immediate:true})
 watch(()=>props.mode,onSwitch)
-onMounted(()=>{window.addEventListener('sireader:marks-updated',onMarks);window.addEventListener('sireader:tab-switched',onSwitch);props.mode==='deck'&&refresh()})
+onMounted(()=>{window.addEventListener('sireader:marks-updated',onMarks);window.addEventListener('sireader:tab-switched',onSwitch);props.mode==='deck'&&refresh();setTimeout(loadBindDoc,500)})
 onUnmounted(()=>{cleanupToc();obs?.disconnect();window.removeEventListener('sireader:marks-updated',onMarks);window.removeEventListener('sireader:tab-switched',onSwitch)})
 </script>
 
@@ -452,6 +478,12 @@ onUnmounted(()=>{cleanupToc();obs?.disconnect();window.removeEventListener('sire
   &:hover{background:var(--b3-theme-background-light);.sr-btns{opacity:1}}}
 .sr-preview{width:100%;height:auto;border-radius:4px;background:var(--b3-theme-background);display:block;opacity:.85}
 .sr-group-preview{height:80px;margin:6px 0}
+
+// 绑定文档
+.sr-bind-menu{min-width:260px;padding:8px;input{width:100%;padding:8px;border:1px solid var(--b3-border-color);border-radius:4px;font-size:13px;outline:none;margin-bottom:8px;&:focus{border-color:var(--b3-theme-primary)}}}
+.sr-bind-current{padding:8px;margin-bottom:8px;background:var(--b3-theme-primary-lightest);border-radius:4px;display:flex;gap:8px;button{width:20px;height:20px;padding:0;border:none;background:var(--b3-theme-error);color:white;border-radius:50%;cursor:pointer;font-size:16px;line-height:1;&:hover{opacity:.8}}}
+.sr-bind-info{flex:1;min-width:0;font-size:12px;div:first-child{font-weight:600;color:var(--b3-theme-primary)}}
+.sr-bind-id{font-size:10px;opacity:.5;font-family:monospace}
 
 
 </style>

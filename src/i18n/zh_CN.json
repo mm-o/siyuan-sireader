@@ -270,5 +270,13 @@
   "viewDetail": "查看详情",
   "copySettings": "复制设置",
   "linkFormat": "链接格式",
-  "linkFormatDesc": "可用变量：书名 作者 章节 位置 链接 文本 笔记 截图"
+  "linkFormatDesc": "可用变量：书名 作者 章节 位置 链接 文本 笔记 截图",
+  "import": "导入",
+  "bindDoc": "绑定文档",
+  "imported": "已导入",
+  "importFailed": "导入失败",
+  "noBindDoc": "未绑定文档",
+  "openBlock": "打开块",
+  "bound": "已绑定",
+  "unbind": "解绑"
 }

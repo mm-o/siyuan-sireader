@@ -268,5 +268,13 @@
   "viewDetail": "View Details",
   "copySettings": "Copy Settings",
   "linkFormat": "Link Format",
-  "linkFormatDesc": "Available variables: title author chapter location url text note image"
+  "linkFormatDesc": "Available variables: title author chapter location url text note image",
+  "import": "Import",
+  "bindDoc": "Bind Document",
+  "imported": "Imported",
+  "importFailed": "Import failed",
+  "noBindDoc": "No bound document",
+  "openBlock": "Open Block",
+  "bound": "Bound",
+  "unbind": "Unbind"
 }

@@ -65,17 +65,17 @@ watch(canShowToc, (show) => !show && ['toc', 'bookmark', 'mark', 'note'].include
 
 <template>
   <div class="sr-settings" :class="`nav-${settings.navPosition}`">
-    <aside class="sr-nav">
+    <nav class="sr-nav">
       <button
         v-for="tab in tabs" :key="tab.id"
-        class="sr-nav-btn b3-tooltips"
-        :class="[{ active: activeTab === tab.id }, `b3-tooltips__${tooltipDir}`]"
+        class="sr-nav-tab b3-tooltips"
+        :class="[{ 'sr-nav-tab--active': activeTab === tab.id }, `b3-tooltips__${tooltipDir}`]"
         :aria-label="i18n?.[tab.tip] || tab.tip"
         @click="activeTab = tab.id"
       >
         <svg><use :xlink:href="'#' + tab.icon"/></svg>
       </button>
-    </aside>
+    </nav>
 
     <main class="sr-content">
       <!-- 样式预览 -->
@@ -263,21 +263,18 @@ watch(canShowToc, (show) => !show && ['toc', 'bookmark', 'mark', 'note'].include
   &.nav-top{flex-direction:column}
   &.nav-bottom{flex-direction:column-reverse}
 }
-.sr-nav{background:var(--b3-theme-surface);border-radius:8px;padding:4px;display:flex;flex-shrink:0;align-items:center;
-  .nav-left &,.nav-right &{width:40px;flex-direction:column;margin:8px 0;gap:4px}
-  .nav-left &{margin-left:8px}
-  .nav-right &{margin-right:8px}
-  .nav-top &,.nav-bottom &{height:40px;flex-direction:row;padding:4px 8px;margin:0 8px;gap:clamp(2px,0.5vw,4px)}
-  .nav-top &{margin-top:8px}
-  .nav-bottom &{margin-bottom:8px}
+.sr-nav{background:var(--b3-theme-background);display:flex;flex-shrink:0;
+  .nav-left &,.nav-right &{width:42px;flex-direction:column;border-right:1px solid var(--b3-theme-background-light);padding:8px 0}
+  .nav-top &,.nav-bottom &{height:42px;border-bottom:1px solid var(--b3-theme-background-light);padding:0 8px}
+  .nav-right &{border-right:0;border-left:1px solid var(--b3-theme-background-light)}
+  .nav-bottom &{border-bottom:0;border-top:1px solid var(--b3-theme-background-light)}
 }
-.sr-nav-btn{display:flex;align-items:center;justify-content:center;border:none;background:transparent;border-radius:8px;cursor:pointer;transition:all .15s;color:var(--b3-theme-on-surface);flex-shrink:1;min-width:0;
-  .nav-left &,.nav-right &{width:32px;height:32px;flex-shrink:0;svg{width:18px;height:18px}}
-  .nav-top &,.nav-bottom &{width:clamp(24px,8vw,32px);height:clamp(24px,8vw,32px);svg{width:clamp(14px,4vw,18px);height:clamp(14px,4vw,18px)}}
-  &:hover{background:var(--b3-list-hover)}
-  &.active{background:var(--b3-theme-primary);color:var(--b3-theme-on-primary)}
+.sr-nav-tab{display:flex;align-items:center;justify-content:center;padding:10px 8px;border:none;background:transparent;cursor:pointer;transition:var(--b3-transition);color:var(--b3-theme-on-surface);
+  svg{width:16px;height:16px}
+  &:hover{color:var(--b3-theme-on-background)}
+  &--active{color:var(--b3-theme-primary)}
 }
-.sr-content { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+.sr-content{flex:1;overflow:hidden;display:flex;flex-direction:column}
 
 .sr-preview {
   position: sticky; top: 0; z-index: 10; margin: 20px 20px 0;
@@ -357,7 +354,7 @@ watch(canShowToc, (show) => !show && ['toc', 'bookmark', 'mark', 'note'].include
 
 @media (max-width:640px){
   .sr-settings{flex-direction:column !important}
-  .sr-nav{width:100% !important;height:40px !important;flex-direction:row !important;border:none !important;border-bottom:1px solid var(--b3-border-color) !important;padding:4px 8px !important}
+  .sr-nav{width:100% !important;height:42px !important;flex-direction:row !important;padding:0 4px !important}
   .sr-content{padding:14px}
   .sr-item{flex-direction:column;align-items:flex-start;gap:10px}
   .b3-select,.sr-slider{width:100%}

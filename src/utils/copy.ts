@@ -19,6 +19,31 @@ export const copyMark=async(item:any,ctx:{bookUrl:string;bookInfo?:any;settings?
   copy(formatBookLink(bookUrl,book?.metadata?.title||bookInfo?.name||'',formatAuthor(book?.metadata?.author||bookInfo?.author),chapter,cfi,item.text||'',settings?.linkFormat||'> [!NOTE] 📑 书名\n> [章节](链接) 文本\n> 截图\n> 笔记',item.note||'',img,item.id||''))
 }
 
+export const importMark=async(item:any,ctx:any)=>{
+  try{
+    const{bookshelfManager}=await import('@/core/bookshelf'),{appendBlock}=await import('@/api'),book=await bookshelfManager.getBook(ctx.bookUrl)
+    if(!book?.bindDocId)return ctx.showMsg(ctx.i18n?.noBindDoc||'未绑定文档','error')
+    let md='',orig=navigator.clipboard.writeText
+    navigator.clipboard.writeText=async(t:string)=>{md=t;return Promise.resolve()}
+    await copyMark(item,{...ctx,showMsg:()=>{}})
+    navigator.clipboard.writeText=orig
+    if(!md)return ctx.showMsg('生成失败','error')
+    const res=await appendBlock('markdown',md,book.bindDocId)
+    const blockId=res?.[0]?.doOperations?.[0]?.id
+    if(blockId&&ctx.marks){
+      await ctx.marks.updateMark(item,{blockId})
+      ctx.showMsg(ctx.i18n?.imported||'已导入')
+    }else ctx.showMsg(blockId?'已导入':'导入失败','error')
+  }catch(e){console.error(e);ctx.showMsg(ctx.i18n?.importFailed||'导入失败','error')}
+}
+
+// ===== 块操作统一接口 =====
+let _plugin:any,_floatTimer=0
+export const setPlugin=(p:any)=>_plugin=p
+export const openBlock=(id:string)=>{hideFloat();window.open(`siyuan://blocks/${id}`)}
+export const showFloat=(id:string,el:HTMLElement)=>{hideFloat();_floatTimer=window.setTimeout(()=>_plugin?.addFloatLayer?.({refDefs:[{refID:id}],targetElement:el,isBacklink:false}),620)}
+export const hideFloat=()=>{_floatTimer&&clearTimeout(_floatTimer);_floatTimer=0}
+
 // 生成形状标注截图（通用方法）
 export const generateShapeScreenshot=async(shape:any,page:number,pdfViewer:any):Promise<string>=>{
   const pageEl=document.querySelector(`[data-page="${page}"]`)

@@ -1,5 +1,5 @@
 <template>
-  <div class="sr-source-mgr">
+  <div class="sr-source-mgr" @click="showAnnaMenu=false">
     <div class="sr-toolbar">
       <input v-model="keyword" placeholder="搜索书源...">
       <template v-if="selected.size">
@@ -13,9 +13,20 @@
           <svg><use xlink:href="#lucide-trash-2"/></svg>
         </button>
       </template>
-      <button class="b3-tooltips b3-tooltips__s" @click="toggleAnna" :aria-label="annaEnabled?(i18n?.annaEnabled||'安娜已启用'):(i18n?.annaDisabled||'安娜已禁用')">
+      <button class="b3-tooltips b3-tooltips__s" @click.stop="toggleAnna" @contextmenu.prevent.stop="showAnnaMenu=!showAnnaMenu" :aria-label="annaEnabled?(i18n?.annaEnabled||'安娜已启用'):(i18n?.annaDisabled||'安娜已禁用')">
         <svg :style="{color:annaEnabled?'var(--b3-theme-primary)':''}"><use xlink:href="#lucide-library-big"/></svg>
       </button>
+      <div v-if="showAnnaMenu" class="sr-menu" @click.stop style="top:40px;right:8px;width:180px;padding:8px">
+        <div style="font-size:10px;opacity:.6;margin-bottom:6px">格式筛选</div>
+        <div style="display:flex;gap:4px;margin-bottom:8px">
+          <span v-for="e in ['epub','pdf','mobi','azw3']" :key="e" @click="toggleExt(e)" style="padding:3px 8px;border-radius:3px;font-size:10px;cursor:pointer;transition:all .15s" :style="{background:annaExts.includes(e)?'var(--b3-theme-primary)':'var(--b3-theme-background)',color:annaExts.includes(e)?'#fff':'var(--b3-theme-on-surface)'}">{{e.toUpperCase()}}</span>
+        </div>
+        <select v-model="annaDomain" @change="switchDomain" class="b3-select" style="width:100%;margin-bottom:6px">
+          <option v-for="d in annaDomains" :key="d" :value="d">{{d.replace('https://','').replace('annas-archive.','')}}</option>
+        </select>
+        <input v-model="newDomain" placeholder="https://..." @keyup.enter="addDomain" class="b3-text-field" style="width:100%;margin-bottom:6px">
+        <button @click="addDomain" class="b3-button b3-button--outline" style="width:100%">添加</button>
+      </div>
       <button v-if="!checking" class="b3-tooltips b3-tooltips__s" @click="checkAll" aria-label="检测书源">
         <svg><use xlink:href="#lucide-list-restart"/></svg>
       </button>
@@ -60,6 +71,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { bookSourceManager } from '@/core/book'
+import { annaArchive } from '@/core/anna'
 import { showMessage, Dialog } from 'siyuan'
 
 const props = defineProps<{ i18n?: any }>()
@@ -72,6 +84,34 @@ const keyword = ref('')
 const selected = ref<Set<string>>(new Set())
 const stopCheck = ref(false)
 const annaEnabled = ref(localStorage.getItem('anna_enabled') === 'true')
+const showAnnaMenu = ref(false)
+const annaExts = ref<string[]>([])
+const annaDomain = ref('')
+const annaDomains = ref<string[]>([])
+const newDomain = ref('')
+
+const loadAnnaConfig = () => {
+  const cfg = annaArchive.getConfig()
+  annaExts.value = cfg.filters?.extensions || []
+  annaDomain.value = cfg.currentDomain || ''
+  annaDomains.value = annaArchive.getAllDomains()
+}
+const toggleExt = (e: string) => {
+  const i = annaExts.value.indexOf(e)
+  i > -1 ? annaExts.value.splice(i, 1) : annaExts.value.push(e)
+  annaArchive.setExtensionFilter(annaExts.value)
+}
+const switchDomain = () => {
+  annaArchive.switchDomain(annaDomain.value)
+  showMessage('域名已切换', 1500)
+}
+const addDomain = () => {
+  if (!newDomain.value.startsWith('http')) return showMessage('请输入完整URL', 2000, 'error')
+  annaArchive.addCustomDomain(newDomain.value)
+  annaDomains.value = annaArchive.getAllDomains()
+  newDomain.value = ''
+  showMessage('域名已添加', 1500)
+}
 
 const filtered = computed(() => {
   if (!keyword.value) return sources.value
@@ -205,6 +245,7 @@ const toggleAnna = () => {
 onMounted(async () => {
   await bookSourceManager.loadSources()
   reload()
+  loadAnnaConfig()
 })
 
 onBeforeUnmount(() => {
@@ -233,4 +274,5 @@ onBeforeUnmount(() => {
 .sr-info{flex:1;min-width:0}
 .sr-name{font-size:13px;font-weight:600;margin-bottom:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sr-url{font-size:11px;opacity:.6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sr-menu{position:absolute;background:var(--b3-theme-surface);border-radius:6px;box-shadow:0 4px 12px #0003;z-index:20}
 </style>

@@ -10,7 +10,7 @@ type HighlightColor='yellow'|'red'|'green'|'blue'|'purple'|'orange'|'pink'
 type MarkStyle='highlight'|'underline'|'outline'|'dotted'|'dashed'|'double'|'squiggly'
 type MarkType='bookmark'|'highlight'|'note'|'vocab'
 
-interface Mark{id:string;type:MarkType;format:Format;cfi?:string;section?:number;page?:number;rects?:any[];text?:string;color?:HighlightColor;style?:MarkStyle;note?:string;title?:string;timestamp:number;progress?:number;textOffset?:number}
+interface Mark{id:string;type:MarkType;format:Format;cfi?:string;section?:number;page?:number;rects?:any[];text?:string;color?:HighlightColor;style?:MarkStyle;note?:string;title?:string;timestamp:number;progress?:number;textOffset?:number;blockId?:string}
 
 export const COLORS=[{name:'黄色',color:'yellow'as const,bg:'#ffeb3b'},{name:'红色',color:'red'as const,bg:'#ef5350'},{name:'绿色',color:'green'as const,bg:'#66bb6a'},{name:'蓝色',color:'blue'as const,bg:'#42a5f5'},{name:'紫色',color:'purple'as const,bg:'#ab47bc'},{name:'橙色',color:'orange'as const,bg:'#ff9800'},{name:'粉色',color:'pink'as const,bg:'#ec407a'}]
 export const STYLES=[{type:'highlight'as const,name:'高亮',text:'A'},{type:'underline'as const,name:'下划线',text:'A'},{type:'outline'as const,name:'边框',text:'A'},{type:'dotted'as const,name:'点线',text:'A',pdfOnly:true},{type:'dashed'as const,name:'虚线',text:'A',pdfOnly:true},{type:'double'as const,name:'双线',text:'A',pdfOnly:true},{type:'squiggly'as const,name:'波浪线',text:'A',epubOnly:true}]
@@ -126,8 +126,8 @@ export class MarkManager{
       }
       addBookmarks(data.epubBookmarks,'epub')
       addBookmarks(data.txtBookmarks,'txt')
-      if(this.format==='pdf'&&data.annotations)data.annotations.forEach((a:any)=>this.add({id:a.id,type:a.note?'note':'highlight',format:'pdf',page:a.page,rects:a.rects,text:a.text,color:a.color,style:a.style,note:a.note,timestamp:a.timestamp||Date.now()}))
-      else if(data.annotations)data.annotations.forEach((a:any)=>this.add({id:a.id,type:a.note?'note':'highlight',format:this.format,cfi:a.cfi||a.value,section:a.section,text:a.text,color:a.color,style:a.style,note:a.note,timestamp:a.timestamp||Date.now()}))
+      if(this.format==='pdf'&&data.annotations)data.annotations.forEach((a:any)=>this.add({id:a.id,type:a.note?'note':'highlight',format:'pdf',page:a.page,rects:a.rects,text:a.text,color:a.color,style:a.style,note:a.note,timestamp:a.timestamp||Date.now(),blockId:a.blockId}))
+      else if(data.annotations)data.annotations.forEach((a:any)=>this.add({id:a.id,type:a.note?'note':'highlight',format:this.format,cfi:a.cfi||a.value,section:a.section,text:a.text,color:a.color,style:a.style,note:a.note,timestamp:a.timestamp||Date.now(),blockId:a.blockId}))
       if(data.durChapterIndex)this.currentPage=data.durChapterIndex
     }catch(e){console.error('[Mark]',e)}
   }
@@ -149,12 +149,12 @@ export class MarkManager{
       const shapes=this.getShapeAnnotations()
       const total=annotations.length+inks.length+shapes.length
       console.log(`[Mark] ${total}`)
-      const data:any={annotations:this.format==='pdf'?annotations.map(m=>({id:m.id,page:m.page,type:m.type,rects:m.rects,text:m.text,color:m.color,style:m.style,note:m.note,timestamp:m.timestamp})):annotations.map(m=>({id:m.id,value:m.cfi,cfi:m.cfi,section:m.section,text:m.text,color:m.color,style:m.style,note:m.note,timestamp:m.timestamp})),durChapterIndex:this.currentPage,epubProgress:this.currentProgress}
+      const data:any={annotations:this.format==='pdf'?annotations.map(m=>({id:m.id,page:m.page,type:m.type,rects:m.rects,text:m.text,color:m.color,style:m.style,note:m.note,timestamp:m.timestamp,blockId:m.blockId})):annotations.map(m=>({id:m.id,value:m.cfi,cfi:m.cfi,section:m.section,text:m.text,color:m.color,style:m.style,note:m.note,timestamp:m.timestamp,blockId:m.blockId})),durChapterIndex:this.currentPage,epubProgress:this.currentProgress}
       const epubBm=bookmarks.filter(m=>m.cfi)
       const txtBm=bookmarks.filter(m=>m.section!==undefined)
       if(epubBm.length)data.epubBookmarks=epubBm.map(m=>({cfi:m.cfi,title:m.title,progress:m.progress,time:m.timestamp}))
       if(txtBm.length)data.txtBookmarks=txtBm.map(m=>({section:m.section,page:m.page,title:m.title,progress:m.progress,time:m.timestamp}))
-      await saveBookData(this.bookUrl,data,this.bookName)
+      await saveBookData(this.bookUrl,data)
       window.dispatchEvent(new Event('sireader:marks-updated'))
     }catch(e){console.error('[Mark]',e)}
   }

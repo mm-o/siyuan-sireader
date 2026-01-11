@@ -4,6 +4,7 @@ import App from './App.vue'
 import { initBookDataPlugin } from '@/core/bookshelf'
 import { initDictModule } from '@/core/dictionary'
 import { initMobile, isMobile } from '@/core/mobile'
+import { setPlugin } from '@/utils/copy'
 
 let plugin: Plugin | null = null
 let app: any = null
@@ -18,6 +19,7 @@ export const setOpenSettingHandler = (handler: () => void) => {
 
 export function init(p: Plugin) {
   usePlugin(p)
+  setPlugin(p)
   initBookDataPlugin(p)
   initDictModule(p)
   initMobile(p)

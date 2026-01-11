@@ -322,7 +322,7 @@ export class InkToolManager{
 
   private async saveData(inkAnnotations:any[]){
     if(!this.initialized)return
-    await saveBookData(this.bookUrl,{inkAnnotations},this.bookName)
+    await saveBookData(this.bookUrl,{inkAnnotations})
   }
 
   /** 初始化控制器 */

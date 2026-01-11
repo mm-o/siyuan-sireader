@@ -19,6 +19,8 @@
           <div class="sr-btns">
             <button @click.stop="handleCopyMark" class="b3-tooltips b3-tooltips__nw" :aria-label="i18n.copy||'复制'"><svg><use xlink:href="#iconCopy"/></svg></button>
             <button @click.stop="handleEdit" class="b3-tooltips b3-tooltips__nw" :aria-label="i18n.edit||'编辑'"><svg><use xlink:href="#iconEdit"/></svg></button>
+            <button v-if="state.currentMark?.blockId" @click.stop="handleOpenBlock" @mouseenter="handleShowFloat" @mouseleave="handleHideFloat" class="b3-tooltips b3-tooltips__nw" aria-label="打开块"><svg><use xlink:href="#iconRef"/></svg></button>
+            <button v-else @click.stop="handleImport" class="b3-tooltips b3-tooltips__nw" :aria-label="i18n.import||'导入'"><svg><use xlink:href="#iconDownload"/></svg></button>
             <button @click.stop="handleDelete" class="b3-tooltips b3-tooltips__nw" :aria-label="i18n.delete||'删除'"><svg><use xlink:href="#iconTrashcan"/></svg></button>
           </div>
         </template>
@@ -61,6 +63,7 @@ import { ref, reactive, computed, nextTick } from 'vue'
 import { showMessage } from 'siyuan'
 import type { MarkManager, Mark, HighlightColor } from '@/core/MarkManager'
 import { COLORS, STYLES, getColorMap } from '@/core/MarkManager'
+import { openBlock, showFloat, hideFloat } from '@/utils/copy'
 
 // ==================== 类型定义 ====================
 
@@ -318,6 +321,16 @@ const handleCancel = () => {
 const handleCopyMark = () => {
   state.currentMark?emit('copyMark',state.currentMark):emit('copy',state.text)
 }
+
+const handleImport = async () => {
+  if (!state.currentMark) return
+  const { importMark } = await import('@/utils/copy')
+  await importMark(state.currentMark, { bookUrl: (window as any).__currentBookUrl || '', isPdf: isPdf.value, showMsg: (m: string, t?: string) => showMessage(m, t === 'error' ? 2000 : 1500, t as any), i18n: props.i18n, marks: props.manager })
+}
+
+const handleOpenBlock = () => state.currentMark?.blockId && openBlock(state.currentMark.blockId)
+const handleShowFloat = (e: MouseEvent) => state.currentMark?.blockId && showFloat(state.currentMark.blockId, e.target as HTMLElement)
+const handleHideFloat = hideFloat
 
 // 处理遮罩层点击
 const handleOverlayClick = (e: MouseEvent) => {

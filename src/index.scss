@@ -513,6 +513,7 @@
   &.active { background: var(--b3-theme-primary-lightest); color: var(--b3-theme-primary); font-weight: 600; }
 }
 .sr-empty { padding: 60px 20px; text-align: center; color: var(--b3-theme-on-surface-variant); opacity: .5; font-size: 14px; line-height: 1.8; }
+.sr-empty-small { padding: 12px; text-align: center; font-size: 12px; color: var(--b3-theme-on-surface-variant); }
 
 // ==================== 标注卡片统一样式 ====================
 .sr-card {

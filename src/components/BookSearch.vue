@@ -142,7 +142,7 @@ const props = defineProps<{ i18n: any }>()
 const emit = defineEmits(['read'])
 
 const isInShelf = (book: any) => bookshelfManager.hasBook(book.bookUrl)
-const isAnnaBook = (book: any) => book.bookUrl?.includes('annas-archive.org')
+const isAnnaBook = (book: any) => book.bookUrl?.includes('annas-archive')
 const detailBook = ref<any>(null)
 const chapters = ref<any[]>([])
 const reversed = ref(false)

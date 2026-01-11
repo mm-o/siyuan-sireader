@@ -32,13 +32,10 @@ const scrollAndFlash=(el:HTMLElement,className:string,container?:Element|null)=>
 // JS闪烁（用于SVG元素）- 1次闪烁
 const flashSVG=(el:SVGElement)=>{
   const orig=el.style.opacity||'1'
-  el.style.opacity='0.3'
+  el.style.opacity='1'
   setTimeout(()=>{
-    el.style.opacity='1'
-    setTimeout(()=>{
-      el.style.opacity='0.3'
-      setTimeout(()=>el.style.opacity=orig,300)
-    },300)
+    el.style.opacity='0.3'
+    setTimeout(()=>el.style.opacity=orig,300)
   },300)
 }
 

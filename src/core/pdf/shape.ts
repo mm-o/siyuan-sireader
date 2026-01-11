@@ -434,7 +434,7 @@ export class ShapeToolManager{
 
   private async saveData(shapeAnnotations:any[]){
     if(!this.initialized)return
-    await saveBookData(this.bookUrl,{shapeAnnotations},this.bookName)
+    await saveBookData(this.bookUrl,{shapeAnnotations})
   }
 
   async init(){

@@ -1,8 +1,19 @@
-// Anna's Archive 官方域名（聚合 Z-Library、LibGen、Sci-Hub）
-const EBOOK_URL = 'https://annas-archive.org'
+// Anna's Archive 备用域名列表（域名会经常变化）
+const DEFAULT_DOMAINS = [
+  'https://annas-archive.se',
+  'https://annas-archive.li',
+  'https://annas-archive.gs',
+  'https://annas-archive.org',
+]
 
 interface AnnaConfig {
   enabled?: boolean
+  customDomains?: string[] // 用户自定义域名列表
+  currentDomain?: string // 当前使用的域名
+  filters?: {
+    extensions?: string[] // 文件格式筛选 ['epub', 'pdf', 'mobi', 'azw3']
+    language?: string // 语言筛选 'en', 'zh', 'ja' 等
+  }
 }
 
 interface AnnaBook {
@@ -19,7 +30,12 @@ interface AnnaBook {
 }
 
 class AnnaArchiveAdapter {
-  private config: AnnaConfig = {}
+  private config: AnnaConfig = {
+    filters: {
+      extensions: [], // 默认不筛选
+      language: undefined
+    }
+  }
 
   constructor() {
     this.loadConfig()
@@ -29,7 +45,11 @@ class AnnaArchiveAdapter {
     try {
       const saved = localStorage.getItem('anna_config')
       if (saved) {
-        this.config = JSON.parse(saved)
+        this.config = { ...this.config, ...JSON.parse(saved) }
+      }
+      // 如果没有设置当前域名，使用第一个默认域名
+      if (!this.config.currentDomain) {
+        this.config.currentDomain = DEFAULT_DOMAINS[0]
       }
     } catch (e) {
       // 忽略错误
@@ -45,25 +65,130 @@ class AnnaArchiveAdapter {
     return { ...this.config }
   }
 
+  // 获取当前使用的域名
+  private getCurrentDomain(): string {
+    return this.config.currentDomain || DEFAULT_DOMAINS[0]
+  }
+
+  // 获取所有可用域名（默认 + 自定义）
+  getAllDomains(): string[] {
+    const custom = this.config.customDomains || []
+    return [...custom, ...DEFAULT_DOMAINS]
+  }
+
+  // 添加自定义域名
+  addCustomDomain(domain: string) {
+    const custom = this.config.customDomains || []
+    if (!custom.includes(domain) && !DEFAULT_DOMAINS.includes(domain)) {
+      custom.push(domain)
+      this.saveConfig({ customDomains: custom })
+    }
+  }
+
+  // 移除自定义域名
+  removeCustomDomain(domain: string) {
+    const custom = this.config.customDomains || []
+    const filtered = custom.filter(d => d !== domain)
+    this.saveConfig({ customDomains: filtered })
+  }
+
+  // 切换到指定域名
+  switchDomain(domain: string) {
+    this.saveConfig({ currentDomain: domain })
+  }
+
+  // 测试域名是否可用
+  async testDomain(domain: string): Promise<boolean> {
+    try {
+      const response = await fetch(domain, {
+        method: 'HEAD',
+        signal: AbortSignal.timeout(5000)
+      })
+      return response.ok
+    } catch {
+      return false
+    }
+  }
+
+  // 自动切换到可用域名
+  async autoSwitchDomain(): Promise<string | null> {
+    const domains = this.getAllDomains()
+    for (const domain of domains) {
+      if (await this.testDomain(domain)) {
+        this.switchDomain(domain)
+        return domain
+      }
+    }
+    return null
+  }
+
+  // 设置文件格式筛选
+  setExtensionFilter(extensions: string[]) {
+    this.saveConfig({
+      filters: {
+        ...this.config.filters,
+        extensions
+      }
+    })
+  }
+
+  // 设置语言筛选
+  setLanguageFilter(language: string | undefined) {
+    this.saveConfig({
+      filters: {
+        ...this.config.filters,
+        language
+      }
+    })
+  }
+
   // 获取当前源信息
   getCurrentSource() {
     return {
       name: "Anna's Archive",
-      url: EBOOK_URL,
+      url: this.getCurrentDomain(),
       type: 'anna'
     }
   }
 
-  // 搜索书籍
+  // 搜索书籍（支持格式和语言筛选）
   async search(keyword: string, page = 1): Promise<AnnaBook[]> {
-    const searchUrl = `${EBOOK_URL}/search?q=${encodeURIComponent(keyword)}&page=${page}`
-    const html = await this.request(searchUrl)
+    const domain = this.getCurrentDomain()
     
-    if (!html || html.length < 100) {
-      throw new Error('搜索结果为空')
+    // 构建搜索URL，添加筛选参数
+    let searchUrl = `${domain}/search?q=${encodeURIComponent(keyword)}&page=${page}`
+    
+    // 添加文件格式筛选
+    const extensions = this.config.filters?.extensions || []
+    if (extensions.length > 0) {
+      searchUrl += `&ext=${extensions.join(',')}`
     }
+    
+    // 添加语言筛选
+    const language = this.config.filters?.language
+    if (language) {
+      searchUrl += `&lang=${language}`
+    }
+    
+    try {
+      const html = await this.request(searchUrl)
+      
+      if (!html || html.length < 100) {
+        throw new Error('搜索结果为空')
+      }
 
-    return this.parseResults(html)
+      return this.parseResults(html, domain)
+    } catch (e: any) {
+      // 如果当前域名失败，尝试自动切换
+      if (e.message.includes('HTTP') || e.message.includes('请求超时')) {
+        const newDomain = await this.autoSwitchDomain()
+        if (newDomain && newDomain !== domain) {
+          // 用新域名重试一次
+          return this.search(keyword, page)
+        }
+      }
+      throw e
+    }
   }
 
   // 网络请求
@@ -99,7 +224,7 @@ class AnnaArchiveAdapter {
   }
 
   // 解析搜索结果
-  private parseResults(html: string): AnnaBook[] {
+  private parseResults(html: string, domain: string): AnnaBook[] {
     const parser = new DOMParser()
     const doc = parser.parseFromString(html, 'text/html')
     const books: AnnaBook[] = []
@@ -128,6 +253,14 @@ class AnnaArchiveAdapter {
         const extMatch = fileName.match(/\.(pdf|epub|mobi|azw3|djvu|fb2|txt|doc|docx|cbr|cbz)$/i)
         if (extMatch) {
           extension = extMatch[1].toUpperCase()
+        }
+
+        // 如果设置了格式筛选，但当前书籍不匹配，跳过
+        const filterExts = this.config.filters?.extensions || []
+        if (filterExts.length > 0 && extension) {
+          if (!filterExts.some(ext => ext.toLowerCase() === extension!.toLowerCase())) {
+            return
+          }
         }
 
         // 查找作者链接
@@ -171,7 +304,7 @@ class AnnaArchiveAdapter {
           if (imgEl) {
             const src = imgEl.getAttribute('src') || imgEl.getAttribute('data-src') || imgEl.getAttribute('data-lazy-src')
             if (src && !src.includes('data:image')) {
-              coverUrl = src.startsWith('http') ? src : EBOOK_URL + src
+              coverUrl = src.startsWith('http') ? src : domain + src
               break
             }
           }
@@ -182,7 +315,7 @@ class AnnaArchiveAdapter {
           id,
           name,
           author,
-          bookUrl: EBOOK_URL + href,
+          bookUrl: domain + href,
           coverUrl,
           intro: undefined,
           year,
@@ -204,6 +337,10 @@ class AnnaArchiveAdapter {
     const parser = new DOMParser()
     const doc = parser.parseFromString(html, 'text/html')
 
+    // 从URL提取域名
+    const urlObj = new URL(bookUrl)
+    const domain = `${urlObj.protocol}//${urlObj.host}`
+
     // 提取书名
     const nameEl = doc.querySelector('h1, .book-title, [itemprop="name"]')
     const name = nameEl?.textContent?.trim() || ''
@@ -222,7 +359,7 @@ class AnnaArchiveAdapter {
     if (coverEl) {
       const src = coverEl.getAttribute('src') || coverEl.getAttribute('data-src')
       if (src) {
-        coverUrl = src.startsWith('http') ? src : EBOOK_URL + src
+        coverUrl = src.startsWith('http') ? src : domain + src
       }
     }
 
