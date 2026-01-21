@@ -276,5 +276,16 @@
   "noBindDoc": "No bound document",
   "openBlock": "Open Block",
   "bound": "Bound",
-  "unbind": "Unbind"
+  "unbind": "Unbind",
+  "autoSync": "Sync on Add",
+  "syncDelete": "Sync on Delete",
+  "filter": "Filter",
+  "color": "Color",
+  "sort": "Sort",
+  "sortTime": "Time",
+  "sortDate": "Date",
+  "sortChapter": "Chapter",
+  "all": "All",
+  "notFound": "Not found",
+  "empty": "No"
 }

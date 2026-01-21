@@ -1,17 +1,21 @@
 <template>
-  <div class="sr-toc" @click="showColorMenu=false;showBindMenu=false">
+  <div class="sr-toc" @click="showFilterMenu=false;showBindMenu=false">
     <!-- 工具栏 -->
     <div class="sr-toolbar">
       <input v-model="keyword" :placeholder="placeholders[mode]">
-      <div v-if="mode==='mark'" class="sr-select">
-        <button class="b3-tooltips b3-tooltips__sw" @click.stop="showColorMenu=!showColorMenu" :aria-label="filterColor||'全部'">
+      <div v-if="mode==='mark'||mode==='note'" class="sr-select">
+        <button class="b3-tooltips b3-tooltips__sw" @click.stop="showFilterMenu=!showFilterMenu" :aria-label="filterLabel">
           <svg><use xlink:href="#lucide-sliders-horizontal"/></svg>
         </button>
         <Transition name="menu">
-          <div v-if="showColorMenu" class="sr-menu" @click.stop>
-            <div v-for="(c,i) in colorMenu" :key="i" :class="['sr-menu-item',{active:c.active}]" @click="filterColor=c.value;showColorMenu=false">
-              <span v-if="c.color" class="dot" :style="{background:c.color}"></span>{{ c.label }}
+          <div v-if="showFilterMenu" class="sr-menu" @click.stop>
+            <div class="sr-menu-section">{{ props.i18n?.color||'颜色' }}</div>
+            <div v-for="c in filterOpts.colors" :key="c.value" :class="['sr-menu-item',{active:filter.color===c.value}]" @click="filter.color=c.value">
+              <span v-if="c.bg" class="dot" :style="{background:c.bg}"></span>{{ c.label }}
             </div>
+            <div class="sr-menu-divider"></div>
+            <div class="sr-menu-section">{{ props.i18n?.sort||'排序' }}</div>
+            <div v-for="s in filterOpts.sorts" :key="s.value" :class="['sr-menu-item',{active:filter.sort===s.value}]" @click="filter.sort=s.value">{{ s.label }}</div>
           </div>
         </Transition>
       </div>
@@ -27,8 +31,22 @@
       <div v-if="mode==='mark'||mode==='note'" class="sr-select">
         <button class="b3-tooltips b3-tooltips__sw" @click.stop="showBindMenu=!showBindMenu" :aria-label="bindDocName||'绑定文档'"><svg><use xlink:href="#iconRef"/></svg></button>
         <div v-if="showBindMenu" class="sr-menu sr-bind-menu" @click.stop>
-          <div v-if="bindDocId" class="sr-bind-current"><div class="sr-bind-info"><div>{{ bindDocName }}</div><div class="sr-bind-id">{{ bindDocId }}</div></div><button @click="unbindDoc">×</button></div>
-          <input v-model="bindSearch" placeholder="搜索文档..." @input="searchBindDoc">
+          <template v-if="bindDocId">
+            <div class="sr-menu-item active">
+              <div class="sr-bind-info">
+                <div>{{ bindDocName }}</div>
+                <div class="sr-bind-id">{{ bindDocId }}</div>
+              </div>
+              <button @click="unbindDoc" class="sr-unbind-btn">×</button>
+            </div>
+            <div class="sr-menu-item sr-checkbox">
+              <label><input type="checkbox" v-model="autoSync" @change="toggleAutoSync"><span>添加时同步</span></label>
+            </div>
+            <div class="sr-menu-item sr-checkbox">
+              <label><input type="checkbox" v-model="syncDelete" @change="toggleSyncDelete"><span>删除时同步</span></label>
+            </div>
+          </template>
+          <input v-model="bindSearch" placeholder="搜索文档..." @input="searchBindDoc" class="sr-bind-search">
           <div v-for="d in bindResults" :key="d.path" class="sr-menu-item" @click="bindDoc(d)">{{ d.hPath||'无标题' }}</div>
           <div v-if="bindSearch&&!bindResults.length" class="sr-empty-small">未找到</div>
         </div>
@@ -65,89 +83,97 @@
         <!-- 标注/笔记 -->
         <div v-else-if="mode==='mark'||mode==='note'" :key="mode" class="sr-list">
           <div v-if="!list.length" class="sr-empty">{{ emptyText }}</div>
-          <div v-else v-for="(item,i) in list" :key="item.groupId||item.id||item.page||i" class="sr-card" :class="{'sr-card-edit':isEditing(item)}">
-            <span class="sr-bar" :style="{background:item.type==='ink-group'?'#ff9800':item.type==='shape-group'?'#2196f3':(colors[isEditing(item)?editColor:item.color]||'var(--b3-theme-primary)')}"></span>
-            <div class="sr-main" @click="(item.type==='ink-group'||item.type==='shape-group')?null:(isEditing(item)?null:goTo(item))">
-              <!-- 标题行 -->
-              <div class="sr-head">
-                <div v-if="isEditing(item)" class="sr-title" contenteditable @blur="e=>editText=e.target.textContent" v-html="editText"></div>
-                <div v-else class="sr-title">{{ item.type==='ink-group'?'✏️':item.type==='shape-group'?'🔷':item.text||'无内容' }}<span v-if="item.type==='ink-group'||item.type==='shape-group'" class="sr-meta">第{{ item.page }}页 · {{ (item.inks||item.shapes).length }}项</span></div>
-                <div v-if="!item.type||item.type==='highlight'||item.type==='note'" class="sr-time">{{ formatTime(item.timestamp||Date.now()) }}</div>
-                <button v-if="item.type==='ink-group'||item.type==='shape-group'" @click.stop="toggleExpand(item)" class="sr-expand-btn b3-tooltips b3-tooltips__nw" :aria-label="isExpanded(item)?'收起':'展开'">
-                  <svg><use :xlink:href="isExpanded(item)?'#iconUp':'#iconDown'"/></svg>
-                </button>
-              </div>
-              <!-- 内容区 -->
-              <textarea v-if="isEditing(item)" ref="editNoteRef" v-model="editNote" placeholder="添加笔记..." class="sr-note-input"/>
-              <div v-else-if="item.note" class="sr-note">{{ item.note }}</div>
-              <canvas v-if="item.type==='ink-group'" :data-page="item.page" class="sr-preview sr-group-preview" width="240" height="80"></canvas>
-              <!-- 编辑选项 -->
-              <template v-if="isEditing(item)&&showEditOptions(item)">
-                <div class="sr-options">
-                  <div class="sr-colors">
-                    <button v-for="c in COLORS" :key="c.color" class="sr-color-btn" :class="{active:editColor===c.color}" :style="{background:c.bg}" @click.stop="editColor=c.color"/>
-                  </div>
-                  <div v-if="item.type==='shape'" class="sr-styles">
-                    <button v-for="s in shapes" :key="s.type" class="sr-style-btn" :class="{active:editShapeType===s.type}" @click.stop="editShapeType=s.type" :title="s.label">
-                      <svg style="width:16px;height:16px"><use :xlink:href="s.icon"/></svg>
-                    </button>
-                  </div>
-                  <div v-else class="sr-styles">
-                    <button v-for="s in STYLES" :key="s.type" class="sr-style-btn" :class="{active:editStyle===s.type}" @click.stop="editStyle=s.type">
-                      <span class="sr-style-icon" :data-type="s.type">{{ s.text }}</span>
-                    </button>
-                  </div>
-                </div>
-                <div class="sr-actions">
-                  <button @click.stop="saveEdit(item)" class="sr-btn-primary">保存</button>
-                  <button @click.stop="cancelEdit" class="sr-btn-secondary">取消</button>
-                </div>
-              </template>
-              <!-- 展开子项 -->
-              <Transition name="expand">
-                <div v-if="isExpanded(item)" class="sr-sub-list">
-                  <div v-for="sub in (item.inks||item.shapes)" :key="sub.id" class="sr-sub-item" :class="{'sr-card-edit':isEditing(sub)}" @click.stop="isEditing(sub)?null:goTo(sub)">
-                    <canvas v-if="item.type==='ink-group'" :data-ink-id="sub.id" class="sr-preview" width="240" height="40"></canvas>
-                    <canvas v-else :data-shape-id="sub.id" class="sr-preview"></canvas>
-                    <textarea v-if="isEditing(sub)" ref="editNoteRef" v-model="editNote" placeholder="添加笔记..." class="sr-note-input"/>
-                    <div v-else-if="sub.note" class="sr-note">{{ sub.note }}</div>
-                    <!-- 编辑选项 -->
-                    <template v-if="isEditing(sub)">
-                      <div class="sr-options">
-                        <div class="sr-colors">
-                          <button v-for="c in COLORS" :key="c.color" class="sr-color-btn" :class="{active:editColor===c.color}" :style="{background:c.bg}" @click.stop="editColor=c.color"/>
-                        </div>
-                        <div v-if="sub.type==='shape'" class="sr-styles">
-                          <button v-for="s in shapes" :key="s.type" class="sr-style-btn" :class="{active:editShapeType===s.type}" @click.stop="editShapeType=s.type" :title="s.label">
-                            <svg style="width:16px;height:16px"><use :xlink:href="s.icon"/></svg>
-                          </button>
-                        </div>
-                      </div>
-                      <div class="sr-actions">
-                        <button @click.stop="saveEdit(sub)" class="sr-btn-primary">保存</button>
-                        <button @click.stop="cancelEdit" class="sr-btn-secondary">取消</button>
-                      </div>
-                    </template>
-                    <div v-else class="sr-btns">
-                      <button v-if="item.type==='shape-group'" @click.stop="copyMark(sub)" class="b3-tooltips b3-tooltips__nw" :aria-label="props.i18n?.copy||'复制'"><svg><use xlink:href="#iconCopy"/></svg></button>
-                      <button v-if="item.type==='shape-group'" @click.stop="startEdit(sub)" class="b3-tooltips b3-tooltips__nw" :aria-label="props.i18n?.edit||'编辑'"><svg><use xlink:href="#iconEdit"/></svg></button>
-                      <button v-if="sub.blockId" @click.stop="openBlock(sub.blockId)" @mouseenter="onBlockEnter($event,sub.blockId)" @mouseleave="hideFloat" class="b3-tooltips b3-tooltips__nw" aria-label="打开块"><svg><use xlink:href="#iconRef"/></svg></button>
-                      <button v-else @click.stop="importMark(sub)" class="b3-tooltips b3-tooltips__nw" :aria-label="props.i18n?.import||'导入'"><svg><use xlink:href="#iconDownload"/></svg></button>
-                      <button @click.stop="deleteMark(sub)" class="b3-tooltips b3-tooltips__nw" :aria-label="props.i18n?.delete||'删除'"><svg><use xlink:href="#iconTrashcan"/></svg></button>
-                    </div>
-                  </div>
-                </div>
-              </Transition>
-              <!-- 操作按钮 -->
-              <div v-if="!isEditing(item)&&(!item.type||item.type==='highlight'||item.type==='note')" class="sr-btns">
-                <button @click.stop="copyMark(item)" class="b3-tooltips b3-tooltips__nw" :aria-label="props.i18n?.copy||'复制'"><svg><use xlink:href="#iconCopy"/></svg></button>
-                <button @click.stop="startEdit(item)" class="b3-tooltips b3-tooltips__nw" :aria-label="props.i18n?.edit||'编辑'"><svg><use xlink:href="#iconEdit"/></svg></button>
-                <button v-if="item.blockId" @click.stop="openBlock(item.blockId)" @mouseenter="onBlockEnter($event,item.blockId)" @mouseleave="hideFloat" class="b3-tooltips b3-tooltips__nw" aria-label="打开块"><svg><use xlink:href="#iconRef"/></svg></button>
-                <button v-else @click.stop="importMark(item)" class="b3-tooltips b3-tooltips__nw" :aria-label="props.i18n?.import||'导入'"><svg><use xlink:href="#iconDownload"/></svg></button>
-                <button @click.stop="deleteMark(item)" class="b3-tooltips b3-tooltips__nw" :aria-label="props.i18n?.delete||'删除'"><svg><use xlink:href="#iconTrashcan"/></svg></button>
+          <template v-else v-for="(item,i) in list" :key="item.key||item.groupId||item.id||item.page||i">
+            <!-- 分组头 -->
+            <div v-if="item.isGroup" class="sr-card sr-group" @click="collapsed.has(item.key)?collapsed.delete(item.key):collapsed.add(item.key)">
+              <span class="sr-bar" :class="{collapsed:collapsed.has(item.key)}"></span>
+              <div class="sr-group-content">
+                <span class="sr-group-title">{{ item.key }}</span>
+                <span class="sr-group-count">{{ item.items.length }}</span>
               </div>
             </div>
-          </div>
+            <!-- 分组内容或单项 -->
+            <template v-for="(m,j) in (item.isGroup&&!collapsed.has(item.key)?item.items:[item.isGroup?null:item])" :key="m?.id||j">
+              <div v-if="m" class="sr-card" :class="{'sr-card-edit':isEditing(m)}">
+                <span class="sr-bar" :style="{background:m.type==='ink-group'?'#ff9800':m.type==='shape-group'?'#2196f3':(colors[isEditing(m)?editColor:m.color]||'var(--b3-theme-primary)')}"></span>
+                <div class="sr-main" @click="(m.type==='ink-group'||m.type==='shape-group')?null:(isEditing(m)?null:goTo(m))">
+                  <div class="sr-head">
+                    <div v-if="m.chapter" class="sr-chapter">{{ m.chapter }}</div>
+                    <div v-if="!m.type||m.type==='highlight'||m.type==='note'" class="sr-time">{{ formatTime(m.timestamp||Date.now()) }}</div>
+                    <button v-if="m.type==='ink-group'||m.type==='shape-group'" @click.stop="toggleExpand(m)" class="sr-expand-btn b3-tooltips b3-tooltips__nw" :aria-label="isExpanded(m)?'收起':'展开'">
+                      <svg><use :xlink:href="isExpanded(m)?'#iconUp':'#iconDown'"/></svg>
+                    </button>
+                  </div>
+                  <div v-if="isEditing(m)" class="sr-title" contenteditable @blur="e=>editText=e.target.textContent" v-html="editText"></div>
+                  <div v-else class="sr-title">{{ m.type==='ink-group'?'✏️':m.type==='shape-group'?'🔷':m.text||'无内容' }}<span v-if="m.type==='ink-group'||m.type==='shape-group'" class="sr-meta">第{{ m.page }}页 · {{ (m.inks||m.shapes).length }}项</span></div>
+                  <textarea v-if="isEditing(m)" ref="editNoteRef" v-model="editNote" placeholder="添加笔记..." class="sr-note-input"/>
+                  <div v-else-if="m.note" class="sr-note">{{ m.note }}</div>
+                  <canvas v-if="m.type==='ink-group'" :data-page="m.page" class="sr-preview sr-group-preview" width="240" height="80"></canvas>
+                  <template v-if="isEditing(m)&&showEditOptions(m)">
+                    <div class="sr-options">
+                      <div class="sr-colors">
+                        <button v-for="c in COLORS" :key="c.color" class="sr-color-btn" :class="{active:editColor===c.color}" :style="{background:c.bg}" @click.stop="editColor=c.color"/>
+                      </div>
+                      <div v-if="m.type==='shape'" class="sr-styles">
+                        <button v-for="s in shapes" :key="s.type" class="sr-style-btn" :class="{active:editShapeType===s.type}" @click.stop="editShapeType=s.type" :title="s.label">
+                          <svg style="width:16px;height:16px"><use :xlink:href="s.icon"/></svg>
+                        </button>
+                      </div>
+                      <div v-else class="sr-styles">
+                        <button v-for="s in STYLES.filter(s=>!s.pdfOnly||isPdfMode)" :key="s.type" class="sr-style-btn" :class="{active:editStyle===s.type}" @click.stop="editStyle=s.type">
+                          <span class="sr-style-icon" :data-type="s.type">{{ s.text }}</span>
+                        </button>
+                      </div>
+                    </div>
+                    <div class="sr-actions">
+                      <button @click.stop="saveEdit(m)" class="sr-btn-primary">保存</button>
+                      <button @click.stop="cancelEdit" class="sr-btn-secondary">取消</button>
+                    </div>
+                  </template>
+                  <Transition name="expand">
+                    <div v-if="isExpanded(m)" class="sr-sub-list">
+                      <div v-for="sub in (m.inks||m.shapes)" :key="sub.id" class="sr-sub-item" :class="{'sr-card-edit':isEditing(sub)}" @click.stop="isEditing(sub)?null:goTo(sub)">
+                        <canvas v-if="m.type==='ink-group'" :data-ink-id="sub.id" class="sr-preview" width="240" height="40"></canvas>
+                        <canvas v-else :data-shape-id="sub.id" class="sr-preview"></canvas>
+                        <textarea v-if="isEditing(sub)" ref="editNoteRef" v-model="editNote" placeholder="添加笔记..." class="sr-note-input"/>
+                        <div v-else-if="sub.note" class="sr-note">{{ sub.note }}</div>
+                        <template v-if="isEditing(sub)">
+                          <div class="sr-options">
+                            <div class="sr-colors">
+                              <button v-for="c in COLORS" :key="c.color" class="sr-color-btn" :class="{active:editColor===c.color}" :style="{background:c.bg}" @click.stop="editColor=c.color"/>
+                            </div>
+                            <div v-if="sub.type==='shape'" class="sr-styles">
+                              <button v-for="s in shapes" :key="s.type" class="sr-style-btn" :class="{active:editShapeType===s.type}" @click.stop="editShapeType=s.type" :title="s.label">
+                                <svg style="width:16px;height:16px"><use :xlink:href="s.icon"/></svg>
+                              </button>
+                            </div>
+                          </div>
+                          <div class="sr-actions">
+                            <button @click.stop="saveEdit(sub)" class="sr-btn-primary">保存</button>
+                            <button @click.stop="cancelEdit" class="sr-btn-secondary">取消</button>
+                          </div>
+                        </template>
+                        <div v-else class="sr-btns">
+                          <button v-if="m.type==='shape-group'" @click.stop="copyMark(sub)" class="b3-tooltips b3-tooltips__nw" :aria-label="props.i18n?.copy||'复制'"><svg><use xlink:href="#iconCopy"/></svg></button>
+                          <button v-if="m.type==='shape-group'" @click.stop="startEdit(sub)" class="b3-tooltips b3-tooltips__nw" :aria-label="props.i18n?.edit||'编辑'"><svg><use xlink:href="#iconEdit"/></svg></button>
+                          <button v-if="sub.blockId" @click.stop="openBlock(sub.blockId)" @mouseenter="onBlockEnter($event,sub.blockId)" @mouseleave="hideFloat" class="b3-tooltips b3-tooltips__nw" aria-label="打开块"><svg><use xlink:href="#iconRef"/></svg></button>
+                          <button v-else @click.stop="importMark(sub)" class="b3-tooltips b3-tooltips__nw" :aria-label="props.i18n?.import||'导入'"><svg><use xlink:href="#iconDownload"/></svg></button>
+                          <button @click.stop="deleteMark(sub)" class="b3-tooltips b3-tooltips__nw" :aria-label="props.i18n?.delete||'删除'"><svg><use xlink:href="#iconTrashcan"/></svg></button>
+                        </div>
+                      </div>
+                    </div>
+                  </Transition>
+                  <div v-if="!isEditing(m)&&(!m.type||m.type==='highlight'||m.type==='note')" class="sr-btns">
+                    <button @click.stop="copyMark(m)" class="b3-tooltips b3-tooltips__nw" :aria-label="props.i18n?.copy||'复制'"><svg><use xlink:href="#iconCopy"/></svg></button>
+                    <button @click.stop="startEdit(m)" class="b3-tooltips b3-tooltips__nw" :aria-label="props.i18n?.edit||'编辑'"><svg><use xlink:href="#iconEdit"/></svg></button>
+                    <button v-if="m.blockId" @click.stop="openBlock(m.blockId)" @mouseenter="onBlockEnter($event,m.blockId)" @mouseleave="hideFloat" class="b3-tooltips b3-tooltips__nw" aria-label="打开块"><svg><use xlink:href="#iconRef"/></svg></button>
+                    <button v-else @click.stop="importMark(m)" class="b3-tooltips b3-tooltips__nw" :aria-label="props.i18n?.import||'导入'"><svg><use xlink:href="#iconDownload"/></svg></button>
+                    <button @click.stop="deleteMark(m)" class="b3-tooltips b3-tooltips__nw" :aria-label="props.i18n?.delete||'删除'"><svg><use xlink:href="#iconTrashcan"/></svg></button>
+                  </div>
+                </div>
+              </div>
+            </template>
+          </template>
         </div>
         
         <!-- 卡包 -->
@@ -197,8 +223,9 @@ const goToLocation = async (location: string | number) => activeView.value?.goTo
 
 // ===== 状态 =====
 const tocRef=ref<HTMLElement>(),contentRef=ref<HTMLElement>(),editNoteRef=ref<HTMLTextAreaElement>(),thumbContainer=ref<HTMLElement>()
-const keyword=ref(''),filterColor=ref(''),showColorMenu=ref(false),showThumbnail=ref(false)
+const keyword=ref(''),showFilterMenu=ref(false),showThumbnail=ref(false)
 const isReverse=ref(false),isAtTop=ref(true),refreshKey=ref(0)
+const filter=ref({color:'',sort:'time'}),collapsed=ref(new Set<string>())
 const deckCards=ref<any[]>([]),expandedDeck=ref<string|null>(null),expandedGroup=ref<number|null>(null)
 const editingId=ref<string|null>(null),editText=ref(''),editNote=ref(''),editColor=ref('yellow')
 const editStyle=ref<'highlight'|'underline'|'outline'|'dotted'|'dashed'|'double'|'squiggly'>('highlight')
@@ -213,7 +240,16 @@ const colors=getColorMap()
 const placeholders={toc:'搜索目录...',bookmark:'搜索书签...',mark:'搜索标注...',note:'搜索笔记...',deck:'搜索卡包...'}
 
 // ===== Computed =====
-const colorMenu=computed(()=>[{label:'全部',value:'',active:!filterColor.value},...Object.entries(colors).map(([k,v])=>({label:k,value:k,color:v,active:filterColor.value===k}))])
+const filterOpts=computed(()=>({
+  colors:[{label:props.i18n?.all||'全部',value:''},...COLORS.map(c=>({label:c.name,value:c.color,bg:c.bg}))],
+  sorts:[{label:props.i18n?.sortTime||'时间',value:'time'},{label:props.i18n?.sortDate||'日期',value:'date'},{label:props.i18n?.sortChapter||'章节',value:'chapter'}]
+}))
+const filterLabel=computed(()=>{
+  const p=[]
+  if(filter.value.color)p.push(COLORS.find(c=>c.color===filter.value.color)?.name)
+  if(filter.value.sort!=='time')p.push(filterOpts.value.sorts.find(s=>s.value===filter.value.sort)?.label)
+  return p.length?p.join(' · '):(props.i18n?.filter||'筛选')
+})
 const marks=computed(()=>activeReader.value?.marks||(activeView.value as any)?.marks)
 const isPdfMode=computed(()=>(activeView.value as any)?.isPdf||false)
 const pageCount=computed(()=>(activeView.value as any)?.pageCount||0)
@@ -236,10 +272,30 @@ const data=computed(()=>{
     return acc
   },{})
   const shapeGroups=Object.values(shapesByPage).map((g:any)=>({...g,groupId:`shape-${g.page}`,shapes:[...g.shapes]}))
-  return{bookmarks:marks.value.getBookmarks(),marks:[...marks.value.getAnnotations(filterColor.value as any),...inkGroups,...shapeGroups],notes:marks.value.getNotes(),deck:deckCards.value}
+  return{bookmarks:marks.value.getBookmarks(),marks:[...marks.value.getAnnotations(filter.value.color as any),...inkGroups,...shapeGroups],notes:marks.value.getNotes(),deck:deckCards.value}
 })
-const list=computed(()=>{const kw=keyword.value.toLowerCase(),modeMap={bookmark:'bookmarks',mark:'marks',note:'notes',deck:'deck'},items=(data.value[modeMap[props.mode]]||[]).filter((item:any)=>!kw||(item.title||item.text||item.note||item.word||'').toLowerCase().includes(kw));return isReverse.value?[...items].reverse():items})
-const emptyText=computed(()=>keyword.value?`未找到${placeholders[props.mode].replace(/搜索|\.\.\./g,'')}`:`暂无${placeholders[props.mode].replace(/搜索|\.\.\./g,'')}`)
+const list=computed(()=>{
+  const kw=keyword.value.toLowerCase(),key={bookmark:'bookmarks',mark:'marks',note:'notes',deck:'deck'}[props.mode]
+  let items=(data.value[key]||[]).filter((m:any)=>!kw||(m.title||m.text||m.note||m.word||'').toLowerCase().includes(kw))
+  if((props.mode==='mark'||props.mode==='note')&&filter.value.sort!=='time'){
+    const sortKey=filter.value.sort==='chapter'?'chapter':'date'
+    items.sort((a:any,b:any)=>{
+      const ka=sortKey==='chapter'?(a.chapter||'未分类'):formatTime(a.timestamp||0)
+      const kb=sortKey==='chapter'?(b.chapter||'未分类'):formatTime(b.timestamp||0)
+      return ka===kb?b.timestamp-a.timestamp:ka.localeCompare(kb)
+    })
+    const groups:any[]=[]
+    items.forEach((m:any)=>{
+      const key=sortKey==='chapter'?(m.chapter||'未分类'):formatTime(m.timestamp||0)
+      let g=groups.find(g=>g.key===key)
+      if(!g){g={key,items:[],isGroup:true};groups.push(g)}
+      g.items.push(m)
+    })
+    return isReverse.value?[...groups].reverse():groups
+  }
+  return isReverse.value?[...items].reverse():items
+})
+const emptyText=computed(()=>keyword.value?`${props.i18n?.notFound||'未找到'}${placeholders[props.mode].replace(/搜索|\.\.\./g,'')}`:`${props.i18n?.empty||'暂无'}${placeholders[props.mode].replace(/搜索|\.\.\./g,'')}`)
 
 // ===== 目录（foliate-js 原生 API）=====
 let tocView:any=null
@@ -321,36 +377,37 @@ const toggleBookmark=async(btn:HTMLButtonElement,href:string,label:string)=>{
 }
 
 // ===== 操作 =====
-const getKey=(item:any)=>item.id||item.cfi||(item.page?`${item.page}`:`section-${item.section}`)
-const isEditing=(item:any)=>editingId.value===getKey(item)
-const showEditOptions=(item:any)=>item.type==='shape'||item.type==='highlight'||item.type==='note'||!item.type
+const getKey=(m:any)=>m.id||m.cfi||(m.page?`${m.page}`:`section-${m.section}`)
+const isEditing=(m:any)=>editingId.value===getKey(m)
+const showEditOptions=(m:any)=>m.type==='shape'||m.type==='highlight'||m.type==='note'||!m.type
 const showMsg=(msg:string,type='info')=>showMessage(msg,type==='error'?3000:1500,type as any)
-const removeBookmark=(item:any)=>{marks.value?.deleteBookmark?.(getKey(item));showMsg('已删除');refreshKey.value++}
-const startEdit=(item:any)=>{editingId.value=getKey(item);editText.value=item.text||'';editNote.value=item.note||'';editColor.value=item.color||'yellow';editStyle.value=item.style||'highlight';editShapeType.value=item.shapeType||'rect';nextTick(()=>editNoteRef.value?.focus?.())}
+const removeBookmark=(m:any)=>{marks.value?.deleteBookmark?.(getKey(m));showMsg('已删除');refreshKey.value++}
+const startEdit=(m:any)=>{editingId.value=getKey(m);editText.value=m.text||'';editNote.value=m.note||'';editColor.value=m.color||'yellow';editStyle.value=m.style||'highlight';editShapeType.value=m.shapeType||'rect';nextTick(()=>editNoteRef.value?.focus?.())}
 const cancelEdit=()=>editingId.value=null
-const saveEdit=async(item:any)=>{if(!marks.value)return showMsg('标记系统未初始化','error');if(item.type==='shape-group'||item.type==='ink-group')return showMsg('请编辑具体的标注项','error');try{const updates:any={color:editColor.value,note:editNote.value.trim()||undefined};if(item.type==='shape')updates.shapeType=editShapeType.value;else{updates.text=editText.value.trim();updates.style=editStyle.value}await marks.value.updateMark(item,updates);showMsg('已更新');editingId.value=null;refreshKey.value++}catch(e){console.error(e);showMsg('保存失败','error')}}
-const importMark=async(item:any)=>{const{importMark:doImport}=await import('@/utils/copy');const u=getUrl();await doImport(item,{bookUrl:u||'',bookInfo:u?await bookshelfManager.getBook(u):null,isPdf:(activeView.value as any)?.isPdf||false,reader:activeReader.value,pdfViewer:(activeView.value as any)?.viewer,shapeCache,showMsg,i18n:props.i18n,marks:marks.value});refreshKey.value++}
+const saveEdit=async(m:any)=>{if(!marks.value)return showMsg('标记系统未初始化','error');if(m.type==='shape-group'||m.type==='ink-group')return showMsg('请编辑具体的标注项','error');try{const u:any={color:editColor.value,note:editNote.value.trim()||undefined};if(m.type==='shape')u.shapeType=editShapeType.value;else{u.text=editText.value.trim();u.style=editStyle.value}await marks.value.updateMark(m,u);showMsg('已更新');editingId.value=null;refreshKey.value++}catch(e){console.error(e);showMsg('保存失败','error')}}
+const importMark=async(m:any)=>{const{importMark:doImport}=await import('@/utils/copy');const u=getUrl();await doImport(m,{bookUrl:u||'',bookInfo:u?await bookshelfManager.getBook(u):null,isPdf:(activeView.value as any)?.isPdf||false,reader:activeReader.value,pdfViewer:(activeView.value as any)?.viewer,shapeCache,showMsg,i18n:props.i18n,marks:marks.value});refreshKey.value++}
 const onBlockEnter=(e:MouseEvent,id:string)=>showFloat(id,e.target as HTMLElement)
-const deleteMark=async(item:any)=>{if(!marks.value)return showMsg('标记系统未初始化','error');try{if(item.type==='shape-group'){for(const s of item.shapes||[])await marks.value.deleteMark(s);showMsg('已删除');refreshKey.value++;return}if(item.type==='ink-group'){for(const i of item.inks||[])await marks.value.deleteMark(i);showMsg('已删除');refreshKey.value++;return}if(await marks.value.deleteMark(item)){showMsg('已删除');refreshKey.value++}}catch{showMsg('删除失败','error')}}
-
-// 统一跳转 - 完全由jump.ts负责
-const goTo=(item:any)=>jump(item,activeView.value,activeReader.value,marks.value)
-const goToPage=(page:number)=>jump(page,activeView.value,activeReader.value,marks.value)
-const goToDeckLocation=(item:any)=>item.page||item.cfi||item.section!==undefined?goTo(item):showMsg('未保存位置信息')
-const preloadPage=(page:number)=>{const viewer=(activeView.value as any)?.viewer;if(viewer?.renderPage)viewer.renderPage(page)}
-const toggleExpand=(item:any)=>{const id=item.groupId;expandedGroup.value=expandedGroup.value===id?null:id;if(expandedGroup.value){preloadPage(item.page);setTimeout(()=>{renderInkCanvas();renderShapeCanvas()},100)}}
-const isExpanded=(item:any)=>expandedGroup.value===item.groupId
+const deleteMark=async(m:any)=>{if(!marks.value)return showMsg('标记系统未初始化','error');try{if(m.type==='shape-group'){for(const s of m.shapes||[])await marks.value.deleteMark(s);showMsg('已删除');refreshKey.value++;return}if(m.type==='ink-group'){for(const i of m.inks||[])await marks.value.deleteMark(i);showMsg('已删除');refreshKey.value++;return}if(await marks.value.deleteMark(m)){showMsg('已删除');refreshKey.value++}}catch{showMsg('删除失败','error')}}
+const goTo=(m:any)=>jump(m,activeView.value,activeReader.value,marks.value)
+const goToPage=(p:number)=>jump(p,activeView.value,activeReader.value,marks.value)
+const goToDeckLocation=(m:any)=>m.page||m.cfi||m.section!==undefined?goTo(m):showMsg('未保存位置信息')
+const preloadPage=(p:number)=>{const v=(activeView.value as any)?.viewer;if(v?.renderPage)v.renderPage(p)}
+const toggleExpand=(m:any)=>{const id=m.groupId;expandedGroup.value=expandedGroup.value===id?null:id;if(expandedGroup.value){preloadPage(m.page);setTimeout(()=>{renderInkCanvas();renderShapeCanvas()},100)}}
+const isExpanded=(m:any)=>expandedGroup.value===m.groupId
 const removeDeckCard=async(id:string)=>{await removeFromDeck(id);showMsg('已删除')}
 const toggleScroll=()=>contentRef.value?.scrollTo({top:contentRef.value.scrollTop<50?contentRef.value.scrollHeight:0,behavior:'smooth'})
 const onScroll=(e:Event)=>isAtTop.value=(e.target as HTMLElement).scrollTop<50
 
 // ===== 绑定文档 =====
-const getUrl=()=>(window as any).__currentBookUrl
-const getId=(d:any)=>d.path?.split('/').pop()?.replace('.sy','')||d.id
+const getUrl=()=>(window as any).__currentBookUrl,getId=(d:any)=>d.path?.split('/').pop()?.replace('.sy','')||d.id
+const autoSync=ref(false),syncDelete=ref(false)
 const searchBindDoc=async()=>{bindResults.value=bindSearch.value.trim()?await searchDocs(bindSearch.value.trim()):[]}
-const bindDoc=async(d:any)=>{const u=getUrl(),id=getId(d);if(!u||!id)return showMsg(u?'文档ID无效':'未找到书籍','error');const book=await bookshelfManager.getBook(u);if(!book)return showMsg('未找到书籍','error');book.bindDocId=id;book.bindDocName=d.hPath||d.content||'无标题';await bookshelfManager.saveBook(book);bindDocId.value=id;bindDocName.value=book.bindDocName;showMsg('已绑定');showBindMenu.value=bindSearch.value='';bindResults.value=[]}
-const unbindDoc=async()=>{const u=getUrl();if(!u)return;const book=await bookshelfManager.getBook(u);if(!book)return;book.bindDocId='';book.bindDocName='';await bookshelfManager.saveBook(book);bindDocId.value=bindDocName.value='';showMsg('已解绑')}
-const loadBindDoc=async()=>{const u=getUrl();if(!u)return;const book=await bookshelfManager.getBook(u);if(book){bindDocId.value=book.bindDocId||'';bindDocName.value=book.bindDocName||''}}
+const updateBook=async(u:any)=>{const url=getUrl();if(!url)return;const b=await bookshelfManager.getBook(url);if(!b)return;Object.assign(b,u);await bookshelfManager.saveBook(b)}
+const bindDoc=async(d:any)=>{const u=getUrl(),id=getId(d);if(!u||!id)return showMsg(u?'文档ID无效':'未找到书籍','error');const b=await bookshelfManager.getBook(u);if(!b)return showMsg('未找到书籍','error');const n=d.hPath||d.content||'无标题';await updateBook({bindDocId:id,bindDocName:n});bindDocId.value=id;bindDocName.value=n;autoSync.value=b.autoSync||false;syncDelete.value=b.syncDelete||false;showMsg('已绑定');showBindMenu.value=bindSearch.value='';bindResults.value=[]}
+const unbindDoc=async()=>{await updateBook({bindDocId:'',bindDocName:'',autoSync:false,syncDelete:false});bindDocId.value=bindDocName.value='';autoSync.value=syncDelete.value=false;showMsg('已解绑')}
+const toggleAutoSync=async()=>{await updateBook({autoSync:autoSync.value});showMsg(autoSync.value?'已开启添加同步':'已关闭添加同步')}
+const toggleSyncDelete=async()=>{await updateBook({syncDelete:syncDelete.value});showMsg(syncDelete.value?'已开启删除同步':'已关闭删除同步')}
+const loadBindDoc=async()=>{const u=getUrl();if(!u)return;const b=await bookshelfManager.getBook(u);if(b){bindDocId.value=b.bindDocId||'';bindDocName.value=b.bindDocName||'';autoSync.value=b.autoSync||false;syncDelete.value=b.syncDelete||false}}
 
 // ===== Canvas渲染 =====
 const inkCache=new Map(),shapeCache=shapePreviewCache
@@ -395,6 +452,8 @@ onUnmounted(()=>{cleanupToc();obs?.disconnect();window.removeEventListener('sire
 <style scoped lang="scss">
 .sr-toc{display:flex;flex-direction:column;height:100%;overflow:hidden}
 .dot{width:12px;height:12px;border-radius:50%;flex-shrink:0}
+.sr-menu-section{padding:6px 12px;font-size:11px;font-weight:600;color:var(--b3-theme-on-surface-variant);text-transform:uppercase;letter-spacing:.5px}
+.sr-menu-divider{height:1px;background:var(--b3-border-color);margin:4px 0}
 .menu-enter-active,.menu-leave-active{transition:all .2s cubic-bezier(.4,0,.2,1)}
 .menu-enter-from{opacity:0;transform:translateY(-8px) scale(.95)}
 .menu-leave-to{opacity:0;transform:translateY(-4px) scale(.98)}
@@ -449,22 +508,29 @@ onUnmounted(()=>{cleanupToc();obs?.disconnect();window.removeEventListener('sire
   &:active{transform:translateY(-50%) scale(.9)}}
 
 // 统一标注卡片样式
-.sr-card{position:relative;padding:12px;margin-bottom:8px;background:var(--b3-theme-surface);border-radius:4px;border:1px solid var(--b3-border-color);transition:background .15s;cursor:pointer;
+.sr-card{position:relative;padding:12px;margin-bottom:8px;background:var(--b3-theme-surface);border-radius:6px;border:1px solid var(--b3-border-color);transition:background .15s;cursor:pointer;
   &:hover{background:var(--b3-theme-surface-light);.sr-btns,.sr-expand-btn{opacity:1}}}
 .sr-card-edit{cursor:default;.sr-main{cursor:default}}
-.sr-bar{position:absolute;left:0;top:0;bottom:0;width:4px;border-radius:4px 0 0 4px}
+.sr-group{cursor:pointer}
+.sr-group-content{display:flex;align-items:center;gap:8px;padding-left:8px}
+.sr-group-title{flex:1;font-size:13px;font-weight:600;color:var(--b3-theme-primary)}
+.sr-group-count{font-size:11px;padding:2px 8px;background:var(--b3-theme-primary-lightest);color:var(--b3-theme-primary);border-radius:10px}
+.sr-bar{position:absolute;left:6px;top:12px;width:4px;height:24px;border-radius:2px;transition:all .2s cubic-bezier(.4,0,.2,1);
+  .sr-group &{background:var(--b3-theme-primary);top:50%;transform:translateY(-50%);&.collapsed{border-radius:50%;width:8px;height:8px;left:4px}}}
 .sr-main{padding-left:8px}
 .sr-head{display:flex;align-items:center;gap:8px;margin-bottom:4px}
-.sr-title{flex:1;font-size:14px;font-weight:500;color:var(--b3-theme-on-surface);line-height:1.4;outline:none;&[contenteditable]{padding:4px;border-radius:4px;&:focus{background:var(--b3-theme-background-light)}}}
-.sr-meta,.sr-time{font-size:12px;color:var(--b3-theme-on-surface-variant);white-space:nowrap}
-.sr-note{font-size:12px;color:var(--b3-theme-on-surface-variant);line-height:1.5;margin-top:4px}
+.sr-chapter{font-size:12px;font-weight:500;color:var(--b3-theme-primary);opacity:.85;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sr-time{font-size:11px;color:var(--b3-theme-on-surface-variant);opacity:.6;white-space:nowrap;flex-shrink:0}
+.sr-title{flex:1;font-size:14px;font-weight:500;color:var(--b3-theme-on-surface);line-height:1.4;word-break:break-word;margin-bottom:4px;outline:none;&[contenteditable]{padding:4px;border-radius:4px;&:focus{background:var(--b3-theme-background-light)}}}
+.sr-meta{font-size:12px;color:var(--b3-theme-on-surface-variant);white-space:nowrap}
+.sr-note{font-size:12px;color:var(--b3-theme-on-surface-variant);line-height:1.5;margin-top:4px;font-style:italic;opacity:.8}
 .sr-note-input{width:100%;min-height:60px;padding:8px;margin-top:8px;border:1px solid var(--b3-border-color);border-radius:4px;background:var(--b3-theme-background);resize:vertical;font-size:12px;line-height:1.5;outline:none;&:focus{border-color:var(--b3-theme-primary)}}
 .sr-options{margin-top:8px;.sr-colors{display:flex;gap:6px;margin-bottom:8px}.sr-color-btn{width:28px;height:28px;border:2px solid transparent;border-radius:50%;cursor:pointer;transition:all .15s;padding:0;&.active{border-color:var(--b3-theme-on-surface);transform:scale(1.1);box-shadow:0 2px 8px rgba(0,0,0,.2)}&:hover{transform:scale(1.05)}}.sr-styles{display:flex;gap:4px}.sr-style-btn{width:36px;height:32px;display:flex;align-items:center;justify-content:center;border:1px solid var(--b3-border-color);background:transparent;border-radius:4px;cursor:pointer;transition:all .15s;color:var(--b3-theme-on-surface);&.active{background:var(--b3-theme-primary-lightest);border-color:var(--b3-theme-primary);color:var(--b3-theme-primary)}&:hover{background:var(--b3-list-hover)}}}
-.sr-actions{display:flex;gap:8px;margin-top:8px;button{flex:1;padding:8px 16px;border:none;border-radius:4px;cursor:pointer;transition:all .15s;font-size:13px;font-weight:500}&.sr-btn-primary{background:var(--b3-theme-primary);color:white;&:hover{background:var(--b3-theme-primary-light)}&:active{background:var(--b3-theme-primary-dark)}}&.sr-btn-secondary{background:var(--b3-theme-background);color:var(--b3-theme-on-surface);border:1px solid var(--b3-border-color);&:hover{background:var(--b3-list-hover)}}}
+.sr-actions{display:flex;gap:8px;margin-top:8px;button{flex:1;padding:8px 16px;border:none;border-radius:4px;cursor:pointer;transition:all .15s;font-size:13px;font-weight:500}}
 .sr-btn-primary{background:var(--b3-theme-primary);color:white;&:hover{background:var(--b3-theme-primary-light)}&:active{background:var(--b3-theme-primary-dark)}}
 .sr-btn-secondary{background:var(--b3-theme-background);color:var(--b3-theme-on-surface);border:1px solid var(--b3-border-color);&:hover{background:var(--b3-list-hover)}}
 // 统一按钮样式
-.sr-btns{position:absolute;right:4px;top:50%;transform:translateY(-50%);display:flex;gap:4px;opacity:0;transition:opacity .2s;z-index:10;
+.sr-btns{position:absolute;right:4px;bottom:-2px;display:flex;gap:4px;opacity:0;transition:opacity .2s;z-index:10;
   button{width:20px;height:20px;padding:0;border:none;background:transparent;cursor:pointer;transition:all .2s;border-radius:50%;pointer-events:auto;
     svg{width:12px;height:12px;color:var(--b3-theme-on-surface-variant);pointer-events:none}
     &:hover{background:rgba(0,0,0,.05);transform:scale(1.1);svg{color:var(--b3-theme-on-surface)}}
@@ -480,10 +546,12 @@ onUnmounted(()=>{cleanupToc();obs?.disconnect();window.removeEventListener('sire
 .sr-group-preview{height:80px;margin:6px 0}
 
 // 绑定文档
-.sr-bind-menu{min-width:260px;padding:8px;input{width:100%;padding:8px;border:1px solid var(--b3-border-color);border-radius:4px;font-size:13px;outline:none;margin-bottom:8px;&:focus{border-color:var(--b3-theme-primary)}}}
-.sr-bind-current{padding:8px;margin-bottom:8px;background:var(--b3-theme-primary-lightest);border-radius:4px;display:flex;gap:8px;button{width:20px;height:20px;padding:0;border:none;background:var(--b3-theme-error);color:white;border-radius:50%;cursor:pointer;font-size:16px;line-height:1;&:hover{opacity:.8}}}
+.sr-bind-menu{min-width:260px;padding:8px}
 .sr-bind-info{flex:1;min-width:0;font-size:12px;div:first-child{font-weight:600;color:var(--b3-theme-primary)}}
-.sr-bind-id{font-size:10px;opacity:.5;font-family:monospace}
+.sr-bind-id{font-size:10px;opacity:.5;font-family:monospace;margin-top:2px}
+.sr-unbind-btn{width:20px;height:20px;padding:0;border:none;background:var(--b3-theme-error);color:#fff;border-radius:50%;cursor:pointer;font-size:16px;line-height:1}
+.sr-bind-search{width:100%;padding:8px;border:1px solid var(--b3-border-color);border-radius:4px;font-size:13px;outline:none;margin-bottom:8px}
+.sr-checkbox{padding:6px 12px;label{display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;input{cursor:pointer}}}
 
 
 </style>

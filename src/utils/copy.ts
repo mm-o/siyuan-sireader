@@ -5,9 +5,10 @@ export const copyMark=async(item:any,ctx:{bookUrl:string;bookInfo?:any;settings?
   const page=item.page||(isPdf?pdfViewer?.getCurrentPage():null)
   const cfi=item.cfi||(isPdf&&page?`#page-${page}`:item.section!==undefined?`#txt-${item.section}-${item.textOffset||0}`:'')
   if(!cfi)return copy(item.text||item.note||'','仅复制文本')
-  const{formatBookLink}=await import('@/composables/useSetting'),{formatAuthor,getChapterName}=await import('@/core/MarkManager')
-  const book=isPdf?null:reader?.getBook(),toc=isPdf?pdfViewer?.getPDF?.()?.toc:book?.toc
-  const chapter=getChapterName({cfi:item.cfi,page,isPdf,toc,location:reader?.getLocation()})||'📒'
+  const{formatBookLink}=await import('@/composables/useSetting'),{formatAuthor}=await import('@/core/MarkManager')
+  const book=reader?.getBook?.()
+  const title=book?.metadata?.title||bookInfo?.name||''
+  const author=formatAuthor(book?.metadata?.author||bookInfo?.author||'')
   let img=''
   if(item.shapeType&&isPdf&&pdfViewer){
     const hdKey=`${item.id}_${item.shapeType}_hd`
@@ -16,25 +17,49 @@ export const copyMark=async(item:any,ctx:{bookUrl:string;bookInfo?:any;settings?
       img=res.succMap?.[file.name]?`![](${res.succMap[file.name]})`:''
     }else img=await generateShapeScreenshot(item,page,pdfViewer)
   }
-  copy(formatBookLink(bookUrl,book?.metadata?.title||bookInfo?.name||'',formatAuthor(book?.metadata?.author||bookInfo?.author),chapter,cfi,item.text||'',settings?.linkFormat||'> [!NOTE] 📑 书名\n> [章节](链接) 文本\n> 截图\n> 笔记',item.note||'',img,item.id||''))
+  copy(formatBookLink(bookUrl,title,author,item.chapter||'',cfi,item.text||'',settings?.linkFormat||'> [!NOTE] 📑 书名\n> [章节](链接) 文本\n> 截图\n> 笔记',item.note||'',img,item.id||''))
 }
 
 export const importMark=async(item:any,ctx:any)=>{
   try{
     const{bookshelfManager}=await import('@/core/bookshelf'),{appendBlock}=await import('@/api'),book=await bookshelfManager.getBook(ctx.bookUrl)
-    if(!book?.bindDocId)return ctx.showMsg(ctx.i18n?.noBindDoc||'未绑定文档','error')
+    if(!book?.bindDocId)return ctx.showMsg?.(ctx.i18n?.noBindDoc||'未绑定文档','error')
     let md='',orig=navigator.clipboard.writeText
     navigator.clipboard.writeText=async(t:string)=>{md=t;return Promise.resolve()}
     await copyMark(item,{...ctx,showMsg:()=>{}})
     navigator.clipboard.writeText=orig
-    if(!md)return ctx.showMsg('生成失败','error')
+    if(!md)return ctx.showMsg?.('生成失败','error')
     const res=await appendBlock('markdown',md,book.bindDocId)
     const blockId=res?.[0]?.doOperations?.[0]?.id
     if(blockId&&ctx.marks){
       await ctx.marks.updateMark(item,{blockId})
-      ctx.showMsg(ctx.i18n?.imported||'已导入')
-    }else ctx.showMsg(blockId?'已导入':'导入失败','error')
-  }catch(e){console.error(e);ctx.showMsg(ctx.i18n?.importFailed||'导入失败','error')}
+      ctx.showMsg?.(ctx.i18n?.imported||'已导入')
+    }else ctx.showMsg?.(blockId?'已导入':'导入失败','error')
+  }catch(e){console.error(e);ctx.showMsg?.(ctx.i18n?.importFailed||'导入失败','error')}
+}
+
+// 检查标注是否已导入
+const _cache=new Map<string,Set<string>>()
+export const isMarkImported=async(item:any,docId:string):Promise<boolean>=>{
+  if(item.blockId)return true
+  try{
+    if(!_cache.has(docId)){
+      const{getChildBlocks}=await import('@/api'),blocks=await getChildBlocks(docId),ids=new Set<string>()
+      blocks.forEach((b:any)=>b.content?.match(/data-mark-id="([^"]+)"/g)?.forEach((m:string)=>{const id=m.match(/"([^"]+)"/)?.[1];if(id)ids.add(id)}))
+      _cache.set(docId,ids)
+      setTimeout(()=>_cache.delete(docId),30000)
+    }
+    return _cache.get(docId)?.has(item.id)||false
+  }catch{return false}
+}
+
+// 自动同步标注
+export const autoSyncMark=async(item:any,ctx:any)=>{
+  try{
+    const{bookshelfManager}=await import('@/core/bookshelf'),book=await bookshelfManager.getBook(ctx.bookUrl)
+    if(!book?.bindDocId||!book?.autoSync||await isMarkImported(item,book.bindDocId))return
+    await importMark(item,{...ctx,showMsg:()=>{}})
+  }catch(e){console.error('[AutoSync]',e)}
 }
 
 // ===== 块操作统一接口 =====

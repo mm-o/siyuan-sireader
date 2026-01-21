@@ -278,5 +278,16 @@
   "noBindDoc": "未绑定文档",
   "openBlock": "打开块",
   "bound": "已绑定",
-  "unbind": "解绑"
+  "unbind": "解绑",
+  "autoSync": "添加时同步",
+  "syncDelete": "删除时同步",
+  "filter": "筛选",
+  "color": "颜色",
+  "sort": "排序",
+  "sortTime": "时间",
+  "sortDate": "日期",
+  "sortChapter": "章节",
+  "all": "全部",
+  "notFound": "未找到",
+  "empty": "暂无"
 }

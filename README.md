@@ -4,7 +4,7 @@
 <p style="color: rgba(255,255,255,0.9); margin: 0 0 1.5em; font-size: 1.1em;">Professional eBook Reader · Smart Annotation · Multi-format Support</p>
 <p style="color: rgba(255,255,255,0.85); margin: 0 0 1.5em; line-height: 1.6; font-size: 0.95em;">Transform SiYuan Notes into a professional eBook reader<br>Support EPUB/PDF/TXT/Online novels with smart annotation, multi-theme switching, dictionary lookup, AI translation, deck system, and more for an immersive reading experience</p>
 <p style="margin: 0;">
-<img src="https://img.shields.io/badge/version-0.6.9-blue.svg" alt="Version" style="display: inline-block; margin: 0 4px;">
+<img src="https://img.shields.io/badge/version-0.7.0-blue.svg" alt="Version" style="display: inline-block; margin: 0 4px;">
 <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License" style="display: inline-block; margin: 0 4px;">
 <img src="https://img.shields.io/badge/SiYuan-3.0+-orange.svg" alt="SiYuan" style="display: inline-block; margin: 0 4px;">
 </p>
@@ -60,6 +60,29 @@
 ---
 
 ## 📝 Latest Updates
+
+### v0.7.0 (2026.1.21)
+
+#### ✨ New Features
+- **Chapter Display** - Annotations automatically show chapter name, display page number for PDF without TOC
+- **Smart Grouping** - Support grouping by chapter, date, or time with collapsible sections
+- **Auto Sync on Add** - New annotations automatically import to bound SiYuan document
+- **Auto Sync on Delete** - Deleting annotations synchronously removes corresponding blocks in document
+- **Smart Deduplication** - Auto-detect imported annotations to avoid duplicates
+
+#### 🐛 Bug Fixes
+- **Chapter Export** - Fix missing chapter name in annotation export link format
+- **PDF Page Number** - Fix missing location info for PDF annotations without TOC
+- **Style Filter** - Fix EPUB annotations showing PDF-only styles (dotted, dashed, double line)
+
+#### 🎨 UI Optimization
+- **Annotation Layout** - Chapter name and time displayed side by side, chapter on left, time on right
+- **Card Style** - Comprehensive annotation card style optimization, bar height only covers first line
+- **Button Position** - Move action buttons to bottom right to avoid covering content
+- **Note Style** - Note content displayed in italic for clearer visual hierarchy
+- **Group Icon** - Group collapse uses vertical line/dot toggle for more intuitive interaction
+
+---
 
 ### v0.6.9 (2026.1.11)
 

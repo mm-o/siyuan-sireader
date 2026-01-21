@@ -4,7 +4,7 @@
 <p style="color: rgba(255,255,255,0.9); margin: 0 0 1.5em; font-size: 1.1em;">专业电子书阅读 · 智能标注 · 多格式支持</p>
 <p style="color: rgba(255,255,255,0.85); margin: 0 0 1.5em; line-height: 1.6; font-size: 0.95em;">让思源笔记变身专业电子书阅读器，支持 EPUB/PDF/TXT/在线小说多格式阅读<br>提供智能标注、多主题切换、词典查询、AI 翻译、卡包系统等功能，打造沉浸式阅读体验</p>
 <p style="margin: 0;">
-<img src="https://img.shields.io/badge/version-0.6.9-blue.svg" alt="Version" style="display: inline-block; margin: 0 4px;">
+<img src="https://img.shields.io/badge/version-0.7.0-blue.svg" alt="Version" style="display: inline-block; margin: 0 4px;">
 <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License" style="display: inline-block; margin: 0 4px;">
 <img src="https://img.shields.io/badge/SiYuan-3.0+-orange.svg" alt="SiYuan" style="display: inline-block; margin: 0 4px;">
 </p>
@@ -60,6 +60,29 @@
 ---
 
 ## 📝 最新更新
+
+### v0.7.0 (2026.1.21)
+
+#### ✨ 新增功能
+- **章节显示** - 标注自动显示所属章节，PDF 无目录时显示页码
+- **智能分组** - 支持按章节、日期、时间三种方式分组排序，可折叠展开
+- **添加时同步** - 新增标注自动导入到绑定的思源文档
+- **删除时同步** - 删除标注时同步删除文档中对应的块
+- **智能去重** - 自动检测已导入的标注，避免重复导入
+
+#### 🐛 问题修复
+- **章节导出** - 修复标注导出链接格式中章节名缺失的问题
+- **PDF 页码** - 修复 PDF 无目录时标注缺少位置信息的问题
+- **样式过滤** - 修复 EPUB 标注显示 PDF 专属样式（点线、虚线、双线）的问题
+
+#### 🎨 界面优化
+- **标注布局** - 章节名与时间并排显示，章节在左，时间在右
+- **卡片样式** - 标注卡片样式全面优化，竖条高度仅覆盖第一行
+- **按钮位置** - 操作按钮移至右下角，避免遮挡内容
+- **笔记样式** - 笔记内容使用斜体显示，视觉层次更清晰
+- **分组图标** - 分组折叠使用竖线/圆点切换，交互更直观
+
+---
 
 ### v0.6.9 (2026.1.11)
 

@@ -53,6 +53,8 @@ export interface Book {
   // 绑定文档
   bindDocId?: string
   bindDocName?: string
+  autoSync?: boolean    // 添加时同步
+  syncDelete?: boolean  // 删除时同步
 }
 
 export interface BookIndex {
