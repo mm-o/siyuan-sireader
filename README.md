@@ -4,7 +4,7 @@
 <p style="color: rgba(255,255,255,0.9); margin: 0 0 1.5em; font-size: 1.1em;">Professional eBook Reader · Smart Annotation · Multi-format Support</p>
 <p style="color: rgba(255,255,255,0.85); margin: 0 0 1.5em; line-height: 1.6; font-size: 0.95em;">Transform SiYuan Notes into a professional eBook reader<br>Support EPUB/PDF/TXT/Online novels with smart annotation, multi-theme switching, dictionary lookup, AI translation, deck system, and more for an immersive reading experience</p>
 <p style="margin: 0;">
-<img src="https://img.shields.io/badge/version-0.7.0-blue.svg" alt="Version" style="display: inline-block; margin: 0 4px;">
+<img src="https://img.shields.io/badge/version-0.7.1-blue.svg" alt="Version" style="display: inline-block; margin: 0 4px;">
 <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License" style="display: inline-block; margin: 0 4px;">
 <img src="https://img.shields.io/badge/SiYuan-3.0+-orange.svg" alt="SiYuan" style="display: inline-block; margin: 0 4px;">
 </p>
@@ -60,6 +60,47 @@
 ---
 
 ## 📝 Latest Updates
+
+### v0.7.1 (2026.1.22)
+
+#### ✨ New Features
+- **🎨 Follow SiYuan Theme** - New "Follow SiYuan" theme option, auto-adapt to SiYuan's light/dark theme and custom themes
+- **🌓 Auto Theme Switch** - Reader theme automatically syncs when switching SiYuan theme, perfectly integrated into SiYuan interface
+- **📝 Popnote Enhancement** - Support various non-standard EPUB popnote formats (footnotes/endnotes/references, etc.)
+- **🎯 Popnote Jump** - Click popnote title bar to jump to original text position
+- **📋 Content Copy** - Popnote content area supports text selection and copying
+- **🌐 Internationalization** - Popnote types and prompt text support Chinese/English switching
+- **🛠️ PDF Toolbar Style** - New toolbar style settings, support floating (default) and fixed modes
+  - Floating mode: Draggable rounded card in top-right corner, collapsible
+  - Fixed mode: Top-fixed WPS-style toolbar, horizontal layout, always expanded
+
+#### 🎨 UI Optimization
+- **🎨 Popnote Style** - Optimize popnote popup style, clickable title bar, selectable content area
+- **💡 Interaction Hint** - Title bar shows "(Click to jump)" hint, pointer cursor on hover
+- **🔍 PDF Zoom** - Remove PDF 500% max zoom limit, support unlimited zoom
+- **📑 Group Optimization** - After grouping annotations by chapter or date, redundant chapter and date info no longer shown within groups
+- **✏️ Note Editing** - Optimize note interaction, click note area to enter edit directly, click annotation text to jump and locate
+- **🛠️ Toolbar Optimization** - Fixed mode toolbar occupies full width, no rounded corners, light shadow, content area auto-reserves space
+- **📚 Book Source Management** - Delete confirmation uses inline UI, remove dialogs, more concise and efficient interaction
+
+#### 🐛 Bug Fixes
+- **🌙 PDF Dark Mode** - Fix incorrect text color in PDF dark mode
+  - Dark mode: canvas renders with inverted background + invert filter = perfect match with SiYuan dark theme
+  - Light mode: canvas uses theme background color directly, no filter
+  
+- **🎨 EPUB Theme Sync** - Fix outer background not updating when switching EPUB theme
+  - foliate-view uses closed Shadow DOM, internal paginator reads background color from iframe
+  - Use `requestAnimationFrame` + `renderer.render()` to trigger re-render, sync inner/outer background
+  
+- **🎨 Theme Parsing** - Optimize CSS variable parsing logic, ensure theme colors correctly applied to all elements
+- **🔖 Tab Switch** - Fix PDF text selection still showing annotation menu when in inactive tab
+
+#### ⚡ Code Optimization
+- **🧹 Remove Deprecated** - Remove deprecated "TOC Position" setting and related code
+- **🔧 Extract Utilities** - Extract `resolveColor`, `resolveTheme`, `getTheme` and other common functions, code more concise and efficient
+- **📦 Book Source Refactor** - Extreme code simplification, use SiYuan native UI components, 40% code reduction
+
+---
 
 ### v0.7.0 (2026.1.21)
 

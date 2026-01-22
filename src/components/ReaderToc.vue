@@ -96,18 +96,18 @@
             <template v-for="(m,j) in (item.isGroup&&!collapsed.has(item.key)?item.items:[item.isGroup?null:item])" :key="m?.id||j">
               <div v-if="m" class="sr-card" :class="{'sr-card-edit':isEditing(m)}">
                 <span class="sr-bar" :style="{background:m.type==='ink-group'?'#ff9800':m.type==='shape-group'?'#2196f3':(colors[isEditing(m)?editColor:m.color]||'var(--b3-theme-primary)')}"></span>
-                <div class="sr-main" @click="(m.type==='ink-group'||m.type==='shape-group')?null:(isEditing(m)?null:goTo(m))">
+                <div class="sr-main">
                   <div class="sr-head">
-                    <div v-if="m.chapter" class="sr-chapter">{{ m.chapter }}</div>
-                    <div v-if="!m.type||m.type==='highlight'||m.type==='note'" class="sr-time">{{ formatTime(m.timestamp||Date.now()) }}</div>
+                    <div v-if="m.chapter&&filter.sort==='time'" class="sr-chapter">{{ m.chapter }}</div>
+                    <div v-if="(!m.type||m.type==='highlight'||m.type==='note')&&filter.sort==='time'" class="sr-time">{{ formatTime(m.timestamp||Date.now()) }}</div>
                     <button v-if="m.type==='ink-group'||m.type==='shape-group'" @click.stop="toggleExpand(m)" class="sr-expand-btn b3-tooltips b3-tooltips__nw" :aria-label="isExpanded(m)?'收起':'展开'">
                       <svg><use :xlink:href="isExpanded(m)?'#iconUp':'#iconDown'"/></svg>
                     </button>
                   </div>
                   <div v-if="isEditing(m)" class="sr-title" contenteditable @blur="e=>editText=e.target.textContent" v-html="editText"></div>
-                  <div v-else class="sr-title">{{ m.type==='ink-group'?'✏️':m.type==='shape-group'?'🔷':m.text||'无内容' }}<span v-if="m.type==='ink-group'||m.type==='shape-group'" class="sr-meta">第{{ m.page }}页 · {{ (m.inks||m.shapes).length }}项</span></div>
+                  <div v-else class="sr-title" @click="(m.type==='ink-group'||m.type==='shape-group')?null:goTo(m)">{{ m.type==='ink-group'?'✏️':m.type==='shape-group'?'🔷':m.text||'无内容' }}<span v-if="m.type==='ink-group'||m.type==='shape-group'" class="sr-meta">第{{ m.page }}页 · {{ (m.inks||m.shapes).length }}项</span></div>
                   <textarea v-if="isEditing(m)" ref="editNoteRef" v-model="editNote" placeholder="添加笔记..." class="sr-note-input"/>
-                  <div v-else-if="m.note" class="sr-note">{{ m.note }}</div>
+                  <div v-else-if="m.note" class="sr-note" @click.stop="startEdit(m)">{{ m.note }}</div>
                   <canvas v-if="m.type==='ink-group'" :data-page="m.page" class="sr-preview sr-group-preview" width="240" height="80"></canvas>
                   <template v-if="isEditing(m)&&showEditOptions(m)">
                     <div class="sr-options">
@@ -132,11 +132,11 @@
                   </template>
                   <Transition name="expand">
                     <div v-if="isExpanded(m)" class="sr-sub-list">
-                      <div v-for="sub in (m.inks||m.shapes)" :key="sub.id" class="sr-sub-item" :class="{'sr-card-edit':isEditing(sub)}" @click.stop="isEditing(sub)?null:goTo(sub)">
-                        <canvas v-if="m.type==='ink-group'" :data-ink-id="sub.id" class="sr-preview" width="240" height="40"></canvas>
-                        <canvas v-else :data-shape-id="sub.id" class="sr-preview"></canvas>
+                      <div v-for="sub in (m.inks||m.shapes)" :key="sub.id" class="sr-sub-item" :class="{'sr-card-edit':isEditing(sub)}">
+                        <canvas v-if="m.type==='ink-group'" :data-ink-id="sub.id" class="sr-preview" width="240" height="40" @click.stop="isEditing(sub)?null:goTo(sub)"></canvas>
+                        <canvas v-else :data-shape-id="sub.id" class="sr-preview" @click.stop="isEditing(sub)?null:goTo(sub)"></canvas>
                         <textarea v-if="isEditing(sub)" ref="editNoteRef" v-model="editNote" placeholder="添加笔记..." class="sr-note-input"/>
-                        <div v-else-if="sub.note" class="sr-note">{{ sub.note }}</div>
+                        <div v-else-if="sub.note" class="sr-note" @click.stop="startEdit(sub)">{{ sub.note }}</div>
                         <template v-if="isEditing(sub)">
                           <div class="sr-options">
                             <div class="sr-colors">
@@ -521,9 +521,9 @@ onUnmounted(()=>{cleanupToc();obs?.disconnect();window.removeEventListener('sire
 .sr-head{display:flex;align-items:center;gap:8px;margin-bottom:4px}
 .sr-chapter{font-size:12px;font-weight:500;color:var(--b3-theme-primary);opacity:.85;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sr-time{font-size:11px;color:var(--b3-theme-on-surface-variant);opacity:.6;white-space:nowrap;flex-shrink:0}
-.sr-title{flex:1;font-size:14px;font-weight:500;color:var(--b3-theme-on-surface);line-height:1.4;word-break:break-word;margin-bottom:4px;outline:none;&[contenteditable]{padding:4px;border-radius:4px;&:focus{background:var(--b3-theme-background-light)}}}
+.sr-title{flex:1;font-size:14px;font-weight:500;color:var(--b3-theme-on-surface);line-height:1.4;word-break:break-word;margin-bottom:4px;outline:none;cursor:pointer;&[contenteditable]{padding:4px;border-radius:4px;&:focus{background:var(--b3-theme-background-light)}}}
 .sr-meta{font-size:12px;color:var(--b3-theme-on-surface-variant);white-space:nowrap}
-.sr-note{font-size:12px;color:var(--b3-theme-on-surface-variant);line-height:1.5;margin-top:4px;font-style:italic;opacity:.8}
+.sr-note{font-size:12px;color:var(--b3-theme-on-surface-variant);line-height:1.5;margin-top:4px;font-style:italic;opacity:.8;cursor:text}
 .sr-note-input{width:100%;min-height:60px;padding:8px;margin-top:8px;border:1px solid var(--b3-border-color);border-radius:4px;background:var(--b3-theme-background);resize:vertical;font-size:12px;line-height:1.5;outline:none;&:focus{border-color:var(--b3-theme-primary)}}
 .sr-options{margin-top:8px;.sr-colors{display:flex;gap:6px;margin-bottom:8px}.sr-color-btn{width:28px;height:28px;border:2px solid transparent;border-radius:50%;cursor:pointer;transition:all .15s;padding:0;&.active{border-color:var(--b3-theme-on-surface);transform:scale(1.1);box-shadow:0 2px 8px rgba(0,0,0,.2)}&:hover{transform:scale(1.05)}}.sr-styles{display:flex;gap:4px}.sr-style-btn{width:36px;height:32px;display:flex;align-items:center;justify-content:center;border:1px solid var(--b3-border-color);background:transparent;border-radius:4px;cursor:pointer;transition:all .15s;color:var(--b3-theme-on-surface);&.active{background:var(--b3-theme-primary-lightest);border-color:var(--b3-theme-primary);color:var(--b3-theme-primary)}&:hover{background:var(--b3-list-hover)}}}
 .sr-actions{display:flex;gap:8px;margin-top:8px;button{flex:1;padding:8px 16px;border:none;border-radius:4px;cursor:pointer;transition:all .15s;font-size:13px;font-weight:500}}
@@ -540,9 +540,9 @@ onUnmounted(()=>{cleanupToc();obs?.disconnect();window.removeEventListener('sire
   svg{width:14px;height:14px;color:var(--b3-theme-on-surface)}
   &:hover{opacity:1!important;transform:scale(1.15);background:rgba(0,0,0,.05)!important}}
 .sr-sub-list{margin-top:8px;padding-top:8px;border-top:1px solid var(--b3-border-color)}
-.sr-sub-item{position:relative;padding:8px;margin:4px 0;border-radius:4px;cursor:pointer;transition:background .15s;background:var(--b3-theme-surface);border:1px solid var(--b3-border-color);
+.sr-sub-item{position:relative;padding:8px;margin:4px 0;border-radius:4px;transition:background .15s;background:var(--b3-theme-surface);border:1px solid var(--b3-border-color);
   &:hover{background:var(--b3-theme-background-light);.sr-btns{opacity:1}}}
-.sr-preview{width:100%;height:auto;border-radius:4px;background:var(--b3-theme-background);display:block;opacity:.85}
+.sr-preview{width:100%;height:auto;border-radius:4px;background:var(--b3-theme-background);display:block;opacity:.85;cursor:pointer}
 .sr-group-preview{height:80px;margin:6px 0}
 
 // 绑定文档

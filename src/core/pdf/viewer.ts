@@ -15,6 +15,13 @@ async function loadPDFJS() {
   return pdfjsLib
 }
 
+// 解析 CSS 变量为实际颜色值
+const resolveColor = (c: string) => c.startsWith('var(') ? getComputedStyle(document.documentElement).getPropertyValue(c.slice(4, -1)).trim() : c
+const resolveTheme = (theme: any) => ({ ...theme, bg: resolveColor(theme.bg), color: resolveColor(theme.color) })
+const watchTheme = (callback: () => void) => new MutationObserver(() => requestAnimationFrame(() => requestAnimationFrame(callback))).observe(document.documentElement, { attributeFilter: ['data-theme-mode', 'class'] })
+const invertColor = (hex: string) => '#' + hex.replace('#', '').match(/.{2}/g)!.map(x => (255 - parseInt(x, 16)).toString(16).padStart(2, '0')).join('')
+const isDarkBg = (bg: string) => bg && parseInt(bg.replace('#', ''), 16) < 0x808080
+
 export class PDFViewer {
   private pdf: PDFDocumentProxy | null = null
   private container: HTMLElement
@@ -29,6 +36,7 @@ export class PDFViewer {
   private renderQueue: number[] = []
   private rendering = false
   private themeSettings: any = null
+  private themeObserver?: MutationObserver
 
   constructor(opt: PDFViewerOptions) {
     this.container = opt.container
@@ -37,20 +45,25 @@ export class PDFViewer {
     this.pages = markRaw(new Map())
   }
 
-  // 应用主题和设置
+  // 应用主题
   applyTheme(settings: any) {
     this.themeSettings = settings
-    const theme = settings.theme === 'custom' ? settings.customTheme : (settings.theme && PRESET_THEMES[settings.theme]) || PRESET_THEMES.default
-    if (!theme) return
-    const { visualSettings: v } = settings
-    const isDark = theme.bg && parseInt(theme.bg.replace('#', ''), 16) < 0x808080
-    const filters = [v.brightness !== 1 && `brightness(${v.brightness})`, v.contrast !== 1 && `contrast(${v.contrast})`, v.sepia > 0 && `sepia(${v.sepia})`, v.saturate !== 1 && `saturate(${v.saturate})`, (v.invert || isDark) && 'invert(1) hue-rotate(180deg)'].filter(Boolean).join(' ')
-    const s = this.container.style, img = theme.bgImg, fixUrl = (u: string) => u.startsWith('http') || u.startsWith('/') ? u : `/${u}`
-    Object.assign(s, { color: theme.color, backgroundColor: img ? 'transparent' : theme.bg, backgroundImage: img ? `url("${fixUrl(img)}")` : ' ', backgroundSize: img ? 'cover' : '', backgroundPosition: img ? 'center' : '', backgroundRepeat: img ? 'no-repeat' : '', filter: filters || 'none' })
-    s.setProperty('--pdf-page-bg', theme.bg)
-    this.container.querySelectorAll('.pdf-page').forEach((p: Element) => (p as HTMLElement).style.background = theme.bg)
-    // 应用统一的视图模式
+    const th = resolveTheme(settings.theme === 'custom' ? settings.customTheme : PRESET_THEMES[settings.theme] || PRESET_THEMES.default)
+    if (!th) return
+    const s = this.container.style, img = th.bgImg, fixUrl = (u: string) => u.startsWith('http') || u.startsWith('/') ? u : `/${u}`
+    Object.assign(s, { color: th.color, backgroundColor: img ? 'transparent' : th.bg, backgroundImage: img ? `url("${fixUrl(img)}")` : '', backgroundSize: img ? 'cover' : '', backgroundPosition: img ? 'center' : '', backgroundRepeat: img ? 'no-repeat' : '' })
+    s.setProperty('--pdf-page-bg', th.bg)
+    const { visualSettings: v = {} } = settings
+    const filters = [v.brightness !== 1 && `brightness(${v.brightness})`, v.contrast !== 1 && `contrast(${v.contrast})`, v.sepia > 0 && `sepia(${v.sepia})`, v.saturate !== 1 && `saturate(${v.saturate})`, (v.invert || isDarkBg(th.bg)) && 'invert(1) hue-rotate(180deg)'].filter(Boolean).join(' ')
+    s.setProperty('--pdf-canvas-filter', filters || 'none')
+    this.container.querySelectorAll('.pdf-page').forEach((p: Element) => {
+      const el = p as HTMLElement
+      el.style.background = th.bg
+      const canvas = el.querySelector('canvas')
+      if (canvas) canvas.style.filter = filters || 'none'
+    })
     if (settings.viewMode) this.viewMode = settings.viewMode
+    settings.theme === 'auto' && !this.themeObserver && (this.themeObserver = watchTheme(() => this.updateTheme(settings)) as any)
   }
 
   async open(src: string | ArrayBuffer) {
@@ -107,16 +120,20 @@ export class PDFViewer {
     if (!p && this.pdf) { p = markRaw(await this.pdf.getPage(n)); this.pages.set(n, p) }
     if (!p) return
     const pdfjs = await loadPDFJS()
-    const bg = getComputedStyle(w).getPropertyValue('--pdf-page-bg') || '#fff'
+    const bg = this.container.style.getPropertyValue('--pdf-page-bg') || '#fff'
     w.style.background = bg
     const vp = p.getViewport({ scale: this.scale, rotation: this.rotation })
     const dpr = window.devicePixelRatio || 1
+    const dark = isDarkBg(bg)
+    const canvasBg = dark ? invertColor(bg) : bg
+    const { visualSettings: v = {} } = this.themeSettings || {}
+    const filters = [v.brightness !== 1 && `brightness(${v.brightness})`, v.contrast !== 1 && `contrast(${v.contrast})`, v.sepia > 0 && `sepia(${v.sepia})`, v.saturate !== 1 && `saturate(${v.saturate})`, (v.invert || dark) && 'invert(1) hue-rotate(180deg)'].filter(Boolean).join(' ')
     try {
-      const c = document.createElement('canvas'), ctx = c.getContext('2d', { alpha: false, willReadFrequently: false })!
+      const c = document.createElement('canvas'), ctx = c.getContext('2d', { alpha: false })!
       c.width = Math.floor(vp.width * dpr)
       c.height = Math.floor(vp.height * dpr)
-      c.style.cssText = `width:${vp.width}px;height:${vp.height}px`
-      await p.render({ canvasContext: ctx, viewport: vp, transform: [dpr, 0, 0, dpr, 0, 0], background: bg, enableWebGL: true }).promise
+      c.style.cssText = `width:${vp.width}px;height:${vp.height}px${filters ? `;filter:${filters}` : ''}`
+      await p.render({ canvasContext: ctx, viewport: vp, transform: [dpr, 0, 0, dpr, 0, 0], background: canvasBg, enableWebGL: true }).promise
       w.appendChild(c)
     } catch (e: any) { console.error(`[PDF] 渲染失败 ${n}:`, e); w.style.background = '#fee'; w.innerHTML = `<div style="padding:20px;color:#c00">渲染失败</div>`; return }
     // 文本层（智能合并）
@@ -208,13 +225,24 @@ export class PDFViewer {
   }
 
   private setupScroll() { let t: any; this.container.addEventListener('scroll', () => { clearTimeout(t); t = setTimeout(() => { const p = this.getCurrentPage(); if (p !== this.current) { this.current = p; this.onChange?.(p); this.cleanupDistantPages() } }, 100) }) }
-  private cleanupDistantPages() { this.rendered.forEach(n => { if (Math.abs(n - this.current) > 5) { const el = this.container.querySelector(`[data-page="${n}"]`) as HTMLElement; if (el) el.innerHTML = '', el.style.background = getComputedStyle(el).getPropertyValue('--pdf-page-bg') || '#fff'; this.rendered.delete(n) } }) }
+  private cleanupDistantPages() { 
+    this.rendered.forEach(n => { 
+      if (Math.abs(n - this.current) > 5) { 
+        const el = this.container.querySelector(`[data-page="${n}"]`) as HTMLElement
+        if (el) {
+          el.innerHTML = ''
+          el.style.background = this.container.style.getPropertyValue('--pdf-page-bg') || '#fff'
+        }
+        this.rendered.delete(n) 
+      } 
+    }) 
+  }
 
   getCurrentPage() { const s = this.container.scrollTop + this.container.clientHeight / 2, ps = this.container.querySelectorAll('.pdf-page'); for (let i = 0; i < ps.length; i++) { const el = ps[i] as HTMLElement; if (el.offsetTop + el.offsetHeight > s) return i + 1 } return this.pdf?.numPages || 1 }
   getLocation(): PDFLocation { const p = this.getCurrentPage(), t = this.pdf?.numPages || 1; return { page: p, total: t, fraction: (p - 1) / t, scrollTop: this.container.scrollTop } }
   goToPage(p: number) { const el = this.container.querySelector(`[data-page="${p}"]`) as HTMLElement; if (!el) return; this.container.scrollTop = el.offsetTop; this.current = p; this.onChange?.(p); this.renderQueue = [p, ...Array.from({ length: 3 }, (_, i) => [p - 1 + i, p + 1 + i]).flat().filter(i => i > 0 && i <= this.pdf?.numPages && i !== p && !this.rendered.has(i))]; this.processQueue() }
 
-  async setScale(s: number) { this.scale = Math.max(.25, Math.min(5, s)); this.rendered.clear(); await this.createPlaceholders(); this.setupLazyLoad() }
+  async setScale(s: number) { this.scale = Math.max(.25, s); this.rendered.clear(); await this.createPlaceholders(); this.setupLazyLoad() }
   async fitWidth() { const p = this.pages.get(1); if (p) await this.setScale((this.container.clientWidth - 40) / p.getViewport({ scale: 1 }).width) }
   async fitPage() { const p = this.pages.get(1); if (!p) return; const vp = p.getViewport({ scale: 1 }), w = (this.container.clientWidth - 40) / vp.width, h = (this.container.clientHeight - 40) / vp.height; await this.setScale(Math.min(w, h)) }
   async setRotation(d: 0 | 90 | 180 | 270) { this.rotation = d; this.rendered.clear(); await this.createPlaceholders(); this.setupLazyLoad() }
@@ -239,6 +267,6 @@ export class PDFViewer {
 
   async getThumbnail(n: number, s = .2) { const p = this.pages.get(n); if (!p) return ''; const vp = p.getViewport({ scale: s }), c = document.createElement('canvas'); c.width = vp.width; c.height = vp.height; await p.render({ canvasContext: c.getContext('2d')!, viewport: vp, canvas: c }).promise; return c.toDataURL() }
   async getOutline() { if (!this.pdf) return []; try { const ol = await this.pdf.getOutline() || [], flat = (its: any[], lv = 0): any[] => its.flatMap(it => [{ title: it.title, dest: it.dest, level: lv }, ...(it.items ? flat(it.items, lv + 1) : [])]); return Promise.all(flat(ol).map(async it => { let pn = 1; if (it.dest) try { const d = typeof it.dest === 'string' ? await this.pdf!.getDestination(it.dest) : it.dest; if (d) pn = await this.pdf!.getPageIndex(d[0]) + 1 } catch {}; return { title: it.title, pageNumber: pn, level: it.level } })) } catch { return [] } }
-  destroy() { this.observer?.disconnect(); this.pdf?.destroy(); this.pages.clear(); this.rendered.clear(); this.container.innerHTML = '' }
+  destroy() { this.observer?.disconnect(); this.themeObserver?.disconnect(); this.pdf?.destroy(); this.pages.clear(); this.rendered.clear(); this.container.innerHTML = '' }
   async createView() { const n = this.getPageCount(), pg = () => this.getCurrentPage(), nav = (d: number) => this.goToPage(pg() + d), thumbs: string[] = []; return { viewer: this, isPdf: true, pageCount: n, getThumbnail: async (p: number) => thumbs[p - 1] || (thumbs[p - 1] = await this.getThumbnail(p).catch(() => '')), book: { toc: (await this.getOutline()).map(it => ({ label: it.title, href: `#page-${it.pageNumber}`, pageNumber: it.pageNumber, level: it.level })) }, goTo: (t: any) => this.goToPage(typeof t === 'number' ? t : t?.pageNumber || +(String(t).replace('#page-', ''))), lastLocation: { page: 1, total: n }, nav: { prev: () => nav(-1), next: () => nav(1), goLeft: () => nav(-1), goRight: () => nav(1) } } }
 }

@@ -26,6 +26,12 @@ export interface ReaderOptions {
   plugin: Plugin
 }
 
+// ===== 工具函数 =====
+const resolveColor = (c: string) => c.startsWith('var(') ? getComputedStyle(document.documentElement).getPropertyValue(c.slice(4, -1)).trim() : c
+const resolveTheme = (t: any) => ({ ...t, bg: resolveColor(t.bg), color: resolveColor(t.color) })
+const watchTheme = (cb: () => void) => new MutationObserver(() => requestAnimationFrame(() => requestAnimationFrame(cb))).observe(document.documentElement, { attributeFilter: ['data-theme-mode', 'class'] })
+const getTheme = (s: ReaderSettings) => resolveTheme(s.theme === 'custom' ? s.customTheme : PRESET_THEMES[s.theme] || PRESET_THEMES.default)
+
 // ===== View 工具函数 =====
 
 function createFoliateView(container: HTMLElement): FoliateView {
@@ -36,23 +42,21 @@ function createFoliateView(container: HTMLElement): FoliateView {
   return view
 }
 
-function configureView(view: FoliateView, settings: ReaderSettings) {
+function configureView(view: FoliateView, s: ReaderSettings) {
   const r = view.renderer
   if (!r) return
-  const { viewMode = 'single', pageAnimation = 'slide', layoutSettings, visualSettings, theme, customTheme } = settings || {}
-  const l = layoutSettings || { gap: 5, headerFooterMargin: 0 }
-  const th = theme === 'custom' ? customTheme : (theme && PRESET_THEMES[theme]) || PRESET_THEMES.default
+  const { viewMode = 'single', pageAnimation = 'slide', layoutSettings: l = { gap: 5, headerFooterMargin: 0 }, visualSettings: v } = s
   const isScroll = viewMode === 'scroll'
   const set = (n: string, val: string) => r.setAttribute(n, val)
   const toggle = (n: string, cond: boolean, val = '') => cond ? set(n, val) : r.removeAttribute(n)
   set('flow', isScroll ? 'scrolled' : 'paginated')
   set('max-column-count', viewMode === 'double' ? '2' : '1')
   toggle('animated', !isScroll && pageAnimation === 'slide')
-  set('gap', `${l.gap || 5}%`)
+  set('gap', `${l.gap}%`)
   set('max-inline-size', '800px')
-  toggle('margin', (l.headerFooterMargin || 0) > 0, `${l.headerFooterMargin}px`)
-  applyVisualFilter(visualSettings)
-  applyViewTheme(view, th)
+  toggle('margin', l.headerFooterMargin > 0, `${l.headerFooterMargin}px`)
+  applyVisualFilter(v)
+  applyViewTheme(view, getTheme(s))
 }
 
 function applyVisualFilter(v: any = {}) {
@@ -61,37 +65,24 @@ function applyVisualFilter(v: any = {}) {
   if (filters.length) Object.assign(document.head.appendChild(document.createElement('style')), { id: 'sireader-visual-filter', textContent: `foliate-view::part(filter){filter:${filters.join(' ')}}` })
 }
 
-function applyViewTheme(view: FoliateView, theme: any) {
-  const bgStyle = theme.bgImg ? `url("${theme.bgImg}") center/cover no-repeat` : theme.bg
-  Object.assign(view.style, { background: bgStyle, color: theme.color })
+function applyViewTheme(view: FoliateView, th: any) {
+  Object.assign(view.style, { background: th.bgImg ? `url("${th.bgImg}") center/cover no-repeat` : th.bg, color: th.color })
 }
 
-function applyCustomCSS(view: FoliateView, settings: ReaderSettings) {
-  const { textSettings, paragraphSettings, layoutSettings, theme, customTheme } = settings || {}
-  const t = textSettings || { fontFamily: 'inherit', fontSize: 16, letterSpacing: 0, customFont: { fontFamily: '', fontFile: '' } }
-  const p = paragraphSettings || { lineHeight: 1.8, textIndent: 2, paragraphSpacing: 1 }
-  const l = layoutSettings || { marginHorizontal: 40, marginVertical: 20 }
-  const th = theme === 'custom' ? customTheme : (theme && PRESET_THEMES[theme]) || PRESET_THEMES.default
+function applyCustomCSS(view: FoliateView, s: ReaderSettings) {
+  const { textSettings: t = { fontFamily: 'inherit', fontSize: 16, letterSpacing: 0, customFont: { fontFamily: '', fontFile: '' } }, paragraphSettings: p = { lineHeight: 1.8, textIndent: 2, paragraphSpacing: 1 }, layoutSettings: l = { marginHorizontal: 40, marginVertical: 20 } } = s
+  const th = getTheme(s)
   const isCustomFont = t.fontFamily === 'custom' && t.customFont?.fontFamily
-  const font = isCustomFont ? `"${t.customFont.fontFamily}", sans-serif` : (t.fontFamily || 'inherit')
-  const fontFace = isCustomFont ? `@font-face{font-family:"${t.customFont.fontFamily}";src:url("${window.location.origin}/plugins/custom-fonts/${t.customFont.fontFile}")}` : ''
+  const font = isCustomFont ? `"${t.customFont.fontFamily}", sans-serif` : t.fontFamily || 'inherit'
+  const fontFace = isCustomFont ? `@font-face{font-family:"${t.customFont.fontFamily}";src:url("${location.origin}/plugins/custom-fonts/${t.customFont.fontFile}")}` : ''
   const bgStyle = th.bgImg ? `background:url("${th.bgImg}") center/cover no-repeat` : `background:${th.bg}`
-  const css = `@namespace epub "http://www.idpf.org/2007/ops";${fontFace}html{color-scheme:light dark}body{${bgStyle}!important;color:${th.color}!important;font-family:${font}!important;font-size:${t.fontSize || 16}px!important;letter-spacing:${t.letterSpacing || 0}em!important;padding:${l.marginVertical}px ${l.marginHorizontal}px!important}p,li,blockquote,dd{line-height:${p.lineHeight || 1.8}!important;text-align:start;text-indent:${p.textIndent || 2}em!important;margin-bottom:${p.paragraphSpacing || 1}em!important}[align="left"]{text-align:left!important}[align="right"]{text-align:right!important}[align="center"]{text-align:center!important}[align="justify"]{text-align:justify!important}pre{white-space:pre-wrap!important}`
-  view.renderer?.setStyles?.(css)
+  view.renderer?.setStyles?.(`@namespace epub "http://www.idpf.org/2007/ops";${fontFace}html{color-scheme:light dark}body{${bgStyle}!important;color:${th.color}!important;font-family:${font}!important;font-size:${t.fontSize}px!important;letter-spacing:${t.letterSpacing}em!important;padding:${l.marginVertical}px ${l.marginHorizontal}px!important}p,li,blockquote,dd{line-height:${p.lineHeight}!important;text-align:start;text-indent:${p.textIndent}em!important;margin-bottom:${p.paragraphSpacing}em!important}[align="left"]{text-align:left!important}[align="right"]{text-align:right!important}[align="center"]{text-align:center!important}[align="justify"]{text-align:justify!important}pre{white-space:pre-wrap!important}`)
 }
 
 function getCurrentLocation(view: FoliateView): Location | null {
-  if (!view.renderer) return null
-
   try {
-    const loc = view.renderer.location
-    if (!loc) return null
-
-    return {
-      index: loc.index ?? 0,
-      fraction: loc.fraction ?? 0,
-      cfi: view.lastLocation?.cfi
-    }
+    const loc = view.renderer?.location
+    return loc ? { index: loc.index ?? 0, fraction: loc.fraction ?? 0, cfi: view.lastLocation?.cfi } : null
   } catch (e) {
     console.error('[FoliateView] Failed to get location:', e)
     return null
@@ -99,7 +90,7 @@ function getCurrentLocation(view: FoliateView): Location | null {
 }
 
 function destroyView(view: FoliateView) {
-  try{view.remove()}catch{}
+  try { view.remove() } catch {}
 }
 
 /**
@@ -156,6 +147,7 @@ export class FoliateReader {
   private applySettings() {
     configureView(this.view, this.settings)
     applyCustomCSS(this.view, this.settings)
+    requestAnimationFrame(() => (this.view.renderer as any)?.render?.())
   }
 
   /**
@@ -167,64 +159,65 @@ export class FoliateReader {
     })
     
     // 图片加载错误处理
-    this.view.addEventListener('load',((e:CustomEvent)=>{
-      const{doc}=e.detail||{}
-      if(!doc)return
-      doc.querySelectorAll('img').forEach((img:HTMLImageElement)=>{
-        img.onerror=()=>{img.style.display='none'}
+    this.view.addEventListener('load', ((e: CustomEvent) => {
+      const { doc } = e.detail || {}
+      if (!doc) return
+      doc.querySelectorAll('img').forEach((img: HTMLImageElement) => {
+        img.onerror = () => { img.style.display = 'none' }
       })
-    })as EventListener)
+    }) as EventListener)
     
     // 脚注处理
-    this.view.addEventListener('link',((e:CustomEvent)=>{
-      const{a,href}=e.detail
-      if(!a||!href){this.emit('link',e.detail);return}
-      const types=new Set(a?.getAttributeNS?.('http://www.idpf.org/2007/ops','type')?.split(' '))
-      const roles=new Set(a?.getAttribute?.('role')?.split(' '))
-      const isSuper=(el:HTMLElement)=>{const s=getComputedStyle(el);return el.matches('sup')||s.verticalAlign==='super'||s.verticalAlign==='top'||/^\d/.test(s.verticalAlign)}
-      const isRef=['doc-noteref','doc-biblioref','doc-glossref'].some(r=>roles.has(r))||['noteref','biblioref','glossref'].some(t=>types.has(t))||!types.has('backlink')&&!roles.has('doc-backlink')&&(isSuper(a)||a.children.length===1&&isSuper(a.children[0])||isSuper(a.parentElement))
-      isRef?(e.preventDefault(),this.showFootnote(a,href).catch(()=>{})):this.emit('link',e.detail)
-    })as EventListener)
+    this.view.addEventListener('link', ((e: CustomEvent) => {
+      const { a, href } = e.detail
+      if (!a || !href) { this.emit('link', e.detail); return }
+      const types = new Set(a?.getAttributeNS?.('http://www.idpf.org/2007/ops', 'type')?.split(' '))
+      const roles = new Set(a?.getAttribute?.('role')?.split(' '))
+      const cls = a?.className || '', id = a?.id || '', txt = a?.textContent?.trim() || ''
+      const isSuper = (el: HTMLElement) => el && (el.matches('sup') || /^(super|top|\d)/.test(getComputedStyle(el).verticalAlign))
+      const isRef = ['doc-noteref', 'doc-biblioref', 'doc-glossref', 'doc-footnote', 'doc-endnote'].some(r => roles.has(r)) || ['noteref', 'biblioref', 'glossref', 'footnote', 'endnote', 'note', 'rearnote'].some(t => types.has(t)) || !(types.has('backlink') || roles.has('doc-backlink') || /back|return/i.test(cls + id)) && (/note|foot|end|ref|annotation|comment|fn/i.test(cls + id) || (isSuper(a) || a.children.length === 1 && isSuper(a.children[0] as HTMLElement) || isSuper(a.parentElement as HTMLElement)) && (/^[\[\(]?\d+[\]\)]?$/.test(txt) || /^[\[\(]?[*†‡§¶#]+[\]\)]?$/.test(txt)))
+      isRef ? (e.preventDefault(), this.showFootnote(a, href).catch(() => {})) : this.emit('link', e.detail)
+    }) as EventListener)
   }
 
-  private async showFootnote(a:HTMLElement,href:string){
-    try{
-      const target=await this.view.book.resolveHref(href),section=this.view.book.sections[target?.index]
-      if(!section)return
-      const doc=new DOMParser().parseFromString(await(await fetch(await section.load())).text(),'text/html'),el=target.anchor(doc)
-      if(!el)return
+  private async showFootnote(a: HTMLElement, href: string) {
+    try {
+      const target = await this.view.book.resolveHref(href), section = this.view.book.sections[target?.index]
+      if (!section) return
+      const doc = new DOMParser().parseFromString(await (await fetch(await section.load())).text(), 'text/html'), el = target.anchor(doc)
+      if (!el) return
       
-      // 提取脚注信息
-      const types=new Set(el?.getAttributeNS?.('http://www.idpf.org/2007/ops','type')?.split(' '))
-      const roles=new Set(el?.getAttribute?.('role')?.split(' '))
-      const noteType=roles.has('doc-endnote')||types.has('endnote')||types.has('rearnote')?'尾注':roles.has('doc-footnote')||types.has('footnote')?'脚注':roles.has('doc-biblioentry')||types.has('biblioentry')?'参考文献':roles.has('definition')||types.has('glossdef')?'术语':types.has('note')?'注释':'注'
-      const noteId=el.id||el.getAttribute('id')||''
+      const types = new Set(el?.getAttributeNS?.('http://www.idpf.org/2007/ops', 'type')?.split(' '))
+      const roles = new Set(el?.getAttribute?.('role')?.split(' '))
+      const cls = el?.className || '', id = el?.id || '', i = this.plugin.i18n
+      const noteType = /endnote|rearnote/i.test([...roles, ...types, cls].join()) ? i.endnote || '尾注' : /footnote/i.test([...roles, ...types, cls].join()) ? i.footnote || '脚注' : /biblio|reference/i.test([...roles, ...types, cls].join()) ? i.reference || '参考文献' : /gloss|definition/i.test([...roles, ...types, cls].join()) ? i.glossary || '术语' : /note/i.test([...roles, ...types, cls].join()) ? i.annotation || '注释' : i.note || '注'
       
-      const range=el.startContainer?el:doc.createRange()
-      if(!el.startContainer)el.matches('li, aside')?range.selectNodeContents(el):range.selectNode(el)
-      const div=document.createElement('div')
+      const clone = el.cloneNode(true) as HTMLElement
+      clone.querySelectorAll('a').forEach(l => { const t = new Set(l.getAttributeNS?.('http://www.idpf.org/2007/ops', 'type')?.split(' ')), r = new Set(l.getAttribute?.('role')?.split(' ')); (t.has('backlink') || r.has('doc-backlink') || /back|return/i.test(l.className)) && l.remove() })
+      
+      const range = doc.createRange(), div = document.createElement('div')
+      clone.matches('li,aside,div,section,p') ? range.selectNodeContents(clone) : range.selectNode(clone)
       div.appendChild(range.cloneContents())
       
-      let tooltip=document.querySelector('[data-footnote-tooltip]') as HTMLDivElement
-      if(!tooltip){
-        tooltip=document.createElement('div')
-        tooltip.setAttribute('data-footnote-tooltip','true')
-        tooltip.style.cssText='position:fixed;display:none;width:340px;background:var(--b3-theme-surface);border:1px solid var(--b3-border-color);border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.12),0 4px 8px rgba(0,0,0,.08),0 0 1px rgba(0,0,0,.1);z-index:99999;pointer-events:auto;overflow:hidden;backdrop-filter:blur(10px);transform:translateY(0);transition:transform .2s cubic-bezier(.4,0,.2,1),opacity .2s cubic-bezier(.4,0,.2,1)'
-        document.body.appendChild(tooltip)
+      let tooltip = document.querySelector('[data-footnote-tooltip]') as HTMLDivElement
+      if (!tooltip) {
+        tooltip = document.createElement('div'); tooltip.setAttribute('data-footnote-tooltip', ''); tooltip.style.cssText = 'position:fixed;display:none;width:340px;background:var(--b3-theme-surface);border:1px solid var(--b3-border-color);border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.12);z-index:99999;pointer-events:auto;overflow:hidden;transition:all .2s'; document.body.appendChild(tooltip)
       }
       
-      const content=`<div style="padding:14px;font-size:13px;line-height:1.7;color:var(--b3-theme-on-surface);max-height:300px;overflow-y:auto;word-wrap:break-word;word-break:break-word;background:var(--b3-theme-surface)">${div.innerHTML}</div>`
-      tooltip.innerHTML=createTooltip({icon:'#iconMark',iconColor:'#ef4444',title:noteType,content,id:noteId?`#${noteId}`:undefined})
+      const content = `<div style="padding:14px;font-size:13px;line-height:1.7;max-height:300px;overflow-y:auto;user-select:text">${div.innerHTML.trim() || '无内容'}</div>`
+      tooltip.innerHTML = createTooltip({ icon: '#iconMark', iconColor: '#ef4444', title: `${noteType} (${i.clickToJump || '点击跳转'})`, content, id: id ? `#${id}` : '' })
       
-      const rect=a.getBoundingClientRect(),iframe=a.ownerDocument.defaultView?.frameElement as HTMLIFrameElement,ir=iframe?.getBoundingClientRect()
-      const x=(ir?.left||0)+rect.left,y=(ir?.top||0)+rect.bottom+8
-      let timer:any
-      showTooltip(tooltip,x,y)
-      a.onmouseenter=()=>{clearTimeout(timer);showTooltip(tooltip,x,y)}
-      a.onmouseleave=()=>{timer=setTimeout(()=>hideTooltip(tooltip),100)}
-      tooltip.onmouseenter=()=>clearTimeout(timer)
-      tooltip.onmouseleave=()=>hideTooltip(tooltip)
-    }catch(e){console.error('[Footnote]',e)}
+      const header = tooltip.firstElementChild as HTMLElement
+      if (header) { header.style.cursor = 'pointer'; header.onclick = () => { hideTooltip(tooltip, 0); this.goTo(href).catch(() => {}) } }
+      
+      const rect = a.getBoundingClientRect(), iframe = a.ownerDocument.defaultView?.frameElement as HTMLIFrameElement, ir = iframe?.getBoundingClientRect(), x = (ir?.left || 0) + rect.left, y = (ir?.top || 0) + rect.bottom + 8
+      let timer: any
+      showTooltip(tooltip, x, y)
+      a.onmouseenter = () => { clearTimeout(timer); showTooltip(tooltip, x, y) }
+      a.onmouseleave = () => timer = setTimeout(() => hideTooltip(tooltip), 100)
+      tooltip.onmouseenter = () => clearTimeout(timer)
+      tooltip.onmouseleave = () => hideTooltip(tooltip)
+    } catch (e) { console.error('[Footnote]', e) }
   }
 
   /**
@@ -232,12 +225,13 @@ export class FoliateReader {
    */
   private listenToSettingsChanges() {
     window.addEventListener('sireaderSettingsUpdated', ((e: CustomEvent) => this.updateSettings(e.detail)) as EventListener)
+    this.settings.theme === 'auto' && watchTheme(() => this.applySettings())
   }
 
   /**
    * 导航方法
    */
-  private check = () => !!this.view.renderer || (console.warn('[Reader] Renderer not ready'), false)
+  private check = () => this.view.renderer || (console.warn('[Reader] Renderer not ready'), null)
   async goTo(target: string | number | Location) { this.check() && await this.view.goTo(target) }
   async goLeft() { this.check() && await this.view.goLeft() }
   async goRight() { this.check() && await this.view.goRight() }
@@ -286,9 +280,7 @@ export class FoliateReader {
    */
   getSelectedText(): { text: string; range: Range } | null {
     try {
-      const contents = this.view.renderer?.getContents?.()
-      if (!contents) return null
-      for (const { doc } of contents) {
+      for (const { doc } of this.view.renderer?.getContents?.() || []) {
         const sel = doc.defaultView?.getSelection()
         if (sel && !sel.isCollapsed) return { text: sel.toString(), range: sel.getRangeAt(0) }
       }
@@ -301,9 +293,16 @@ export class FoliateReader {
   /**
    * 事件系统
    */
-  on(event: string, cb: Function) { (this.eventListeners.has(event) || this.eventListeners.set(event, new Set()), this.eventListeners.get(event)!.add(cb)) }
+  on(event: string, cb: Function) { 
+    this.eventListeners.has(event) || this.eventListeners.set(event, new Set())
+    this.eventListeners.get(event)!.add(cb)
+  }
   off = (event: string, cb: Function) => this.eventListeners.get(event)?.delete(cb)
-  private emit(event: string, data?: any) { this.eventListeners.get(event)?.forEach(cb => { try { cb(data) } catch (e) { console.error(`[Reader] Event error (${event}):`, e) } }) }
+  private emit(event: string, data?: any) { 
+    this.eventListeners.get(event)?.forEach(cb => { 
+      try { cb(data) } catch (e) { console.error(`[Reader] Event error (${event}):`, e) } 
+    }) 
+  }
 
   /**
    * 设置和信息
@@ -315,7 +314,11 @@ export class FoliateReader {
   /**
    * 销毁
    */
-  async destroy() { await this.marks?.destroy(); this.eventListeners.clear(); destroyView(this.view) }
+  async destroy() { 
+    await this.marks?.destroy()
+    this.eventListeners.clear()
+    destroyView(this.view) 
+  }
 }
 
 /**

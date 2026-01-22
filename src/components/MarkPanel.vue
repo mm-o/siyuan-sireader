@@ -14,8 +14,8 @@
     <div v-if="state.showCard" v-motion :initial="{opacity:0,y:5}" :enter="{opacity:1,y:0}" class="sr-card" :style="cardPosition" @click.stop>
       <div class="sr-main" :style="{borderLeftColor:currentColor}">
         <template v-if="!state.isEditing">
-          <div class="sr-title">{{state.text||'无内容'}}</div>
-          <div v-if="state.note" class="sr-note">{{state.note}}</div>
+          <div class="sr-title" @click="goToMark">{{state.text||'无内容'}}</div>
+          <div v-if="state.note" class="sr-note" @click.stop="handleEdit">{{state.note}}</div>
           <div class="sr-btns">
             <button @click.stop="handleCopyMark" class="b3-tooltips b3-tooltips__nw" :aria-label="i18n.copy||'复制'"><svg><use xlink:href="#iconCopy"/></svg></button>
             <button @click.stop="handleEdit" class="b3-tooltips b3-tooltips__nw" :aria-label="i18n.edit||'编辑'"><svg><use xlink:href="#iconEdit"/></svg></button>
@@ -64,6 +64,7 @@ import { showMessage } from 'siyuan'
 import type { MarkManager, Mark, HighlightColor } from '@/core/MarkManager'
 import { COLORS, STYLES, getColorMap } from '@/core/MarkManager'
 import { openBlock, showFloat, hideFloat } from '@/utils/copy'
+import { jump } from '@/utils/jump'
 
 // ==================== 类型定义 ====================
 
@@ -332,6 +333,14 @@ const handleOpenBlock = () => state.currentMark?.blockId && openBlock(state.curr
 const handleShowFloat = (e: MouseEvent) => state.currentMark?.blockId && showFloat(state.currentMark.blockId, e.target as HTMLElement)
 const handleHideFloat = hideFloat
 
+// 跳转到标注位置
+const goToMark = () => {
+  if (!state.currentMark) return
+  const activeView = (window as any).__activeView
+  const activeReader = (window as any).__activeReader
+  jump(state.currentMark, activeView, activeReader, props.manager)
+}
+
 // 处理遮罩层点击
 const handleOverlayClick = (e: MouseEvent) => {
   const target = e.target as HTMLElement
@@ -347,8 +356,8 @@ const handleOverlayClick = (e: MouseEvent) => {
 .mark-menu-btn{width:32px;height:32px;display:flex;align-items:center;justify-content:center;border:none;background:transparent;border-radius:8px;cursor:pointer;transition:all .15s;color:var(--b3-theme-on-surface);svg{width:16px;height:16px}&:hover{background:var(--b3-list-hover);color:var(--b3-theme-primary)}}
 .sr-card{position:fixed;z-index:950;width:340px;background:var(--b3-theme-surface);border:1px solid var(--b3-border-color);border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,.1)}
 .sr-main{padding:12px;border-left:4px solid;border-radius:8px}
-.sr-title{font-size:13px;font-weight:500;line-height:1.6;color:var(--b3-theme-on-surface);margin-bottom:8px;&[contenteditable="true"]{font-size:15px;font-weight:600}}
-.sr-note{font-size:12px;color:var(--b3-theme-on-surface-variant);line-height:1.5;margin-bottom:8px}
+.sr-title{font-size:13px;font-weight:500;line-height:1.6;color:var(--b3-theme-on-surface);margin-bottom:8px;cursor:pointer;&[contenteditable="true"]{font-size:15px;font-weight:600}}
+.sr-note{font-size:12px;color:var(--b3-theme-on-surface-variant);line-height:1.5;margin-bottom:8px;cursor:text}
 .sr-btns{display:flex;gap:8px;button{width:32px;height:32px;padding:0;border:none;background:transparent;border:1px solid var(--b3-border-color);border-radius:4px;cursor:pointer;transition:all .15s;color:var(--b3-theme-on-surface);display:flex;align-items:center;justify-content:center;svg{width:14px;height:14px}&:hover{background:var(--b3-list-hover);border-color:var(--b3-theme-primary);color:var(--b3-theme-primary)}}}
 .sr-note-input{width:100%;min-height:60px;padding:8px;border:1px solid var(--b3-border-color);border-radius:4px;font-size:12px;line-height:1.5;resize:vertical;background:var(--b3-theme-background);color:var(--b3-theme-on-surface-variant);margin-bottom:8px;&:focus{outline:1px solid var(--b3-theme-primary);border-color:var(--b3-theme-primary)}}
 .sr-options{margin-bottom:12px}

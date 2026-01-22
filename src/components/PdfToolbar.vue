@@ -1,5 +1,5 @@
 <template>
-  <div ref="toolbarRef" v-motion :initial="{opacity:0,x:100}" :enter="{opacity:1,x:0}" class="pdf-toolbar" :style="{top:pos.y+'px',right:pos.x+'px'}">
+  <div ref="toolbarRef" v-motion :initial="{opacity:0,y:fixed?-20:0,x:fixed?0:100}" :enter="{opacity:1,y:0,x:0}" class="pdf-toolbar" :class="{fixed}" :style="fixed?{}:{top:pos.y+'px',right:pos.x+'px'}">
     <div class="toolbar-row">
       <template v-if="expanded">
         <button class="toolbar-btn b3-tooltips b3-tooltips__n" aria-label="缩小" @click.stop="zoomOut"><svg><use xlink:href="#lucide-zoom-out"/></svg></button>
@@ -19,9 +19,9 @@
         <button class="toolbar-btn b3-tooltips b3-tooltips__n" :class="{active:shapeActive}" aria-label="形状标注" @click.stop="toggleShape"><svg><use xlink:href="#iconShapes"/></svg></button>
         <span class="toolbar-divider"/>
         <button class="toolbar-btn b3-tooltips b3-tooltips__n" aria-label="更多" @click.stop="showMore=!showMore"><svg><use xlink:href="#iconMore"/></svg></button>
-        <span class="toolbar-divider"/>
+        <span v-if="!fixed" class="toolbar-divider"/>
       </template>
-      <button class="toolbar-btn b3-tooltips b3-tooltips__n" :aria-label="expanded?'收起':'展开'" @click.stop="expanded=!expanded" @mousedown="startDrag">
+      <button v-if="!fixed" class="toolbar-btn b3-tooltips b3-tooltips__n" :aria-label="expanded?'收起':'展开'" @click.stop="expanded=!expanded" @mousedown="startDrag">
         <svg><use :xlink:href="expanded?'#iconClose':'#iconMenu'"></use></svg>
       </button>
     </div>
@@ -62,7 +62,6 @@
     </div>
   </Transition>
   
-  <!-- 元数据对话框 -->
   <Teleport to="body">
     <div v-if="showMetadata" class="pdf-meta-overlay" @click="showMetadata=false">
       <div v-motion-pop class="pdf-meta-dialog" @click.stop>
@@ -90,7 +89,7 @@ import type{PDFViewer}from '@/core/pdf/viewer'
 import type{PDFSearch}from '@/core/pdf/search'
 import type{PDFMetadata}from '@/core/pdf'
 
-const props=defineProps<{viewer:PDFViewer;searcher:PDFSearch;fileSize?:number}>()
+const props=defineProps<{viewer:PDFViewer;searcher:PDFSearch;fileSize?:number;fixed?:boolean}>()
 const emit=defineEmits(['print','download','export-images','ink-toggle','ink-color','ink-width','ink-undo','ink-clear','ink-save','ink-eraser','shape-toggle','shape-type','shape-color','shape-width','shape-filled','shape-undo','shape-clear'])
 
 const expanded=ref(false),scale=ref(props.viewer.getScale()),rotation=ref(0),zoomMode=ref<'custom'|'fit-width'|'fit-page'>('fit-width'),showMore=ref(false)
@@ -102,7 +101,10 @@ const shapes=[{type:'rect',label:'矩形',icon:'#iconSquareDashed'},{type:'circl
 const showMetadata=ref(false),metadata=ref<PDFMetadata|null>(null)
 const toolbarRef=ref<HTMLElement>(),pos=ref({x:16,y:52})
 
+watch(()=>props.fixed,v=>v&&(expanded.value=true),{immediate:true})
+
 const startDrag=(e:MouseEvent)=>{
+  if(props.fixed)return
   e.preventDefault()
   const el=toolbarRef.value!,rect=el.getBoundingClientRect(),parent=el.offsetParent as HTMLElement
   const pr=parent.getBoundingClientRect(),sx=e.clientX,sy=e.clientY,ox=pr.right-rect.right,oy=rect.top-pr.top
@@ -111,8 +113,7 @@ const startDrag=(e:MouseEvent)=>{
     pos.value={x:Math.max(0,Math.min(pr.width-rect.width,nx)),y:Math.max(0,Math.min(pr.height-rect.height,ny))}
   }
   const up=()=>{document.removeEventListener('mousemove',move);document.removeEventListener('mouseup',up)}
-  document.addEventListener('mousemove',move)
-  document.addEventListener('mouseup',up)
+  document.addEventListener('mousemove',move);document.addEventListener('mouseup',up)
 }
 
 const zoomPercent=computed(()=>Math.round(scale.value*100))
@@ -130,7 +131,7 @@ const metaItems=computed(()=>{
   ].filter(Boolean)
 })
 
-const zoomIn=async()=>{scale.value=Math.min(5,scale.value+.25);await props.viewer.setScale(scale.value);zoomMode.value='custom'}
+const zoomIn=async()=>{scale.value+=.25;await props.viewer.setScale(scale.value);zoomMode.value='custom'}
 const zoomOut=async()=>{scale.value=Math.max(.25,scale.value-.25);await props.viewer.setScale(scale.value);zoomMode.value='custom'}
 const handleZoomMode=async()=>{
   if(zoomMode.value==='fit-width')await props.viewer.fitWidth()
@@ -158,7 +159,7 @@ const setToolMode=(mode:'text'|'hand')=>{
 
 const toggleInk=()=>{inkActive.value=!inkActive.value;shapeActive.value=false;emit('ink-toggle',inkActive.value)}
 const toggleEraser=()=>{inkEraser.value=!inkEraser.value;emit('ink-eraser',inkEraser.value)}
-const inkUndo=()=>emit('ink-undo'),inkClear=()=>emit('ink-clear'),inkSave=()=>{emit('ink-save');inkActive.value=false}
+const inkUndo=()=>emit('ink-undo'),inkClear=()=>emit('ink-clear')
 
 const toggleShape=()=>{shapeActive.value=!shapeActive.value;inkActive.value=false;emit('shape-toggle',shapeActive.value)}
 const shapeUndo=()=>emit('shape-undo'),shapeClear=()=>emit('shape-clear')
@@ -175,111 +176,23 @@ watch(showMetadata,async v=>{if(v&&!metadata.value){const{getMetadata}=await imp
 
 <style scoped lang="scss">
 .pdf-toolbar{
-  position:absolute;
-  display:inline-flex;flex-direction:column;gap:4px;
-  padding:4px;
-  background:var(--b3-theme-surface);
-  border:1px solid var(--b3-border-color);
-  border-radius:6px;
-  box-shadow:0 2px 8px #0002;
-  z-index:1000;
-  user-select:none;
-}
-
-.toolbar-row{
-  display:flex;align-items:center;gap:4px;
-  
-  select{
-    height:28px;padding:0 8px;
-    border:1px solid var(--b3-border-color);
-    border-radius:4px;
-    background:var(--b3-theme-background);
-    color:var(--b3-theme-on-surface);
-    font-size:12px;cursor:pointer;
-    &:focus{outline:none;border-color:var(--b3-theme-primary)}
+  position:absolute;display:inline-flex;flex-direction:column;gap:4px;padding:4px;
+  background:var(--b3-theme-surface);border:1px solid var(--b3-border-color);border-radius:6px;
+  box-shadow:0 2px 8px #0002;z-index:1000;user-select:none;
+  &.fixed{
+    top:0;left:0;right:0;transform:none;flex-direction:row;border-radius:0;
+    border-left:none;border-right:none;border-top:none;box-shadow:0 1px 3px #0001;
+    .toolbar-row{flex-wrap:wrap;justify-content:center}
+    .ink-row{border-top:none;border-left:1px solid var(--b3-border-color);padding-top:0;padding-left:6px;margin-left:4px}
   }
 }
-
-.ink-row{
-  border-top:1px solid var(--b3-border-color);
-  padding-top:6px;margin-top:0;
-}
-
-.ink-color{
-  width:16px;height:16px;padding:0;
-  border:2px solid transparent;
-  border-radius:50%;
-  cursor:pointer;
-  transition:all .15s;
-  flex-shrink:0;
-  &:hover{transform:scale(1.1);box-shadow:0 2px 4px #0003}
-  &.active{border-color:var(--b3-theme-on-surface);transform:scale(1.15);box-shadow:0 0 0 2px var(--b3-theme-surface),0 2px 6px #0004}
-}
-
-.ink-width-control{
-  display:flex;align-items:center;gap:6px;
-}
-
-.ink-slider{
-  width:80px;height:4px;
-  -webkit-appearance:none;
-  background:var(--b3-border-color);
-  border-radius:2px;
-  outline:none;
-  &::-webkit-slider-thumb{
-    -webkit-appearance:none;
-    width:14px;height:14px;
-    background:var(--b3-theme-primary);
-    border-radius:50%;
-    cursor:pointer;
-    box-shadow:0 1px 3px #0003;
-    transition:all .15s;
-    &:hover{transform:scale(1.2);box-shadow:0 2px 6px #0004}
-  }
-  &::-moz-range-thumb{
-    width:14px;height:14px;
-    background:var(--b3-theme-primary);
-    border-radius:50%;
-    cursor:pointer;
-    border:none;
-    box-shadow:0 1px 3px #0003;
-  }
-}
-
-.ink-width-value{
-  font-size:11px;
-  font-weight:600;
-  color:var(--b3-theme-on-surface);
-  min-width:16px;
-  text-align:center;
-}
-
-
-
-.pdf-menu{
-  position:absolute;top:56px;right:16px;
-  min-width:140px;
-  background:var(--b3-theme-surface);
-  border:1px solid var(--b3-border-color);
-  border-radius:6px;
-  box-shadow:0 2px 8px #0002;
-  padding:4px;z-index:100;
-  button{
-    width:100%;
-    display:flex;align-items:center;gap:6px;
-    padding:6px 10px;
-    border:none;background:transparent;
-    border-radius:4px;
-    cursor:pointer;text-align:left;
-    color:var(--b3-theme-on-surface);
-    font-size:12px;
-    transition:all .15s;
-    svg{width:14px;height:14px}
-    &:hover{background:var(--b3-list-hover)}
-  }
-}
-
-// 元数据对话框
+.toolbar-row{display:flex;align-items:center;gap:4px;select{height:28px;padding:0 8px;border:1px solid var(--b3-border-color);border-radius:4px;background:var(--b3-theme-background);color:var(--b3-theme-on-surface);font-size:12px;cursor:pointer;&:focus{outline:none;border-color:var(--b3-theme-primary)}}}
+.ink-row{border-top:1px solid var(--b3-border-color);padding-top:6px;margin-top:0}
+.ink-color{width:16px;height:16px;padding:0;border:2px solid transparent;border-radius:50%;cursor:pointer;transition:all .15s;flex-shrink:0;&:hover{transform:scale(1.1);box-shadow:0 2px 4px #0003}&.active{border-color:var(--b3-theme-on-surface);transform:scale(1.15);box-shadow:0 0 0 2px var(--b3-theme-surface),0 2px 6px #0004}}
+.ink-width-control{display:flex;align-items:center;gap:6px}
+.ink-slider{width:80px;height:4px;-webkit-appearance:none;background:var(--b3-border-color);border-radius:2px;outline:none;&::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;background:var(--b3-theme-primary);border-radius:50%;cursor:pointer;box-shadow:0 1px 3px #0003;transition:all .15s;&:hover{transform:scale(1.2);box-shadow:0 2px 6px #0004}}&::-moz-range-thumb{width:14px;height:14px;background:var(--b3-theme-primary);border-radius:50%;cursor:pointer;border:none;box-shadow:0 1px 3px #0003}}
+.ink-width-value{font-size:11px;font-weight:600;color:var(--b3-theme-on-surface);min-width:16px;text-align:center}
+.pdf-menu{position:absolute;top:56px;right:16px;min-width:140px;background:var(--b3-theme-surface);border:1px solid var(--b3-border-color);border-radius:6px;box-shadow:0 2px 8px #0002;padding:4px;z-index:100;button{width:100%;display:flex;align-items:center;gap:6px;padding:6px 10px;border:none;background:transparent;border-radius:4px;cursor:pointer;text-align:left;color:var(--b3-theme-on-surface);font-size:12px;transition:all .15s;svg{width:14px;height:14px}&:hover{background:var(--b3-list-hover)}}}
 .pdf-meta-overlay{position:fixed;inset:0;background:#0008;display:flex;align-items:center;justify-content:center;z-index:10000;backdrop-filter:blur(2px)}
 .pdf-meta-dialog{background:var(--b3-theme-surface);border-radius:8px;box-shadow:0 8px 32px #0003;max-width:560px;width:90%;max-height:80vh;display:flex;flex-direction:column}
 .pdf-meta-header{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--b3-border-color);h3{margin:0;font-size:15px;font-weight:600}button{width:28px;height:28px;display:flex;align-items:center;justify-content:center;border:none;background:transparent;border-radius:4px;cursor:pointer;transition:all .15s;svg{width:14px;height:14px}&:hover{background:var(--b3-list-hover);transform:scale(1.1)}&:active{transform:scale(.95)}}}
@@ -287,11 +200,6 @@ watch(showMetadata,async v=>{if(v&&!metadata.value){const{getMetadata}=await imp
 .pdf-meta-grid{display:grid;gap:10px}
 .pdf-meta-item{display:flex;gap:10px;padding:8px;border-radius:4px;transition:background .15s;&:hover{background:var(--b3-list-hover)}.label{min-width:75px;font-weight:500;font-size:13px;color:var(--b3-theme-on-surface-variant)}.value{flex:1;font-size:13px;color:var(--b3-theme-on-surface);word-break:break-all}}
 .pdf-meta-loading{text-align:center;padding:40px;color:var(--b3-theme-on-surface-variant);font-size:13px}
-
-.toolbar-enter-active,.toolbar-leave-active{transition:all .2s}
-.toolbar-enter-from,.toolbar-leave-to{opacity:0;transform:translateY(-6px)}
-.slide-enter-active,.slide-leave-active{transition:all .2s}
-.slide-enter-from,.slide-leave-to{opacity:0;transform:translateY(-6px)}
 .fade-enter-active,.fade-leave-active{transition:opacity .15s}
 .fade-enter-from,.fade-leave-to{opacity:0}
 </style>

@@ -3,9 +3,9 @@
     <div v-if="loading" class="reader-loading"><div class="spinner"></div><div>{{ error || '加载中...' }}</div></div>
     
     <!-- PDF 工具栏 -->
-    <PdfToolbar v-if="isPdfMode&&pdfViewer&&pdfSearcher" :viewer="pdfViewer" :searcher="pdfSearcher" :file-size="pdfSource?.byteLength" @print="handlePrint" @download="handleDownload" @export-images="handleExportImages" @ink-toggle="handleInkToggle" @ink-color="handleInkColor" @ink-width="handleInkWidth" @ink-undo="handleInkUndo" @ink-clear="handleInkClear" @ink-save="handleInkSave" @ink-eraser="handleInkEraser" @shape-toggle="handleShapeToggle" @shape-type="handleShapeType" @shape-color="handleShapeColor" @shape-width="handleShapeWidth" @shape-filled="handleShapeFilled" @shape-undo="handleShapeUndo" @shape-clear="handleShapeClear"/>
+    <PdfToolbar v-if="isPdfMode&&pdfViewer&&pdfSearcher" :viewer="pdfViewer" :searcher="pdfSearcher" :file-size="pdfSource?.byteLength" :fixed="pdfToolbarFixed" @print="handlePrint" @download="handleDownload" @export-images="handleExportImages" @ink-toggle="handleInkToggle" @ink-color="handleInkColor" @ink-width="handleInkWidth" @ink-undo="handleInkUndo" @ink-clear="handleInkClear" @ink-save="handleInkSave" @ink-eraser="handleInkEraser" @shape-toggle="handleShapeToggle" @shape-type="handleShapeType" @shape-color="handleShapeColor" @shape-width="handleShapeWidth" @shape-filled="handleShapeFilled" @shape-undo="handleShapeUndo" @shape-clear="handleShapeClear"/>
     
-    <div ref="viewerContainerRef" class="viewer-container" :class="{'has-pdf-toolbar':isPdfMode}"></div>
+    <div ref="viewerContainerRef" class="viewer-container" :class="{'has-pdf-toolbar':isPdfMode,'has-fixed-toolbar':isPdfMode&&pdfToolbarFixed}"></div>
     
     <!-- 目录弹窗 -->
     <Transition name="toc-popup">
@@ -66,6 +66,8 @@ import { copyMark as copyMarkUtil } from '@/utils/copy'
 const props = defineProps<{ file?: File; plugin: Plugin; settings?: ReaderSettings; url?: string; blockId?: string; bookInfo?: any; onReaderReady?: (r: FoliateReader) => void; i18n?: any }>()
 
 const i18n = computed(() => props.i18n || {})
+const currentSettings = ref(props.settings)
+const pdfToolbarFixed = computed(() => currentSettings.value?.pdfToolbarStyle === 'fixed')
 
 // 标注面板引用
 const markPanelRef = ref()
@@ -75,6 +77,7 @@ const colors = getColorMap()
 // 监听设置更新
 const handleSettingsUpdate = async (e: Event) => {
   const settings = (e as CustomEvent).detail
+  currentSettings.value = settings
   reader?.updateSettings?.(settings)
   currentView.value && applyTxtSettings(currentView.value, settings)
   // PDF主题和视图模式更新（统一在updateTheme中处理）
@@ -233,7 +236,7 @@ const init=async()=>{
           markPanelRef.value?.showMenu({text,location:{format:'pdf',page:pg,rects:rectsData}},rects[0].left+rects[0].width/2,rects[0].top)
         }catch{}
       },100)
-      document.addEventListener('mouseup',handleSel as any)
+      viewerContainerRef.value!.addEventListener('mouseup',handleSel as any)
       // 监听canvas层创建完成，自动渲染标注
       const handleLayerReady=(e:CustomEvent)=>{
         const p=e.detail.page
@@ -246,7 +249,7 @@ const init=async()=>{
       const origOnChange=viewer.onChange
       viewer.onChange=(p:number)=>{origOnChange?.(p);setTimeout(()=>handleLayerReady({detail:{page:p}}as any),50)}
       currentView.value.cleanup=()=>{
-        document.removeEventListener('mouseup',handleSel)
+        viewerContainerRef.value?.removeEventListener('mouseup',handleSel)
         window.removeEventListener('pdf:layer-ready',handleLayerReady as any)
       }
     }else if(isTxt){
@@ -471,7 +474,6 @@ const events=[['sireader:edit-mark',handleGlobalEdit],['txt-selection',handleTxt
 
 const suppressError=(e:PromiseRejectionEvent)=>/createTreeWalker|destroy/.test(e.reason?.message||'')&&e.preventDefault()
 
-// 标签切换监听
 const setupTabObserver=()=>{if(isMobile())return;let el=containerRef.value?.parentElement;while(el){if(el.hasAttribute('data-id')){const h=document.querySelector(`li[data-type="tab-header"][data-id="${el.getAttribute('data-id')}"]`);if(h){const obs=new MutationObserver(ms=>ms.forEach(m=>m.type==='attributes'&&m.attributeName==='class'&&(m.target as HTMLElement).classList.contains('item--focus')&&(setActiveReader(currentView.value,reader),window.dispatchEvent(new CustomEvent('sireader:tab-switched')))));obs.observe(h,{attributes:true,attributeFilter:['class']});(containerRef.value as any).__observer=obs}break}el=el.parentElement}}
 
 // 形状创建后自动显示编辑窗口
@@ -489,7 +491,9 @@ onUnmounted(async()=>{savePosition();clearActiveReader();await markManager.value
 
 <style scoped lang="scss">
 .reader-container{position:relative;width:100%;height:100%;outline:none;user-select:text;-webkit-user-select:text;isolation:isolate;display:flex;flex-direction:column}
-.viewer-container{position:absolute;inset:0;overflow:auto}
+.viewer-container{flex:1;position:relative;overflow:auto;
+  &.has-fixed-toolbar{padding-top:40px}
+}
 .reader-loading{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:16px;color:var(--b3-theme-on-background);z-index:10;pointer-events:none}
 .spinner{width:48px;height:48px;border:4px solid var(--b3-theme-primary-lighter);border-top-color:var(--b3-theme-primary);border-radius:50%;animation:spin 1s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}

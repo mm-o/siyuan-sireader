@@ -4,7 +4,7 @@
 <p style="color: rgba(255,255,255,0.9); margin: 0 0 1.5em; font-size: 1.1em;">专业电子书阅读 · 智能标注 · 多格式支持</p>
 <p style="color: rgba(255,255,255,0.85); margin: 0 0 1.5em; line-height: 1.6; font-size: 0.95em;">让思源笔记变身专业电子书阅读器，支持 EPUB/PDF/TXT/在线小说多格式阅读<br>提供智能标注、多主题切换、词典查询、AI 翻译、卡包系统等功能，打造沉浸式阅读体验</p>
 <p style="margin: 0;">
-<img src="https://img.shields.io/badge/version-0.7.0-blue.svg" alt="Version" style="display: inline-block; margin: 0 4px;">
+<img src="https://img.shields.io/badge/version-0.7.1-blue.svg" alt="Version" style="display: inline-block; margin: 0 4px;">
 <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License" style="display: inline-block; margin: 0 4px;">
 <img src="https://img.shields.io/badge/SiYuan-3.0+-orange.svg" alt="SiYuan" style="display: inline-block; margin: 0 4px;">
 </p>
@@ -60,6 +60,47 @@
 ---
 
 ## 📝 最新更新
+
+### v0.7.1 (2026.1.22)
+
+#### ✨ 新增功能
+- **🎨 跟随思源主题** - 新增"跟随思源"主题选项，自动适配思源笔记的明亮/暗黑主题及自定义主题
+- **🌓 自动主题切换** - 切换思源主题时，阅读器主题自动同步更新，完美融入思源界面
+- **📝 弹注增强** - 支持多种非标准格式的 EPUB 弹注（脚注/尾注/参考文献等）
+- **🎯 弹注跳转** - 点击弹注标题栏可跳转到原文位置
+- **📋 内容复制** - 弹注内容区域支持文本选择和复制
+- **🌐 国际化** - 弹注类型和提示文本支持中英文切换
+- **🛠️ PDF 工具栏样式** - 新增工具栏样式设置，支持浮动（默认）和固定两种模式
+  - 浮动模式：右上角可拖拽的圆角卡片，可收起展开
+  - 固定模式：顶部固定的 WPS 风格工具栏，横向布局，始终展开
+
+#### 🎨 界面优化
+- **🎨 弹注样式** - 优化弹注弹窗样式，标题栏可点击，内容区可选择
+- **💡 交互提示** - 标题栏显示"(点击跳转)"提示，鼠标悬停显示指针样式
+- **🔍 PDF 缩放** - 移除 PDF 最大缩放 500% 的限制，支持无限放大
+- **📑 分组优化** - 标注按章节或日期分组后，分组内不再显示冗余的章节和日期信息
+- **✏️ 笔记编辑** - 优化笔记交互，点击笔记区域直接进入编辑，点击标注文本跳转定位
+- **🛠️ 工具栏优化** - 固定模式下工具栏占据全宽，无圆角，浅阴影，内容区自动留出空间
+- **📚 书源管理优化** - 删除确认使用内联 UI，移除弹窗，交互更简洁高效
+
+#### 🐛 问题修复
+- **🌙 PDF 暗黑模式** - 修复 PDF 在暗黑模式下文字颜色不正确的问题
+  - 暗色模式：canvas 用反色背景渲染 + 反色滤镜 = 完美匹配思源暗色
+  - 亮色模式：canvas 直接用主题背景色，无滤镜
+  
+- **🎨 EPUB 主题同步** - 修复 EPUB 切换主题时外层背景不更新的问题
+  - foliate-view 使用 closed Shadow DOM，内部 paginator 从 iframe 读取背景色
+  - 通过 `requestAnimationFrame` + `renderer.render()` 触发重新渲染，实现内外层背景同步
+  
+- **🎨 主题解析** - 优化 CSS 变量解析逻辑，确保主题色正确应用到所有元素
+- **🔖 标签页切换** - 修复 PDF 在非活动标签页时选择文字仍弹出标注菜单的问题
+
+#### ⚡ 代码优化
+- **🧹 移除废弃功能** - 移除已弃用的"目录位置"设置项及相关代码
+- **🔧 工具函数提取** - 提取 `resolveColor`、`resolveTheme`、`getTheme` 等公共函数，代码更简洁高效
+- **📦 书源管理重构** - 极限精简代码，使用思源原生 UI 组件，代码量减少 40%
+
+---
 
 ### v0.7.0 (2026.1.21)
 

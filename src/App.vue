@@ -37,11 +37,10 @@ const fetchFile = async (url: string) => {
 const mountReader = async (el: HTMLElement, props: any) => {
   if (!isLoaded.value) await new Promise(resolve => { const check = () => isLoaded.value ? resolve(true) : setTimeout(check, 50); check() })
   await new Promise(resolve => requestAnimationFrame(() => resolve(true)))
-  const div = el.appendChild(Object.assign(document.createElement('div'), { style: 'width:100%;height:100%' }))
   const { toRaw } = await import('vue')
   const currentSettings = JSON.parse(JSON.stringify(toRaw(settings.value)))
   const app = createApp(Reader as Component, { ...props, plugin, settings: currentSettings, i18n: plugin.i18n })
-  app.mount(div)
+  app.mount(el)
   return app
 }
 
