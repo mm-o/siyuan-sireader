@@ -78,6 +78,7 @@ const colors = getColorMap()
 const handleSettingsUpdate = async (e: Event) => {
   const settings = (e as CustomEvent).detail
   currentSettings.value = settings
+  ;(window as any).__sireader_settings = settings
   reader?.updateSettings?.(settings)
   currentView.value && applyTxtSettings(currentView.value, settings)
   // PDF主题和视图模式更新（统一在updateTheme中处理）
@@ -164,13 +165,15 @@ const init=async()=>{
     // 统一文件加载
     const loadFile=async()=>{
       if(props.file)return props.file
-      if(!props.bookInfo?.filePath)return null
-      const res=await fetch('/api/file/getFile',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:props.bookInfo.filePath})})
-      if(!res.ok)throw new Error('文件读取失败')
-      const buffer=await res.arrayBuffer()
-      const fileName=props.bookInfo.filePath.split('/').pop()||'book'
-      const type=res.headers.get('content-type')||'application/octet-stream'
-      return new File([buffer],fileName,{type})
+      const path=props.bookInfo?.filePath
+      if(!path)return null
+      
+      // assets 文件 HTTP 访问，books 文件 API 访问
+      const url=path.startsWith('assets/')?`/${path}`:'/api/file/getFile'
+      const opts=path.startsWith('assets/')?{}:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path})}
+      const res=await fetch(url,opts)
+      if(!res.ok)throw new Error(`文件读取失败: ${path}`)
+      return new File([await res.arrayBuffer()],path.split('/').pop()||'book',{type:res.headers.get('content-type')||'application/octet-stream'})
     }
     
     if(isPdf){
@@ -212,7 +215,7 @@ const init=async()=>{
       ;(markManager.value as any).inkManager=inkToolManager
       ;(markManager.value as any).shapeManager=shapeToolManager
       updatePageInfo()
-      setActiveReader(currentView.value,null)
+      setActiveReader(currentView.value,null,props.settings)
       const handleSel=(e:MouseEvent)=>setTimeout(()=>{
         const t=e.target as HTMLElement
         if(t.closest('.mark-card,.mark-selection-menu,[data-note-marker],.pdf-highlight'))return
@@ -271,7 +274,7 @@ const init=async()=>{
       await markManager.value.restoreProgress(props.bookInfo)
       
       view.addEventListener('relocate',()=>onProgress())
-      setActiveReader(view,null)
+      setActiveReader(view,null,props.settings)
     }else{
       reader=createReader({container:viewerContainerRef.value!,settings:props.settings!,bookUrl,plugin:props.plugin})
       
@@ -295,7 +298,7 @@ const init=async()=>{
       setTimeout(()=>reader.getView().renderer?.getContents?.()?.forEach(({doc}:any)=>doc?.addEventListener?.('mouseup',(e:MouseEvent)=>setTimeout(()=>checkSelection(doc,e),50))),500)
       setupAnnotationListeners()
       currentView.value=reader.getView()
-      setActiveReader(currentView.value,reader)
+      setActiveReader(currentView.value,reader,props.settings)
       props.onReaderReady?.(reader)
     }
   }catch(e){
@@ -474,7 +477,7 @@ const events=[['sireader:edit-mark',handleGlobalEdit],['txt-selection',handleTxt
 
 const suppressError=(e:PromiseRejectionEvent)=>/createTreeWalker|destroy/.test(e.reason?.message||'')&&e.preventDefault()
 
-const setupTabObserver=()=>{if(isMobile())return;let el=containerRef.value?.parentElement;while(el){if(el.hasAttribute('data-id')){const h=document.querySelector(`li[data-type="tab-header"][data-id="${el.getAttribute('data-id')}"]`);if(h){const obs=new MutationObserver(ms=>ms.forEach(m=>m.type==='attributes'&&m.attributeName==='class'&&(m.target as HTMLElement).classList.contains('item--focus')&&(setActiveReader(currentView.value,reader),window.dispatchEvent(new CustomEvent('sireader:tab-switched')))));obs.observe(h,{attributes:true,attributeFilter:['class']});(containerRef.value as any).__observer=obs}break}el=el.parentElement}}
+const setupTabObserver=()=>{if(isMobile())return;let el=containerRef.value?.parentElement;while(el){if(el.hasAttribute('data-id')){const h=document.querySelector(`li[data-type="tab-header"][data-id="${el.getAttribute('data-id')}"]`);if(h){const obs=new MutationObserver(ms=>ms.forEach(m=>m.type==='attributes'&&m.attributeName==='class'&&(m.target as HTMLElement).classList.contains('item--focus')&&(setActiveReader(currentView.value,reader,props.settings),window.dispatchEvent(new CustomEvent('sireader:tab-switched')))));obs.observe(h,{attributes:true,attributeFilter:['class']});(containerRef.value as any).__observer=obs}break}el=el.parentElement}}
 
 // 形状创建后自动显示编辑窗口
 const handleShapeCreated=(e:CustomEvent)=>{

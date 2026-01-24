@@ -42,7 +42,7 @@ export interface Book {
   epubBookmarks?: Array<{ cfi: string; title: string; progress: number; time: number }>
   txtBookmarks?: Array<{ section: number; page?: number; title: string; progress: number; time: number }>
   durChapterPage?: number
-  // 新增元数据字段
+  // 元数据
   subtitle?: string
   publisher?: string
   published?: string
@@ -53,8 +53,12 @@ export interface Book {
   // 绑定文档
   bindDocId?: string
   bindDocName?: string
-  autoSync?: boolean    // 添加时同步
-  syncDelete?: boolean  // 删除时同步
+  autoSync?: boolean
+  syncDelete?: boolean
+  // 界面状态
+  filterColor?: string
+  filterSort?: string
+  isReverse?: boolean
 }
 
 export interface BookIndex {
@@ -179,7 +183,6 @@ class BookshelfManager {
     const hasFile = ['epub', 'mobi', 'azw3', 'fb2', 'pdf', 'cbz', 'txt'].includes(format)
     const now = Date.now()
     
-    // 在线书籍延迟加载章节，只保存基本信息
     await this.saveBook({
       ...partial,
       bookUrl: partial.bookUrl,
@@ -246,7 +249,7 @@ class BookshelfManager {
         chapters
       }
     } catch (e) {
-      console.error('[Metadata] 提取失败:', e)
+      console.error('[元数据提取]', e)
       return { title: defaultName, author: '未知作者', chapters: [] }
     }
   }
@@ -262,10 +265,12 @@ class BookshelfManager {
       const base = opfPath.replace(/[^/]+$/, '')
       const path = (h: string) => (base + h).replace(/\/+/g, '/')
       const blob = async (h: string) => await zip.file(path(h))?.async('blob')
+      
       // EPUB3: properties="cover-image"
       let href = opf.match(/<item[^>]+properties="cover-image"[^>]+href="([^"]+)"/)?.[1] ||
                  opf.match(/<item[^>]+href="([^"]+)"[^>]+properties="cover-image"/)?.[1]
-      // id="cover" (图片或XHTML)
+      
+      // id="cover"
       if (!href) {
         const item = opf.match(/<item[^>]+id="cover(-image)?"[^>]+href="([^"]+)"/i)?.[2]
         if (item && /\.(xhtml|html)$/i.test(item)) {
@@ -276,11 +281,13 @@ class BookshelfManager {
           href = item
         }
       }
+      
       // EPUB2: <meta name="cover">
       if (!href) {
         const id = opf.match(/<meta\s+name="cover"\s+content="([^"]+)"/i)?.[1]
         href = id ? opf.match(new RegExp(`<item[^>]+id="${id}"[^>]+href="([^"]+)"`, 'i'))?.[1] : undefined
       }
+      
       // 降级: 第一个图片或常见文件名
       if (!href) {
         href = opf.match(/<item[^>]+href="([^"]+\.(?:jpg|jpeg|png|gif))"/i)?.[1] ||
@@ -298,31 +305,38 @@ class BookshelfManager {
     return map[ext] || 'epub'
   }
 
-  async getEpubChapters(path: string): Promise<Chapter[]> {
-    return []
-  }
-
   async addLocalBook(file: File) {
     const format = this.getFormatFromPath(file.name)
-    const tempName = file.name.replace(/\.[^.]+$/, '')
-    const meta = await this.extractMetadata(file, format, tempName)
+    const name = file.name.replace(/\.[^.]+$/, '')
+    const meta = await this.extractMetadata(file, format, name)
     
-    const name = meta.title || tempName
     const bookUrl = `${format}://${file.name}_${file.size}`
     const hash = this.getHash(bookUrl)
-    const fileName = this.getFileName(name, hash, format)
+    const fileName = this.getFileName(meta.title || name, hash, format)
     const filePath = `${STORAGE_PATH.BOOKS}/${fileName}`
     
     await putFile(filePath, false, file)
+    await this._addBookFromMeta(bookUrl, filePath, format, format.toUpperCase(), meta)
+  }
+  
+  async addAssetBook(assetPath: string, file: File) {
+    const format = this.getFormatFromPath(file.name)
+    const name = file.name.replace(/\.[^.]+$/, '')
+    const meta = await this.extractMetadata(file, format, name)
     
+    await this._addBookFromMeta(`asset://${assetPath}`, assetPath, format, '文档资源', meta)
+  }
+  
+  private async _addBookFromMeta(bookUrl: string, filePath: string, format: BookFormat, originName: string, meta: any) {
+    const hash = this.getHash(bookUrl)
     await this.addBook({
       bookUrl,
-      name,
+      name: meta.title,
       author: meta.author,
       intro: meta.intro,
-      coverUrl: meta.coverBlob ? await this.saveCoverFile(name, hash, meta.coverBlob) : undefined,
+      coverUrl: meta.coverBlob ? await this.saveCoverFile(meta.title, hash, meta.coverBlob) : undefined,
       origin: format,
-      originName: format.toUpperCase(),
+      originName,
       format,
       filePath,
       totalChapterNum: meta.chapters?.length || 0,
@@ -355,6 +369,7 @@ class BookshelfManager {
   }
 
   getBooks() { return [...this.index] }
+  
   hasBook(bookUrl: string) { return this.index.some(b => b.bookUrl === bookUrl) }
 
   async sortBooks(sortType: SortType) {
@@ -406,7 +421,9 @@ class BookshelfManager {
     }
   }
 
-  async checkAllUpdates() { return Promise.all(this.index.map(idx => this.checkUpdate(idx.bookUrl))) }
+  async checkAllUpdates() { 
+    return Promise.all(this.index.map(idx => this.checkUpdate(idx.bookUrl))) 
+  }
 
   private updateIndex(book: Book, cover?: string) {
     const i = this.index.findIndex(b => b.bookUrl === book.bookUrl)
@@ -429,15 +446,10 @@ class BookshelfManager {
 
 export const bookshelfManager = new BookshelfManager()
 
-// ===== 统一书籍数据管理 =====
 let plugin: any
-
 export const initBookDataPlugin = (p: any) => plugin = p
 
-export const loadBookData = async (bookUrl: string) => {
-  const book = await bookshelfManager.getBook(bookUrl)
-  return book || {}
-}
+export const loadBookData = async (bookUrl: string) => await bookshelfManager.getBook(bookUrl) || {}
 
 export const saveBookData = async (bookUrl: string, data: any) => {
   const book = await bookshelfManager.getBook(bookUrl)

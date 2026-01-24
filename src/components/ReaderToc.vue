@@ -25,30 +25,37 @@
       <button class="b3-tooltips b3-tooltips__sw" @click="isReverse=!isReverse" :aria-label="isReverse?'倒序':'正序'">
         <svg><use :xlink:href="isReverse?'#lucide-arrow-up-1-0':'#lucide-arrow-down-0-1'"/></svg>
       </button>
-      <button class="b3-tooltips b3-tooltips__sw" @click="toggleScroll" :aria-label="isAtTop?'底部':'顶部'">
+      <button class="b3-tooltips b3-tooltips__sw" @click="toggleScroll" :aria-label="scrollBtnLabel">
         <svg><use :xlink:href="isAtTop?'#lucide-panel-top-open':'#lucide-panel-top-close'"/></svg>
       </button>
       <div v-if="mode==='mark'||mode==='note'" class="sr-select">
-        <button class="b3-tooltips b3-tooltips__sw" @click.stop="showBindMenu=!showBindMenu" :aria-label="bindDocName||'绑定文档'"><svg><use xlink:href="#iconRef"/></svg></button>
+        <button class="b3-tooltips b3-tooltips__sw" @click.stop="showBindMenu=!showBindMenu" :aria-label="bindDocName||props.i18n?.bindDoc"><svg><use xlink:href="#iconRef"/></svg></button>
         <div v-if="showBindMenu" class="sr-menu sr-bind-menu" @click.stop>
           <template v-if="bindDocId">
-            <div class="sr-menu-item active">
-              <div class="sr-bind-info">
-                <div>{{ bindDocName }}</div>
-                <div class="sr-bind-id">{{ bindDocId }}</div>
+            <Transition name="fade">
+              <div v-if="confirmUnbind" class="sr-confirm b3-chip b3-chip--middle" @click.stop>
+                <span>{{ props.i18n?.confirmUnbind }}</span>
+                <button @click="confirmUnbind=false" class="b3-button b3-button--text">{{ props.i18n?.cancel }}</button>
+                <button @click="unbindDoc" class="b3-button b3-button--text" style="color:var(--b3-theme-error)">{{ props.i18n?.unbind }}</button>
               </div>
-              <button @click="unbindDoc" class="sr-unbind-btn">×</button>
+            </Transition>
+            <div class="sr-menu-item active" style="flex-direction:column;align-items:flex-start">
+              <div style="font-weight:600;color:var(--b3-theme-primary);font-size:12px">{{ bindDocName }}</div>
+              <div style="font-size:10px;opacity:.5;font-family:monospace;margin-top:2px">{{ bindDocId }}</div>
             </div>
-            <div class="sr-menu-item sr-checkbox">
-              <label><input type="checkbox" v-model="autoSync" @change="toggleAutoSync"><span>添加时同步</span></label>
+            <div class="sr-menu-item" style="justify-content:space-between">
+              <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" v-model="autoSync" @change="toggleAutoSync" style="cursor:pointer"><span>{{ props.i18n?.autoSync }}</span></label>
+              <button @click="syncAllMarks" class="sr-sync-btn b3-tooltips b3-tooltips__w" :class="{syncing:isSyncing}" :disabled="isSyncing" :aria-label="props.i18n?.syncAll"><svg><use xlink:href="#iconRefresh"/></svg></button>
             </div>
-            <div class="sr-menu-item sr-checkbox">
-              <label><input type="checkbox" v-model="syncDelete" @change="toggleSyncDelete"><span>删除时同步</span></label>
+            <div class="sr-menu-item">
+              <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" v-model="syncDelete" @change="toggleSyncDelete" style="cursor:pointer"><span>{{ props.i18n?.syncDelete }}</span></label>
             </div>
+            <div class="sr-menu-divider"></div>
+            <div class="sr-menu-item" @click="confirmUnbind=true" style="color:var(--b3-theme-error)">{{ props.i18n?.unbind }}</div>
           </template>
-          <input v-model="bindSearch" placeholder="搜索文档..." @input="searchBindDoc" class="sr-bind-search">
-          <div v-for="d in bindResults" :key="d.path" class="sr-menu-item" @click="bindDoc(d)">{{ d.hPath||'无标题' }}</div>
-          <div v-if="bindSearch&&!bindResults.length" class="sr-empty-small">未找到</div>
+          <input v-model="bindSearch" :placeholder="props.i18n?.searchDoc" @input="searchBindDoc" style="width:100%;padding:8px;border:1px solid var(--b3-border-color);border-radius:4px;font-size:13px;outline:none;margin-bottom:8px">
+          <div v-for="d in bindResults" :key="d.path" class="sr-menu-item" @click="bindDoc(d)">{{ d.hPath||props.i18n?.noTitle }}</div>
+          <div v-if="bindSearch&&!bindResults.length" class="sr-empty-small">{{ props.i18n?.notFound }}</div>
         </div>
       </div>
     </div>
@@ -233,7 +240,7 @@ const editShapeType=ref<'rect'|'circle'|'triangle'>('rect')
 const shapes=[{type:'rect',label:'矩形',icon:'#iconSquareDashed'},{type:'circle',label:'圆形',icon:'#iconCircleDashed'},{type:'triangle',label:'三角形',icon:'#iconTriangleDashed'}]
 const loadedThumbs=ref<Record<number,string>>({})
 const shapePreviewCache=new Map<string,string>()
-const showBindMenu=ref(false),bindSearch=ref(''),bindResults=ref<any[]>([]),bindDocId=ref(''),bindDocName=ref('')
+const showBindMenu=ref(false),bindSearch=ref(''),bindResults=ref<any[]>([]),bindDocId=ref(''),bindDocName=ref(''),confirmUnbind=ref(false)
 
 // ===== 常量 =====
 const colors=getColorMap()
@@ -296,80 +303,73 @@ const list=computed(()=>{
   return isReverse.value?[...items].reverse():items
 })
 const emptyText=computed(()=>keyword.value?`${props.i18n?.notFound||'未找到'}${placeholders[props.mode].replace(/搜索|\.\.\./g,'')}`:`${props.i18n?.empty||'暂无'}${placeholders[props.mode].replace(/搜索|\.\.\./g,'')}`)
-
-// ===== 目录（foliate-js 原生 API）=====
-let tocView:any=null
-let relocateHandler:any=null
+const scrollBtnLabel=computed(()=>isAtTop.value?'到底部':'到顶部')
+// ===== 目录 =====
+let tocView:any,relocateHandler:any,bookmarkObs:IntersectionObserver|null,tocInteract=0
 
 const initToc=async()=>{
   if(props.mode!=='toc'||!tocRef.value)return
   cleanupToc()
-  
   const view=activeView.value
-  // PDF 无大纲时自动切换到缩略图
-  if(!view?.book?.toc||view.book.toc.length===0){
-    if(isPdfMode.value)showThumbnail.value=true
-    return
-  }
-  
+  if(!view?.book?.toc?.length){isPdfMode.value&&(showThumbnail.value=true);return}
   try{
     const{createTOCView}=await import('foliate-js/ui/tree.js')
-    tocView=createTOCView(view.book.toc,goToLocation)
+    const toc=isReverse.value?[...view.book.toc].reverse():view.book.toc
+    tocView=createTOCView(toc,goToLocation)
     tocRef.value.innerHTML=''
     tocRef.value.appendChild(tocView.element)
-    if(view&&typeof view.addEventListener==='function'){
-      relocateHandler=(e:any)=>tocView?.setCurrentHref?.(e.detail?.tocItem?.href)
+    tocRef.value.addEventListener('scroll',()=>tocInteract=Date.now(),{passive:true})
+    if(view?.addEventListener){
+      relocateHandler=(e:any)=>Date.now()-tocInteract>1e4&&tocView?.setCurrentHref?.(e.detail?.tocItem?.href)
       view.addEventListener('relocate',relocateHandler)
     }
-    requestAnimationFrame(()=>{tocView?.setCurrentHref?.(view?.lastLocation?.tocItem?.href);addBookmarkButtons()})
+    requestAnimationFrame(()=>{Date.now()-tocInteract>1e4&&tocView?.setCurrentHref?.(view.lastLocation?.tocItem?.href);setTimeout(addBookmarks,100)})
   }catch(e){console.error('[TOC]',e)}
 }
 
 const cleanupToc=()=>{
-  const view=activeView.value
-  if(relocateHandler&&view&&typeof view.removeEventListener==='function'){
-    view.removeEventListener('relocate',relocateHandler)
-  }
-  relocateHandler=null
-  if(tocRef.value)tocRef.value.innerHTML=''
-  tocView=null
+  activeView.value?.removeEventListener?.('relocate',relocateHandler)
+  tocRef.value?.removeEventListener('scroll',()=>tocInteract=Date.now())
+  tocRef.value&&(tocRef.value.innerHTML='')
+  bookmarkObs?.disconnect()
+  relocateHandler=tocView=bookmarkObs=null
 }
 
-// ===== 书签按钮 =====
-const addBookmarkButtons=()=>{
+const addBookmarks=()=>{
   if(!tocRef.value||!marks.value)return
-  const bookmarks=data.value.bookmarks
-  tocRef.value.querySelectorAll('a[href]').forEach((link:Element)=>{
-    const parent=link.parentElement
-    if(!parent||parent.querySelector('.toc-bookmark-btn'))return
-    const href=link.getAttribute('href')
-    if(!href)return
-    const label=link.textContent?.trim()||''
-    const hasBookmark=bookmarks.some((b:any)=>b.title===label)
-    const btn=document.createElement('button')
-    btn.className='toc-bookmark-btn b3-tooltips b3-tooltips__w'
-    btn.setAttribute('aria-label',hasBookmark?'移除书签':'添加书签')
-    btn.innerHTML='<svg style="width:14px;height:14px"><use xlink:href="#iconBookmark"/></svg>'
-    if(hasBookmark){btn.style.opacity='1';btn.classList.add('has-bookmark')}
-    btn.onclick=e=>{e.stopPropagation();e.preventDefault();toggleBookmark(btn,href,label)}
-    parent.appendChild(btn)
-  })
+  const bks=data.value.bookmarks
+  bookmarkObs=new IntersectionObserver(es=>es.forEach(e=>{
+    if(!e.isIntersecting)return
+    const p=e.target.parentElement,h=e.target.getAttribute('href'),l=e.target.textContent?.trim()||''
+    if(!p||p.querySelector('.toc-bookmark-btn')||!h)return
+    const has=bks.some((b:any)=>b.title===l),btn=Object.assign(document.createElement('button'),{
+      className:'toc-bookmark-btn b3-tooltips b3-tooltips__w',
+      innerHTML:'<svg style="width:14px;height:14px"><use xlink:href="#iconBookmark"/></svg>',
+      onclick:(e:Event)=>{e.stopPropagation();e.preventDefault();toggleBookmark(btn,h,l)}
+    })
+    btn.setAttribute('aria-label',has?'移除书签':'添加书签')
+    has&&(btn.style.opacity='1',btn.classList.add('has-bookmark'))
+    p.appendChild(btn)
+    bookmarkObs?.unobserve(e.target)
+  }),{root:tocRef.value,rootMargin:'100px'})
+  tocRef.value.querySelectorAll('a[href]').forEach(l=>bookmarkObs?.observe(l))
 }
 
 const toggleBookmark=async(btn:HTMLButtonElement,href:string,label:string)=>{
   const view=activeView.value
   if(!marks.value||!view)return showMessage('书签功能未初始化',2000,'error')
   try{
+    tocInteract=Date.now()
     btn.style.transform='translateY(-50%) scale(1.3)'
     await view.goTo(href)
-    await new Promise(resolve=>setTimeout(resolve,200))
-    const added=marks.value.toggleBookmark(undefined,undefined,label)
-    btn.classList.toggle('has-bookmark',added)
-    btn.style.opacity=added?'1':'0'
-    btn.setAttribute('aria-label',added?'移除书签':'添加书签')
-    btn.style.transform=`translateY(-50%) scale(${added?1.2:0.8})`
+    await new Promise(r=>setTimeout(r,200))
+    const add=marks.value.toggleBookmark(undefined,undefined,label)
+    btn.classList.toggle('has-bookmark',add)
+    btn.style.opacity=add?'1':'0'
+    btn.setAttribute('aria-label',add?'移除书签':'添加书签')
+    btn.style.transform=`translateY(-50%) scale(${add?1.2:0.8})`
     setTimeout(()=>btn.style.transform='translateY(-50%) scale(1)',150)
-    showMessage(added?'已添加':'已删除',1500,'info')
+    showMessage(add?'已添加':'已删除',1500,'info')
   }catch(e:any){
     btn.style.transform='translateY(-50%) scale(1)'
     showMessage(e.message||'操作失败',2000,'error')
@@ -384,7 +384,16 @@ const showMsg=(msg:string,type='info')=>showMessage(msg,type==='error'?3000:1500
 const removeBookmark=(m:any)=>{marks.value?.deleteBookmark?.(getKey(m));showMsg('已删除');refreshKey.value++}
 const startEdit=(m:any)=>{editingId.value=getKey(m);editText.value=m.text||'';editNote.value=m.note||'';editColor.value=m.color||'yellow';editStyle.value=m.style||'highlight';editShapeType.value=m.shapeType||'rect';nextTick(()=>editNoteRef.value?.focus?.())}
 const cancelEdit=()=>editingId.value=null
-const saveEdit=async(m:any)=>{if(!marks.value)return showMsg('标记系统未初始化','error');if(m.type==='shape-group'||m.type==='ink-group')return showMsg('请编辑具体的标注项','error');try{const u:any={color:editColor.value,note:editNote.value.trim()||undefined};if(m.type==='shape')u.shapeType=editShapeType.value;else{u.text=editText.value.trim();u.style=editStyle.value}await marks.value.updateMark(m,u);showMsg('已更新');editingId.value=null;refreshKey.value++}catch(e){console.error(e);showMsg('保存失败','error')}}
+const saveEdit=async(m:any)=>{
+  try{
+    const u:any={color:editColor.value,note:editNote.value.trim()||undefined}
+    if(m.type==='shape')u.shapeType=editShapeType.value
+    else{u.text=editText.value.trim();u.style=editStyle.value}
+    const{saveMarkEdit}=await import('@/utils/copy')
+    await saveMarkEdit(m,u,{marks:marks.value,bookUrl:getUrl(),isPdf:(activeView.value as any)?.isPdf||false,reader:activeReader.value,pdfViewer:(activeView.value as any)?.viewer,shapeCache})
+    showMsg('已更新');editingId.value=null;refreshKey.value++
+  }catch(e:any){showMsg(e.message||'保存失败','error')}
+}
 const importMark=async(m:any)=>{const{importMark:doImport}=await import('@/utils/copy');const u=getUrl();await doImport(m,{bookUrl:u||'',bookInfo:u?await bookshelfManager.getBook(u):null,isPdf:(activeView.value as any)?.isPdf||false,reader:activeReader.value,pdfViewer:(activeView.value as any)?.viewer,shapeCache,showMsg,i18n:props.i18n,marks:marks.value});refreshKey.value++}
 const onBlockEnter=(e:MouseEvent,id:string)=>showFloat(id,e.target as HTMLElement)
 const deleteMark=async(m:any)=>{if(!marks.value)return showMsg('标记系统未初始化','error');try{if(m.type==='shape-group'){for(const s of m.shapes||[])await marks.value.deleteMark(s);showMsg('已删除');refreshKey.value++;return}if(m.type==='ink-group'){for(const i of m.inks||[])await marks.value.deleteMark(i);showMsg('已删除');refreshKey.value++;return}if(await marks.value.deleteMark(m)){showMsg('已删除');refreshKey.value++}}catch{showMsg('删除失败','error')}}
@@ -395,19 +404,55 @@ const preloadPage=(p:number)=>{const v=(activeView.value as any)?.viewer;if(v?.r
 const toggleExpand=(m:any)=>{const id=m.groupId;expandedGroup.value=expandedGroup.value===id?null:id;if(expandedGroup.value){preloadPage(m.page);setTimeout(()=>{renderInkCanvas();renderShapeCanvas()},100)}}
 const isExpanded=(m:any)=>expandedGroup.value===m.groupId
 const removeDeckCard=async(id:string)=>{await removeFromDeck(id);showMsg('已删除')}
-const toggleScroll=()=>contentRef.value?.scrollTo({top:contentRef.value.scrollTop<50?contentRef.value.scrollHeight:0,behavior:'smooth'})
-const onScroll=(e:Event)=>isAtTop.value=(e.target as HTMLElement).scrollTop<50
+const toggleScroll=()=>{
+  if(!contentRef.value)return
+  const target=isAtTop.value?contentRef.value.scrollHeight:0
+  contentRef.value.scrollTo({top:target,behavior:'smooth'})
+}
+const onScroll=(e:Event)=>{
+  const el=e.target as HTMLElement
+  isAtTop.value=el.scrollTop<50
+}
 
 // ===== 绑定文档 =====
 const getUrl=()=>(window as any).__currentBookUrl,getId=(d:any)=>d.path?.split('/').pop()?.replace('.sy','')||d.id
-const autoSync=ref(false),syncDelete=ref(false)
+const autoSync=ref(false),syncDelete=ref(false),isSyncing=ref(false)
 const searchBindDoc=async()=>{bindResults.value=bindSearch.value.trim()?await searchDocs(bindSearch.value.trim()):[]}
-const updateBook=async(u:any)=>{const url=getUrl();if(!url)return;const b=await bookshelfManager.getBook(url);if(!b)return;Object.assign(b,u);await bookshelfManager.saveBook(b)}
-const bindDoc=async(d:any)=>{const u=getUrl(),id=getId(d);if(!u||!id)return showMsg(u?'文档ID无效':'未找到书籍','error');const b=await bookshelfManager.getBook(u);if(!b)return showMsg('未找到书籍','error');const n=d.hPath||d.content||'无标题';await updateBook({bindDocId:id,bindDocName:n});bindDocId.value=id;bindDocName.value=n;autoSync.value=b.autoSync||false;syncDelete.value=b.syncDelete||false;showMsg('已绑定');showBindMenu.value=bindSearch.value='';bindResults.value=[]}
-const unbindDoc=async()=>{await updateBook({bindDocId:'',bindDocName:'',autoSync:false,syncDelete:false});bindDocId.value=bindDocName.value='';autoSync.value=syncDelete.value=false;showMsg('已解绑')}
+const updateBook=async(u:any)=>{const url=getUrl();if(!url)return;const b=await bookshelfManager.getBook(url);if(b){Object.assign(b,u);await bookshelfManager.saveBook(b)}}
+const loadState=async()=>{
+  const b=await bookshelfManager.getBook(getUrl())
+  if(!b)return
+  bindDocId.value=b.bindDocId||'';bindDocName.value=b.bindDocName||'';autoSync.value=!!b.autoSync;syncDelete.value=!!b.syncDelete
+  filter.value={color:b.filterColor||'',sort:b.filterSort||'time'};isReverse.value=!!b.isReverse
+}
+const saveState=()=>updateBook({filterColor:filter.value.color,filterSort:filter.value.sort,isReverse:isReverse.value})
+const bindDoc=async(d:any)=>{
+  const id=getId(d)
+  if(!id)return showMsg('文档ID无效','error')
+  await updateBook({bindDocId:id,bindDocName:d.hPath||d.content||'无标题'})
+  await loadState()
+  showMsg('已绑定');showBindMenu.value=bindSearch.value='';bindResults.value=[]
+}
+const unbindDoc=async()=>{await updateBook({bindDocId:'',bindDocName:'',autoSync:false,syncDelete:false});bindDocId.value=bindDocName.value='';autoSync.value=syncDelete.value=false;confirmUnbind.value=false;showMsg('已解绑')}
 const toggleAutoSync=async()=>{await updateBook({autoSync:autoSync.value});showMsg(autoSync.value?'已开启添加同步':'已关闭添加同步')}
 const toggleSyncDelete=async()=>{await updateBook({syncDelete:syncDelete.value});showMsg(syncDelete.value?'已开启删除同步':'已关闭删除同步')}
-const loadBindDoc=async()=>{const u=getUrl();if(!u)return;const b=await bookshelfManager.getBook(u);if(b){bindDocId.value=b.bindDocId||'';bindDocName.value=b.bindDocName||'';autoSync.value=b.autoSync||false;syncDelete.value=b.syncDelete||false}}
+const syncAllMarks=async()=>{
+  if(isSyncing.value)return
+  const url=getUrl(),book=url&&await bookshelfManager.getBook(url)
+  if(!book?.bindDocId)return showMsg('未绑定文档','error')
+  isSyncing.value=true
+  try{
+    const{importMark,isMarkImported}=await import('@/utils/copy')
+    const all=data.value.marks.filter((m:any)=>!m.type||m.type==='highlight'||m.type==='note')
+    let count=0
+    for(const m of all)if(!await isMarkImported(m,book.bindDocId)){
+      await importMark(m,{bookUrl:url,bookInfo:book,isPdf:(activeView.value as any)?.isPdf||false,reader:activeReader.value,pdfViewer:(activeView.value as any)?.viewer,shapeCache,showMsg:()=>{},i18n:props.i18n,marks:marks.value})
+      count++;await new Promise(r=>setTimeout(r,100))
+    }
+    showMsg(count?`已同步 ${count} 条`:'全部已同步')
+    refreshKey.value++
+  }catch(e){showMsg('同步失败','error')}finally{isSyncing.value=false}
+}
 
 // ===== Canvas渲染 =====
 const inkCache=new Map(),shapeCache=shapePreviewCache
@@ -425,28 +470,31 @@ const renderInkCanvas=()=>nextTick(()=>renderInkUtil(list.value,inkCache,drawInk
 const renderShapeCanvas=()=>nextTick(()=>renderShapeUtil(list.value,activeView.value,shapeCache,preloadPage))
 watch([list,expandedGroup],()=>{inkCache.clear();renderInkCanvas();renderShapeCanvas()},{immediate:true})
 
-// ===== 缩略图懒加载 =====
-let obs:IntersectionObserver
-watch(showThumbnail,v=>v&&nextTick(()=>{
-  obs?.disconnect()
-  obs=new IntersectionObserver(es=>es.forEach(async e=>{
-    if(e.isIntersecting){
-      const p=+(e.target as HTMLElement).dataset.page!
-      const getThumbnail=(activeView.value as any)?.getThumbnail
-      if(getThumbnail&&!loadedThumbs.value[p])loadedThumbs.value[p]=await getThumbnail(p)
-    }
+// ===== 缩略图 =====
+let thumbObs:IntersectionObserver
+const initThumbs=()=>nextTick(()=>{
+  thumbObs?.disconnect()
+  const getThumbnail=(activeView.value as any)?.getThumbnail
+  if(!showThumbnail.value||!isPdfMode.value||!pageCount.value||!getThumbnail)return
+  thumbObs=new IntersectionObserver(es=>es.forEach(e=>{
+    if(!e.isIntersecting)return
+    const p=+(e.target as HTMLElement).dataset.page!
+    !loadedThumbs.value[p]&&getThumbnail(p).then((u:string)=>u&&(loadedThumbs.value[p]=u))
   }),{root:contentRef.value,rootMargin:'200px'})
-  thumbContainer.value?.querySelectorAll('.sr-thumb').forEach(el=>obs.observe(el))
-}))
+  thumbContainer.value?.querySelectorAll('.sr-thumb').forEach(el=>thumbObs.observe(el))
+})
+watch([showThumbnail,()=>pageCount.value],()=>showThumbnail.value&&initThumbs())
 
 // ===== 生命周期 =====
 const refresh=()=>{refreshKey.value++;props.mode==='deck'&&loadDeckCards().then(v=>deckCards.value=v)}
-const onMarks=()=>props.mode==='toc'?requestAnimationFrame(addBookmarkButtons):refresh()
-const onSwitch=()=>{props.mode==='toc'?requestAnimationFrame(initToc):refresh();loadBindDoc()}
-watch(()=>activeView.value?.book,book=>book?.toc&&props.mode==='toc'?requestAnimationFrame(initToc):cleanupToc(),{immediate:true})
+const onMarks=()=>props.mode==='toc'?requestAnimationFrame(addBookmarks):refresh()
+const onSwitch=()=>{props.mode==='toc'?requestAnimationFrame(initToc):refresh();loadState()}
+watch(()=>activeView.value?.book,b=>b?.toc&&props.mode==='toc'?requestAnimationFrame(initToc):cleanupToc(),{immediate:true})
 watch(()=>props.mode,onSwitch)
-onMounted(()=>{window.addEventListener('sireader:marks-updated',onMarks);window.addEventListener('sireader:tab-switched',onSwitch);props.mode==='deck'&&refresh();setTimeout(loadBindDoc,500)})
-onUnmounted(()=>{cleanupToc();obs?.disconnect();window.removeEventListener('sireader:marks-updated',onMarks);window.removeEventListener('sireader:tab-switched',onSwitch)})
+watch(isReverse,()=>{props.mode==='toc'&&requestAnimationFrame(initToc);saveState()})
+watch(filter,saveState,{deep:true})
+onMounted(()=>{window.addEventListener('sireader:marks-updated',onMarks);window.addEventListener('sireader:tab-switched',onSwitch);props.mode==='deck'&&refresh();setTimeout(loadState,500)})
+onUnmounted(()=>{cleanupToc();thumbObs?.disconnect();window.removeEventListener('sireader:marks-updated',onMarks);window.removeEventListener('sireader:tab-switched',onSwitch)})
 </script>
 
 <style scoped lang="scss">
@@ -546,12 +594,11 @@ onUnmounted(()=>{cleanupToc();obs?.disconnect();window.removeEventListener('sire
 .sr-group-preview{height:80px;margin:6px 0}
 
 // 绑定文档
-.sr-bind-menu{min-width:260px;padding:8px}
-.sr-bind-info{flex:1;min-width:0;font-size:12px;div:first-child{font-weight:600;color:var(--b3-theme-primary)}}
-.sr-bind-id{font-size:10px;opacity:.5;font-family:monospace;margin-top:2px}
-.sr-unbind-btn{width:20px;height:20px;padding:0;border:none;background:var(--b3-theme-error);color:#fff;border-radius:50%;cursor:pointer;font-size:16px;line-height:1}
-.sr-bind-search{width:100%;padding:8px;border:1px solid var(--b3-border-color);border-radius:4px;font-size:13px;outline:none;margin-bottom:8px}
-.sr-checkbox{padding:6px 12px;label{display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;input{cursor:pointer}}}
+.sr-bind-menu{min-width:260px}
+.sr-confirm{position:absolute;top:8px;left:8px;right:8px;z-index:100;display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--b3-theme-surface);border:1px solid var(--b3-border-color);border-radius:4px;box-shadow:0 4px 12px rgba(0,0,0,.15);
+  span{flex:1;font-size:13px;font-weight:500}
+  button{padding:4px 12px;font-size:12px}}
+.sr-sync-btn{width:24px;height:24px;padding:0;border:none;background:transparent;color:var(--b3-theme-primary);border-radius:4px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .2s;svg{width:14px;height:14px;transition:transform .6s}&:hover{background:var(--b3-theme-primary-lighter)}&.syncing{pointer-events:none;svg{animation:spin .6s linear infinite}}@keyframes spin{to{transform:rotate(360deg)}}}
 
 
 </style>

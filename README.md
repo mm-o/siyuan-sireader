@@ -4,7 +4,7 @@
 <p style="color: rgba(255,255,255,0.9); margin: 0 0 1.5em; font-size: 1.1em;">Professional eBook Reader · Smart Annotation · Multi-format Support</p>
 <p style="color: rgba(255,255,255,0.85); margin: 0 0 1.5em; line-height: 1.6; font-size: 0.95em;">Transform SiYuan Notes into a professional eBook reader<br>Support EPUB/PDF/TXT/Online novels with smart annotation, multi-theme switching, dictionary lookup, AI translation, deck system, and more for an immersive reading experience</p>
 <p style="margin: 0;">
-<img src="https://img.shields.io/badge/version-0.7.1-blue.svg" alt="Version" style="display: inline-block; margin: 0 4px;">
+<img src="https://img.shields.io/badge/version-0.7.2-blue.svg" alt="Version" style="display: inline-block; margin: 0 4px;">
 <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License" style="display: inline-block; margin: 0 4px;">
 <img src="https://img.shields.io/badge/SiYuan-3.0+-orange.svg" alt="SiYuan" style="display: inline-block; margin: 0 4px;">
 </p>
@@ -60,6 +60,50 @@
 ---
 
 ## 📝 Latest Updates
+
+### v0.7.2 (2026.1.24)
+
+#### ✨ New Features
+- **📚 Bookshelf Cover Size** - New bookshelf cover size setting (80-160px), support dynamic adjustment for 3 or 4 covers per row
+- **📄 Open Document Assets** - Support opening book links directly from document assets folder, auto-extract metadata and add to bookshelf on first click, open directly on subsequent clicks
+- **💾 Interface State Persistence** - Auto-save and restore reading interface state
+  - Annotation filters: color filter, sort method (time/date/chapter)
+  - TOC state: normal/reverse order
+  - Note filters: all filter conditions
+  - Auto-restore last filter state when switching books or reopening
+- **🔄 Batch Sync Annotations** - New "Sync All" feature, one-click import all unsynced annotations to bound document
+  - Refresh button added next to "Sync on Add" option
+  - Smart detection of imported annotations to avoid duplicates
+  - Auto-handle deleted blocks, re-import and update association if block deleted in document
+- **🔄 Bidirectional Annotation Sync** - Auto-sync updates to bound document after editing annotation content in annotation panel or reading interface
+  - Auto-locate all blocks containing the annotation
+  - Auto-update block content to keep annotation and document consistent
+  - Unified handling of all types including highlights and shapes
+- **🎨 PDF Shape Annotation Enhancement** - Complete PDF shape annotation feature, unified to auto-sync logic
+  - Auto-sync to bound document on add
+  - Include complete chapter path information
+  - Support block association and bidirectional sync
+  - Fully consistent with highlight annotation logic
+
+#### ⚡ Performance Optimization
+- **📑 TOC Performance** - Optimize TOC interaction experience with 10-second cooldown mechanism, lazy-load bookmark buttons, delayed rendering
+- **🔧 Code Refactor** - Unify book opening logic, eliminate duplicate code, enhance maintainability
+- **🚀 Annotation Detection** - Use database queries instead of cache solution, real-time accurate, better performance
+- **🎯 Logic Unification** - Comprehensive review of annotation copy and sync logic, unified method calls, optimized code structure, improved performance and stability
+- **💾 State Management** - Unified state loading and saving logic, removed duplicate code, simplified function calls
+
+#### 🐛 Bug Fixes
+- **🖼️ PDF Thumbnail** - Fix PDF thumbnail not displaying, proactively load unrendered pages, use compression to reduce data, add complete error handling
+- **📖 Chapter Path Integrity** - Fix annotation only showing current chapter name, now shows complete hierarchical path (e.g., `Volume 1 - Five-character Ancient Poetry - Drinking Alone Under the Moon`)
+  - PDF: Convert flat TOC to structure with complete paths, traverse forward to build ancestor chain
+  - EPUB/TXT: Recursively search TOC tree, build complete path through link matching
+- **📋 Custom Link Format** - Fix copy, export, auto-export annotations not using custom link format
+- **🔗 Shape Annotation Block Association** - Fix shape annotation still showing import button after auto-import
+- **🔄 TOC Reverse Function** - Fix TOC normal/reverse order button not working, now supports TOC reverse display
+- **⬆️ Scroll Button** - Fix scroll button logic, intelligently switch to top/bottom based on current position
+- **🔗 Unbind Document Interaction** - Optimize unbind document button position and interaction, add confirmation to prevent accidental clicks
+
+---
 
 ### v0.7.1 (2026.1.22)
 

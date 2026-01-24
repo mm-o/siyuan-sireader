@@ -33,7 +33,7 @@
     <div class="sr-books" :class="viewMode">
       <Transition name="fade" mode="out-in">
         <div v-if="!displayBooks.length" key="empty" class="sr-empty">{{ keyword ? (i18n.noResults || '未找到书籍') : (i18n.emptyShelf || '暂无书籍') }}</div>
-        <div v-else key="books" :class="`sr-${viewMode}`">
+        <div v-else key="books" :class="`sr-${viewMode}`" :style="viewMode === 'grid' ? gridStyle : {}">
           <div v-for="book in displayBooks" :key="book.bookUrl" 
                v-motion
                :initial="{ opacity: 0, y: 20 }"
@@ -83,6 +83,7 @@ import { bookshelfManager, type BookIndex } from '@/core/bookshelf'
 import { bookSourceManager } from '@/core/book'
 import { showMessage } from 'siyuan'
 import { isMobile } from '@/core/mobile'
+import { usePlugin } from '@/main'
 
 defineProps<{ i18n: any }>()
 const emit = defineEmits(['read'])
@@ -100,14 +101,15 @@ const TEXT_COVER_FORMATS = ['txt', 'pdf', 'mobi', 'azw3']
 
 const books = ref<BookIndex[]>([])
 const keyword = ref('')
-const activeTag = ref((localStorage.getItem('sr-active-tag') as any) || '全部')
-const sortType = ref<'time' | 'name' | 'author' | 'update' | 'added' | 'progress'>((localStorage.getItem('sr-sort-type') as any) || 'time')
+const activeTag = ref(localStorage.getItem('sr-active-tag') || '全部')
+const sortType = ref<'time' | 'name' | 'author' | 'update' | 'added' | 'progress'>(localStorage.getItem('sr-sort-type') as any || 'time')
 const showTagMenu = ref(false)
 const showSortMenu = ref(false)
-const viewMode = ref<'grid' | 'list' | 'compact'>((localStorage.getItem('sr-view-mode') as any) || 'grid')
+const viewMode = ref<'grid' | 'list' | 'compact'>(localStorage.getItem('sr-view-mode') as any || 'grid')
 const removingBook = ref<string | null>(null)
 const fileInput = ref<HTMLInputElement>()
 const coverCache = new Map<string, string | null>()
+const coverSize = ref(110)
 
 watch(viewMode, v => localStorage.setItem('sr-view-mode', v))
 watch(activeTag, v => localStorage.setItem('sr-active-tag', v))
@@ -119,6 +121,7 @@ const displayBooks = computed(() => books.value
   .filter(b => activeTag.value === '全部' || FORMAT_LABELS[b.format] === activeTag.value)
   .filter(b => !keyword.value || [b.name, b.author].some(s => s.toLowerCase().includes(keyword.value.toLowerCase())))
 )
+const gridStyle = computed(() => ({ gridTemplateColumns: `repeat(auto-fill, minmax(${coverSize.value}px, 1fr))` }))
 
 const getProgress = (book: BookIndex) => book.epubProgress ?? (book.totalChapterNum > 0 ? Math.round(((book.durChapterIndex + 1) / book.totalChapterNum) * 100) : 0)
 
@@ -141,24 +144,13 @@ const loadCover = async (path: string) => {
 }
 
 const readBook = async (book: BookIndex) => {
-  const full = await bookshelfManager.getBook(book.bookUrl)
+  const { getBookWithFallback } = await import('@/utils/bookOpen')
+  const full = await getBookWithFallback(bookshelfManager, book.bookUrl)
   if (!full) return showMessage('加载失败', 3000, 'error')
   
-  // 检查是否已打开
-  const tab = Array.from(document.querySelectorAll('.layout-tab-bar .item')).find(t => (t.getAttribute('data-title') || t.querySelector('.item__text')?.textContent) === full.name)
-  if (tab) return (tab as HTMLElement).click()
-  
-  if (full.format === 'online' && full.origin && !full.chapters?.length) {
-    try {
-      const info = await bookSourceManager.getBookInfo(full.origin, full.bookUrl)
-      const chapters = await bookSourceManager.getChapters(full.origin, info.tocUrl || full.bookUrl)
-      full.chapters = chapters.map((ch, i) => ({ index: i, title: ch.name, url: ch.url }))
-      await bookshelfManager.updateBook(full.bookUrl, { chapters: full.chapters, totalChapterNum: chapters.length })
-    } catch (e) {
-      console.error('[章节加载失败]', e)
-      return showMessage('章节加载失败', 3000, 'error')
-    }
-  }
+  const { findOpenedTab } = await import('@/utils/bookOpen')
+  const tab = findOpenedTab(full.name)
+  if (tab) return tab.click()
   
   isMobile() ? window.dispatchEvent(new CustomEvent('reader:open', { detail: { book: full } })) : emit('read', full)
 }
@@ -198,30 +190,38 @@ const toggleViewMode = () => viewMode.value = ['grid', 'list', 'compact'][((['gr
 const handleFileUpload = async (e: Event) => {
   const files = Array.from((e.target as HTMLInputElement).files || [])
   if (!files.length) return
-  
   const results = await Promise.allSettled(files.map(f => bookshelfManager.addLocalBook(f)))
-  const [success, failed] = [results.filter(r => r.status === 'fulfilled').length, results.filter(r => r.status === 'rejected').length]
-  
+  const success = results.filter(r => r.status === 'fulfilled').length
+  const failed = results.filter(r => r.status === 'rejected').length
   await bookshelfManager.init(true)
   refreshBooks()
-  
-  showMessage(failed === 0 ? `导入 ${success} 本` : success === 0 ? '导入失败' : `成功 ${success} 本，失败 ${failed} 本`, failed ? 3000 : 2000, failed && !success ? 'error' : 'info')
+  showMessage(
+    failed === 0 ? `导入 ${success} 本` : success === 0 ? '导入失败' : `成功 ${success} 本，失败 ${failed} 本`, 
+    failed ? 3000 : 2000, 
+    failed && !success ? 'error' : 'info'
+  )
   if (fileInput.value) fileInput.value.value = ''
 }
+
+const handleSettingsUpdate = (e: any) => e.detail?.bookshelfCoverSize && (coverSize.value = e.detail.bookshelfCoverSize)
 
 onMounted(async () => {
   await bookshelfManager.init()
   refreshBooks()
+  const plugin = usePlugin()
+  const cfg = await plugin.loadData('config.json')
+  if (cfg?.settings?.bookshelfCoverSize) coverSize.value = cfg.settings.bookshelfCoverSize
   window.addEventListener('sireader:bookshelf-updated', refreshBooks)
+  window.addEventListener('sireaderSettingsUpdated', handleSettingsUpdate)
 })
-onUnmounted(() => window.removeEventListener('sireader:bookshelf-updated', refreshBooks))
+onUnmounted(() => ['sireader:bookshelf-updated', 'sireaderSettingsUpdated'].forEach(e => window.removeEventListener(e, e === 'sireader:bookshelf-updated' ? refreshBooks : handleSettingsUpdate)))
 </script>
 
 <style scoped lang="scss">
 .sr-bookshelf{display:flex;flex-direction:column;height:100%;overflow:hidden}
 .sr-books{flex:1;overflow-y:auto;padding:12px 8px;min-height:0}
 
-.sr-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px}
+.sr-grid{display:grid;gap:8px}
 .sr-card{position:relative;display:flex;flex-direction:column;background:var(--b3-theme-surface);border-radius:6px;overflow:visible;transition:transform .15s;&:hover{transform:translateY(-2px)}}
 .sr-btn-remove{position:absolute;top:4px;right:4px;width:24px;height:24px;border:none;background:color-mix(in srgb, var(--b3-theme-on-surface) 50%, transparent);color:var(--b3-theme-surface);border-radius:50%;cursor:pointer;opacity:0;transition:all .15s;display:flex;align-items:center;justify-content:center;z-index:10;svg{width:14px;height:14px}.sr-card:hover &{opacity:1}&:hover{background:var(--b3-theme-error);transform:scale(1.1)}}
 .sr-remove-confirm{position:absolute;inset:0;background:rgba(0,0,0,.9);display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;z-index:20;border-radius:6px;button{padding:6px 12px;border:none;border-radius:4px;font-size:12px;cursor:pointer;transition:transform .15s;&:hover{transform:scale(1.05)}&:active{transform:scale(.95)}}.sr-btn-cancel{background:var(--b3-theme-surface);color:var(--b3-theme-on-surface)}.sr-btn-confirm{background:var(--b3-theme-error);color:var(--b3-theme-on-error)}}

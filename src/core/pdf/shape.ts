@@ -6,7 +6,7 @@ import{loadBookData,saveBookData}from'../bookshelf'
 
 // 类型定义
 export type ShapeType='rect'|'circle'|'triangle'
-export interface ShapeAnnotation{id:string;type:'shape';shapeType:ShapeType;page:number;rect:[number,number,number,number];color:string;width:number;opacity:number;filled?:boolean;text?:string;note?:string;timestamp:number}
+export interface ShapeAnnotation{id:string;type:'shape';shapeType:ShapeType;page:number;rect:[number,number,number,number];color:string;width:number;opacity:number;filled?:boolean;text?:string;note?:string;timestamp:number;chapter?:string;blockId?:string}
 export interface ShapeConfig{shapeType:ShapeType;color:string;width:number;opacity:number;filled:boolean}
 
 const getCoord=(e:MouseEvent|TouchEvent,r:DOMRect)=>({x:(e instanceof MouseEvent?e.clientX:e.touches[0].clientX)-r.left,y:(e instanceof MouseEvent?e.clientY:e.touches[0].clientY)-r.top})
@@ -232,30 +232,28 @@ export class ShapeController{
       return
     }
     
-    // 转换为PDF坐标
+    // 转换 PDF 坐标
     let rect:[number,number,number,number]=[x1,y1,x2,y2]
     const viewport=pdfViewer?.getPages().get(this.currentPage)?.getViewport({scale:pdfViewer.getScale(),rotation:pdfViewer.getRotation()})
     if(viewport){
-      const[px1,py1]=viewport.convertToPdfPoint(x1,y1)
-      const[px2,py2]=viewport.convertToPdfPoint(x2,y2)
+      const[px1,py1]=viewport.convertToPdfPoint(x1,y1),[px2,py2]=viewport.convertToPdfPoint(x2,y2)
       rect=[px1,py1,px2,py2]
     }
     
-    const shape:ShapeAnnotation={...this.previewShape,id:`shape_${Date.now()}_${Math.random().toString(36).slice(2,9)}`,rect,filled:this.config.filled}
+    // 获取章节
+    const{getChapterName}=await import('@/core/MarkManager'),view=pdfViewer?.getPDF?.()
+    const chapter=getChapterName({page:this.currentPage,isPdf:true,toc:view?.flatToc||view?.toc})||`第${this.currentPage}页`
+    
+    const shape:ShapeAnnotation={...this.previewShape,id:`shape_${Date.now()}_${Math.random().toString(36).slice(2,9)}`,rect,filled:this.config.filled,chapter}
     this.getManager(this.currentPage).add(shape)
     await this.onSave()
     const cv=document.querySelector(`.pdf-shape-layer[data-page="${this.currentPage}"]`)as HTMLCanvasElement
     if(cv)this.render(this.currentPage,cv,pdfViewer)
     
-    // 自动弹出编辑窗口
+    // 弹出编辑窗口
     if(this.onShapeClick&&cv){
       const r=cv.getBoundingClientRect()
-      const screenX=r.left+(x1+x2)/2
-      const screenY=r.top+Math.max(y1,y2)+10
-      setTimeout(()=>{
-        const event=new CustomEvent('shape-created',{detail:{shape,x:screenX,y:screenY,edit:true}})
-        window.dispatchEvent(event)
-      },50)
+      setTimeout(()=>window.dispatchEvent(new CustomEvent('shape-created',{detail:{shape,x:r.left+(x1+x2)/2,y:r.top+Math.max(y1,y2)+10,edit:true}})),50)
     }
     
     this.startPos=this.previewShape=null
@@ -439,7 +437,14 @@ export class ShapeToolManager{
 
   async init(){
     if(this.controller)return this.controller
-    this.controller=new ShapeController(async()=>await this.saveData(this.controller!.toJSON()),this.onShapeClick)
+    this.controller=new ShapeController(async()=>{
+      await this.saveData(this.controller!.toJSON())
+      const shapes=this.controller!.toJSON()
+      if(shapes.length)try{
+        const{autoSyncMark}=await import('@/utils/copy')
+        await autoSyncMark(shapes[shapes.length-1],{bookUrl:this.bookUrl,isPdf:true,pdfViewer:this.pdfViewer,shapeManager:this})
+      }catch{}
+    },this.onShapeClick)
     if(this.pdfViewer)this.controller.setPdfViewer(this.pdfViewer)
     const data=await this.loadData()
     if(data.length)this.controller.fromJSON(data)

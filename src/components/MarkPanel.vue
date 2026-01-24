@@ -266,7 +266,8 @@ const handleSave = async () => {
         updates.text = state.text.trim()
         updates.style = state.style
       }
-      await props.manager.updateMark(state.currentMark, updates)
+      const{saveMarkEdit}=await import('@/utils/copy')
+      await saveMarkEdit(state.currentMark,updates,{marks:props.manager,bookUrl:(window as any).__currentBookUrl||'',isPdf:isPdf.value,reader:(window as any).__activeReader,pdfViewer:(window as any).__activeView?.viewer,shapeCache:new Map()})
       showMessage(props.i18n?.saved || '已保存', 1000)
       state.isEditing = false
     } else if (state.selection) {

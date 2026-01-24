@@ -54,7 +54,10 @@ const debouncedSave = (() => { let t: any; return () => (clearTimeout(t), t = se
 const resetStyles = () => confirm(props.i18n.confirmReset || '确定要恢复默认设置吗？') && (resetStylesRaw(), save())
 const selectDoc = (d: any) => selectDocRaw(d, (doc) => (settings.value.parentDoc = doc, save()))
 const setFont = (f?: FontFileInfo) => (settings.value.textSettings.fontFamily = f ? 'custom' : 'inherit', settings.value.textSettings.customFont = f ? { fontFamily: f.displayName, fontFile: f.name } : { fontFamily: '', fontFile: '' }, f ? debouncedSave() : save())
-const handleReadOnline = (book: any) => openTab({ app: (plugin as any).app, custom: { icon: 'siyuan-reader-icon', title: book.name || '在线阅读', data: { bookInfo: book }, id: `${plugin.name}custom_tab_online_reader` } })
+const handleReadOnline = async (book: any) => {
+  const { openOrActivateBook } = await import('@/utils/bookOpen')
+  openOrActivateBook(plugin, book, settings.value)
+}
 const togglePreview = () => (previewExpanded.value = !previewExpanded.value, localStorage.setItem('sr-preview-expanded', previewExpanded.value ? '1' : '0'))
 
 onMounted(() => (loadCustomFonts(), bookshelfManager.init()))
@@ -100,12 +103,17 @@ watch(canShowToc, (show) => !show && ['toc', 'bookmark', 'mark', 'note'].include
               <h3 class="sr-title">{{ i18n.interfaceSettings || '界面设置' }}</h3>
               <label v-for="item in interfaceItems" :key="item.key" class="sr-item">
                 <span class="sr-label">
-                  <b>{{ i18n[item.key] }}</b>
+                  <b>{{ i18n[item.key] || item.key }}</b>
                   <small>{{ i18n[item.key + 'Desc'] }}</small>
                 </span>
-                <select v-model="settings[item.key]" class="b3-select" @change="save">
+                <select v-if="item.opts" v-model="settings[item.key]" class="b3-select" @change="save">
                   <option v-for="opt in item.opts" :key="opt" :value="opt">{{ i18n[opt] || opt }}</option>
                 </select>
+                <span v-else-if="item.type === 'range'" class="sr-slider">
+                  <input v-model.number="settings[item.key]" type="range" class="b3-slider" :min="item.min" :max="item.max" :step="item.step" @input="debouncedSave">
+                  <em>{{ settings[item.key] }}{{ item.unit }}</em>
+                </span>
+                <input v-else-if="item.type === 'checkbox'" v-model="settings[item.key]" type="checkbox" class="b3-switch" @change="save">
               </label>
             </div>
 

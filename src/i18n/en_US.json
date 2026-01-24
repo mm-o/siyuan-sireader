@@ -275,6 +275,10 @@
   "unbind": "Unbind",
   "autoSync": "Sync on Add",
   "syncDelete": "Sync on Delete",
+  "syncAll": "Sync All",
+  "cancel": "Cancel",
+  "confirm": "Confirm",
+  "confirmUnbind": "Unbind document?",
   "filter": "Filter",
   "color": "Color",
   "sort": "Sort",
@@ -294,5 +298,9 @@
   "pdfToolbarStyle": "PDF Toolbar Style",
   "pdfToolbarStyleDesc": "Choose toolbar display style",
   "float": "Float",
-  "fixed": "Fixed"
+  "fixed": "Fixed",
+  "bookshelfCoverSize": "Bookshelf Cover Size",
+  "bookshelfCoverSizeDesc": "Adjust the display size of bookshelf covers (80-160px)",
+  "openDocAssets": "Open Document Assets",
+  "openDocAssetsDesc": "When enabled, clicking on book links in the assets folder will open them with this plugin"
 }

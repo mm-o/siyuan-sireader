@@ -46,7 +46,7 @@ export const formatAuthor=(a:any):string=>Array.isArray(a)?a.map(c=>typeof c==='
 export const getChapterName=(params:{cfi?:string;page?:number;isPdf?:boolean;toc?:any[];location?:any}):string=>{
   const{cfi,page,isPdf,toc,location}=params
   if(cfi&&(location?.tocItem?.label||location?.tocItem?.title))return location.tocItem.label||location.tocItem.title
-  if(isPdf&&page&&toc)for(let i=toc.length-1;i>=0;i--)if(toc[i].pageNumber&&toc[i].pageNumber<=page)return toc[i].label
+  if(isPdf&&page&&toc)for(let i=toc.length-1;i>=0;i--){const item=toc[i],pageNum=item.pageNumber||item.page;if(pageNum&&pageNum<=page)return item.fullPath||item.label||item.title}
   return''
 }
 
@@ -154,20 +154,22 @@ export class MarkManager{
 
   private add(m:Partial<Mark>):Mark{
     const mark:Mark={id:m.id||`${m.type}-${Date.now()}-${Math.random().toString(36).slice(2,9)}`,format:this.format,type:m.type!,timestamp:Date.now(),...m}as Mark
-    // 自动获取章节
     if(!mark.chapter&&mark.type!=='bookmark'){
-      const loc=this.format==='pdf'?null:this.view?.lastLocation
-      mark.chapter=loc?.tocItem?.label||loc?.tocItem?.title||''
-      if(!mark.chapter&&this.format==='pdf'&&mark.page){
-        const toc=this.pdfViewer?.getPDF?.()?.toc
-        if(toc)for(let i=toc.length-1;i>=0;i--)if(toc[i].pageNumber<=mark.page){mark.chapter=toc[i].label||toc[i].title;break}
+      if(this.format==='pdf'&&mark.page){
+        const view=this.pdfViewer?.getPDF?.(),toc=view?.flatToc||view?.toc
+        if(toc?.length)for(let i=toc.length-1;i>=0;i--){const item=toc[i],pageNum=item.pageNumber||item.page;if(pageNum&&pageNum<=mark.page){mark.chapter=item.fullPath||item.label||item.title;break}}
         if(!mark.chapter)mark.chapter=`第${mark.page}页`
+      }else{
+        const loc=this.reader?.getView?.()?.lastLocation||this.view?.lastLocation,book=this.reader?.getBook?.()||this.view?.book
+        mark.chapter=book?.toc&&loc?.tocItem?.href?this.findTocPath(book.toc,loc.tocItem.href)||loc.tocItem.label||loc.tocItem.title||'':loc?.tocItem?.label||loc?.tocItem?.title||loc?.label||''
       }
     }
     this.marks.push(mark)
     this.marksMap.set(mark.id,mark)
     return mark
   }
+
+  private findTocPath(toc:any[],href:string,path=''):string{for(const item of toc){const cur=path?`${path} - ${item.label}`:item.label;if(item.href===href)return cur;if(item.subitems?.length){const found=this.findTocPath(item.subitems,href,cur);if(found)return found}}return''}
 
   private del(id:string):boolean{
     const idx=this.marks.findIndex(m=>m.id===id)

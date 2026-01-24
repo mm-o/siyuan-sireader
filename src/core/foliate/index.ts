@@ -13,11 +13,12 @@ export * from './search'
 const activeView = ref<any>(null)
 const activeReader = ref<any>(null)
 
-export const setActiveReader = (view: any, reader?: any) => {
+export const setActiveReader = (view: any, reader?: any, settings?: any) => {
   activeView.value = view
   activeReader.value = reader || null
   ;(window as any).__sireader_active_view = view
   ;(window as any).__sireader_active_reader = reader || null
+  ;(window as any).__sireader_settings = settings || null
 }
 
 export const clearActiveReader = () => {
@@ -25,6 +26,7 @@ export const clearActiveReader = () => {
   activeReader.value = null
   ;(window as any).__sireader_active_view = null
   ;(window as any).__sireader_active_reader = null
+  ;(window as any).__sireader_settings = null
 }
 
 export const useReaderState = () => ({

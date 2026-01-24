@@ -277,6 +277,10 @@
   "unbind": "解绑",
   "autoSync": "添加时同步",
   "syncDelete": "删除时同步",
+  "syncAll": "同步所有",
+  "cancel": "取消",
+  "confirm": "确认",
+  "confirmUnbind": "确认解绑？",
   "filter": "筛选",
   "color": "颜色",
   "sort": "排序",
@@ -296,5 +300,9 @@
   "pdfToolbarStyle": "PDF工具栏样式",
   "pdfToolbarStyleDesc": "选择工具栏显示样式",
   "float": "浮动",
-  "fixed": "固定"
+  "fixed": "固定",
+  "bookshelfCoverSize": "书架封面大小",
+  "bookshelfCoverSizeDesc": "调整书架封面的显示大小（80-160px）",
+  "openDocAssets": "打开文档内书籍",
+  "openDocAssetsDesc": "启用后点击文档内 assets 文件夹的书籍链接时使用插件打开"
 }
