@@ -61,7 +61,7 @@
 
 ## 📝 Latest Updates
 
-### v0.7.2 (2026.1.24)
+### v0.7.3 (2026.1.24)
 
 #### ✨ New Features
 - **📚 Bookshelf Cover Size** - New bookshelf cover size setting (80-160px), support dynamic adjustment for 3 or 4 covers per row
