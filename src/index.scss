@@ -1,3 +1,5 @@
+@use 'sass:math';
+
 // ==================== Mixins ====================
 @mixin flex-center { display: flex; align-items: center; justify-content: center; }
 @mixin btn-base($w: 28px, $h: 28px) {
@@ -110,7 +112,7 @@
 // ==================== EPUB 块视图样式 ====================
 // 共享基础样式
 @mixin epub-view-base { cursor: pointer; position: relative; }
-@mixin epub-cover($ratio: 3/4) {
+@mixin epub-cover($ratio: math.div(3, 4)) {
   content: ''; display: block; width: 100%; aspect-ratio: $ratio;
   background: var(--b3-theme-background) center/cover;
   background-image: var(--epub-cover, none);
@@ -136,7 +138,7 @@
   min-height: 160px; width: var(--epub-width, 400px); max-width: 100%;
   box-sizing: border-box;
   span[data-type="a"], a[href] { display: none; }
-  &::before { @include epub-cover(7/5); width: 100px; height: 140px; flex-shrink: 0; }
+  &::before { @include epub-cover(math.div(7, 5)); width: 100px; height: 140px; flex-shrink: 0; }
   &::after {
     content: var(--epub-info); white-space: pre; font-size: 13px; line-height: 1.8;
     color: var(--b3-theme-on-surface); flex: 1; min-width: 0; overflow: hidden;
@@ -498,6 +500,7 @@
     svg { width: 16px; height: 16px; }
     &:hover { color: var(--b3-theme-primary); transform: scale(1.08); }
     &:active { transform: scale(.92); }
+    &.active { color: var(--b3-theme-primary); background: var(--b3-theme-primary-lightest); border-radius: 4px; }
   }
 }
 .sr-select { position: relative; flex-shrink: 0; }

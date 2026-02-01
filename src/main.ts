@@ -24,11 +24,6 @@ export function init(p: Plugin) {
   initDictModule(p)
   initMobile(p)
 
-  // 移动端：侧边栏入口
-  if (isMobile()) {
-    addMobileSidebar(p)
-  }
-
   // 挂载主应用
   const div = document.createElement('div')
   div.id = p.name
@@ -36,6 +31,14 @@ export function init(p: Plugin) {
   app = createApp(App)
   app.mount(div)
   document.body.appendChild(div)
+
+  // 异步初始化
+  import('@/components/deck').then(({ initDatabase, initPack }) => {
+    initDatabase()
+    initPack(p)
+  }).catch(e => console.error('[SiReader] Init failed:', e))
+  
+  if (isMobile()) addMobileSidebar(p)
 }
 
 export function destroy() {
@@ -43,23 +46,19 @@ export function destroy() {
   cleanupCallbacks.forEach(cb => cb())
   cleanupCallbacks = []
   app?.unmount()
-  const div = document.getElementById(plugin.name)
-  div?.remove()
+  document.getElementById(plugin.name)?.remove()
   plugin = null
 }
 
-// 移动端侧边栏
 async function addMobileSidebar(p: Plugin) {
   const sidebar = document.querySelector('#sidebar .toolbar')
   if (!sidebar) return setTimeout(() => addMobileSidebar(p), 500)
   if (sidebar.querySelector('[data-type="sidebar-sireader-tab"]')) return
 
-  // 等待图标注册
-  for (let i = 0; i < 10 && !document.querySelector('#siyuan-reader-icon'); i++) {
-    await new Promise(resolve => setTimeout(resolve, 200))
-  }
+  // 等待图标
+  for (let i = 0; i < 10 && !document.querySelector('#siyuan-reader-icon'); i++) 
+    await new Promise(r => setTimeout(r, 200))
 
-  // 克隆按钮
   const template = sidebar.querySelector('[data-type="sidebar-file-tab"]')
   if (!template) return
 
@@ -68,18 +67,15 @@ async function addMobileSidebar(p: Plugin) {
   btn.classList.remove('toolbar__icon--active')
   btn.querySelector('use')?.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', '#siyuan-reader-icon')
 
-  // 插入到插件按钮之前
   const pluginTab = sidebar.querySelector('[data-type="sidebar-plugin-tab"]')
   pluginTab ? pluginTab.before(btn) : sidebar.appendChild(btn)
 
-  // 创建内容区
   const content = document.createElement('div')
   content.className = 'fn__flex-column fn__none'
   content.setAttribute('data-type', 'sidebar-sireader')
   content.style.cssText = 'height:100%;overflow:hidden'
   sidebar.parentElement?.querySelector('.b3-list--mobile')?.appendChild(content)
 
-  // 挂载 Settings
   const { default: Settings } = await import('./components/Settings.vue')
   const { useSetting } = await import('./composables/useSetting')
   const { settings } = useSetting(p)
@@ -96,7 +92,6 @@ async function addMobileSidebar(p: Plugin) {
     'onUpdate:modelValue': (v: any) => { settings.value = v }
   }).mount(content)
 
-  // 点击切换
   sidebar.addEventListener('click', (e: MouseEvent) => {
     const target = (e.target as HTMLElement).closest('[data-type="sidebar-sireader-tab"]')
     if (target) {

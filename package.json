@@ -1,6 +1,6 @@
 {
   "name": "siyuan-sireader",
-  "version": "0.7.3",
+  "version": "0.8.0",
   "type": "module",
   "description": "思源笔记电子书阅读增强插件 - 思阅 SiReader",
   "author": "mm-o",
@@ -21,11 +21,14 @@
     "fflate": "^0.8.2",
     "foliate-js": "^1.0.1",
     "jszip": "^3.10.1",
+    "sql.js": "^1.13.0",
+    "ts-fsrs": "^5.2.3",
     "vue": "^3.3.8"
   },
   "devDependencies": {
     "@antfu/eslint-config": "^4.8.1",
     "@types/node": "^20.2.0",
+    "@types/sql.js": "^1.4.9",
     "@vitejs/plugin-vue": "^5.2.1",
     "@vue/tsconfig": "^0.7.0",
     "eslint": "^9.22.0",

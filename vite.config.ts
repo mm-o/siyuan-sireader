@@ -50,6 +50,10 @@ export default defineConfig(({
       },
     },
 
+    optimizeDeps: {
+      exclude: ['sql.js'], // 排除 sql.js 的预构建
+    },
+
     plugins: [
       vue(),
       viteStaticCopy({
@@ -139,7 +143,7 @@ export default defineConfig(({
 
         // make sure to externalize deps that shouldn't be bundled
         // into your library
-        external: ["siyuan", "process", /^\/stage\//],
+        external: ["siyuan", "process", /^\/stage\//, "fs", "path", "crypto"],
 
         output: {
           entryFileNames: "[name].js",

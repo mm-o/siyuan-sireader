@@ -1,5 +1,5 @@
 <template>
-  <div class="sr-toc" @click="showFilterMenu=false;showBindMenu=false">
+  <div class="sr-toc" @click="showFilterMenu=false;showBindMenu=false;showDeckNotebookMenu=false">
     <!-- 工具栏 -->
     <div class="sr-toolbar">
       <input v-model="keyword" :placeholder="placeholders[mode]">
@@ -22,10 +22,25 @@
       <button v-if="mode==='toc'&&isPdfMode" class="b3-tooltips b3-tooltips__sw" @click="showThumbnail=!showThumbnail" :aria-label="showThumbnail?'目录':'缩略图'">
         <svg><use :xlink:href="showThumbnail?'#lucide-scroll-text':'#lucide-panels-top-left'"/></svg>
       </button>
-      <button class="b3-tooltips b3-tooltips__sw" @click="isReverse=!isReverse" :aria-label="isReverse?'倒序':'正序'">
+      <button v-if="mode==='deck'" class="b3-tooltips b3-tooltips__sw" @click="deckTab='cards'" :class="{active:deckTab==='cards'}" aria-label="卡片">
+        <svg><use xlink:href="#lucide-square-star"/></svg>
+      </button>
+      <button v-if="mode==='deck'" class="b3-tooltips b3-tooltips__sw" @click="deckTab='packs'" :class="{active:deckTab==='packs'}" aria-label="卡组">
+        <svg><use xlink:href="#lucide-shopping-bag"/></svg>
+      </button>
+      <button v-if="mode==='deck'" class="b3-tooltips b3-tooltips__sw" @click="deckTab='review'" :class="{active:deckTab==='review'}" aria-label="闪卡">
+        <svg><use xlink:href="#lucide-zap"/></svg>
+      </button>
+      <button v-if="mode==='deck'" class="b3-tooltips b3-tooltips__sw" @click="deckTab='stats'" :class="{active:deckTab==='stats'}" aria-label="统计">
+        <svg><use xlink:href="#lucide-chart-pie"/></svg>
+      </button>
+      <button v-if="mode==='deck'" class="b3-tooltips b3-tooltips__sw" @click="deckTab='settings'" :class="{active:deckTab==='settings'}" aria-label="设置">
+        <svg><use xlink:href="#lucide-settings-2"/></svg>
+      </button>
+      <button v-if="mode==='bookmark'||mode==='mark'||mode==='note'||mode==='toc'" class="b3-tooltips b3-tooltips__sw" @click="isReverse=!isReverse" :aria-label="isReverse?'倒序':'正序'">
         <svg><use :xlink:href="isReverse?'#lucide-arrow-up-1-0':'#lucide-arrow-down-0-1'"/></svg>
       </button>
-      <button class="b3-tooltips b3-tooltips__sw" @click="toggleScroll" :aria-label="scrollBtnLabel">
+      <button v-if="mode==='bookmark'||mode==='mark'||mode==='note'" class="b3-tooltips b3-tooltips__sw" @click="toggleScroll" :aria-label="scrollBtnLabel">
         <svg><use :xlink:href="isAtTop?'#lucide-panel-top-open':'#lucide-panel-top-close'"/></svg>
       </button>
       <div v-if="mode==='mark'||mode==='note'" class="sr-select">
@@ -184,25 +199,7 @@
         </div>
         
         <!-- 卡包 -->
-        <div v-else-if="mode==='deck'" key="deck" class="sr-list">
-          <div v-if="!list.length" class="sr-empty">{{ emptyText }}</div>
-          <div v-else v-for="(item,i) in list" :key="item.id||i" class="sr-deck-card" @click="expandedDeck=expandedDeck===item.id?null:item.id">
-            <div class="sr-deck-head">
-              <div class="sr-word">{{ item.word }}</div>
-              <div class="sr-deck-btns">
-                <button @click.stop="goToDeckLocation(item)" class="b3-tooltips b3-tooltips__nw" :aria-label="props.i18n?.locate||'定位'"><svg><use xlink:href="#iconFocus"/></svg></button>
-                <button @click.stop="removeDeckCard(item.id)" class="b3-tooltips b3-tooltips__nw" :aria-label="props.i18n?.delete||'删除'"><svg><use xlink:href="#iconTrashcan"/></svg></button>
-              </div>
-            </div>
-            <div class="sr-deck-meta">
-              <span class="sr-deck-dict">{{ getDictName(item.dictId) }}</span>
-              <span class="sr-deck-time">{{ formatTime(item.timestamp) }}</span>
-            </div>
-            <Transition name="expand">
-              <div v-if="expandedDeck===item.id" class="sr-deck-content" v-html="renderDictCard(item.data)"></div>
-            </Transition>
-          </div>
-        </div>
+        <DeckHub v-else-if="mode==='deck'" key="deck" :keyword="keyword" :activeTab="deckTab" @update:activeTab="deckTab=$event"/>
       </Transition>
     </div>
   </div>
@@ -210,8 +207,8 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
-import { showMessage, Dialog } from 'siyuan'
-import { loadDeckCards, getDeckCards, removeFromDeck, renderDictCard, getDictName } from '@/core/dictionary'
+import { showMessage, Dialog, fetchSyncPost } from 'siyuan'
+import DeckHub from './deck/DeckHub.vue'
 import { COLORS, STYLES, getColorMap, formatTime } from '@/core/MarkManager'
 import { useReaderState } from '@/core/foliate'
 import { jump } from '@/utils/jump'
@@ -232,8 +229,9 @@ const goToLocation = async (location: string | number) => activeView.value?.goTo
 const tocRef=ref<HTMLElement>(),contentRef=ref<HTMLElement>(),editNoteRef=ref<HTMLTextAreaElement>(),thumbContainer=ref<HTMLElement>()
 const keyword=ref(''),showFilterMenu=ref(false),showThumbnail=ref(false)
 const isReverse=ref(false),isAtTop=ref(true),refreshKey=ref(0)
+const deckTab=ref<'cards'|'packs'|'stats'|'review'|'settings'>('cards')
 const filter=ref({color:'',sort:'time'}),collapsed=ref(new Set<string>())
-const deckCards=ref<any[]>([]),expandedDeck=ref<string|null>(null),expandedGroup=ref<number|null>(null)
+const expandedGroup=ref<number|null>(null)
 const editingId=ref<string|null>(null),editText=ref(''),editNote=ref(''),editColor=ref('yellow')
 const editStyle=ref<'highlight'|'underline'|'outline'|'dotted'|'dashed'|'double'|'squiggly'>('highlight')
 const editShapeType=ref<'rect'|'circle'|'triangle'>('rect')
@@ -262,7 +260,7 @@ const isPdfMode=computed(()=>(activeView.value as any)?.isPdf||false)
 const pageCount=computed(()=>(activeView.value as any)?.pageCount||0)
 const data=computed(()=>{
   refreshKey.value
-  if(!marks.value)return{bookmarks:[],marks:[],notes:[],deck:deckCards.value}
+  if(!marks.value)return{bookmarks:[],marks:[],notes:[]}
   const inks=marks.value.getInkAnnotations?.()||[]
   const inksByPage=inks.reduce((acc:any,ink:any)=>{
     if(!acc[ink.page])acc[ink.page]={page:ink.page,type:'ink-group',inks:[],timestamp:ink.timestamp,text:`墨迹标注 - 第${ink.page}页`}
@@ -279,11 +277,11 @@ const data=computed(()=>{
     return acc
   },{})
   const shapeGroups=Object.values(shapesByPage).map((g:any)=>({...g,groupId:`shape-${g.page}`,shapes:[...g.shapes]}))
-  return{bookmarks:marks.value.getBookmarks(),marks:[...marks.value.getAnnotations(filter.value.color as any),...inkGroups,...shapeGroups],notes:marks.value.getNotes(),deck:deckCards.value}
+  return{bookmarks:marks.value.getBookmarks(),marks:[...marks.value.getAnnotations(filter.value.color as any),...inkGroups,...shapeGroups],notes:marks.value.getNotes()}
 })
 const list=computed(()=>{
-  const kw=keyword.value.toLowerCase(),key={bookmark:'bookmarks',mark:'marks',note:'notes',deck:'deck'}[props.mode]
-  let items=(data.value[key]||[]).filter((m:any)=>!kw||(m.title||m.text||m.note||m.word||'').toLowerCase().includes(kw))
+  const kw=keyword.value.toLowerCase(),key={bookmark:'bookmarks',mark:'marks',note:'notes'}[props.mode]
+  let items=(data.value[key]||[]).filter((m:any)=>!kw||(m.title||m.text||m.note||'').toLowerCase().includes(kw))
   if((props.mode==='mark'||props.mode==='note')&&filter.value.sort!=='time'){
     const sortKey=filter.value.sort==='chapter'?'chapter':'date'
     items.sort((a:any,b:any)=>{
@@ -399,11 +397,9 @@ const onBlockEnter=(e:MouseEvent,id:string)=>showFloat(id,e.target as HTMLElemen
 const deleteMark=async(m:any)=>{if(!marks.value)return showMsg('标记系统未初始化','error');try{if(m.type==='shape-group'){for(const s of m.shapes||[])await marks.value.deleteMark(s);showMsg('已删除');refreshKey.value++;return}if(m.type==='ink-group'){for(const i of m.inks||[])await marks.value.deleteMark(i);showMsg('已删除');refreshKey.value++;return}if(await marks.value.deleteMark(m)){showMsg('已删除');refreshKey.value++}}catch{showMsg('删除失败','error')}}
 const goTo=(m:any)=>jump(m,activeView.value,activeReader.value,marks.value)
 const goToPage=(p:number)=>jump(p,activeView.value,activeReader.value,marks.value)
-const goToDeckLocation=(m:any)=>m.page||m.cfi||m.section!==undefined?goTo(m):showMsg('未保存位置信息')
 const preloadPage=(p:number)=>{const v=(activeView.value as any)?.viewer;if(v?.renderPage)v.renderPage(p)}
 const toggleExpand=(m:any)=>{const id=m.groupId;expandedGroup.value=expandedGroup.value===id?null:id;if(expandedGroup.value){preloadPage(m.page);setTimeout(()=>{renderInkCanvas();renderShapeCanvas()},100)}}
 const isExpanded=(m:any)=>expandedGroup.value===m.groupId
-const removeDeckCard=async(id:string)=>{await removeFromDeck(id);showMsg('已删除')}
 const toggleScroll=()=>{
   if(!contentRef.value)return
   const target=isAtTop.value?contentRef.value.scrollHeight:0
@@ -486,14 +482,14 @@ const initThumbs=()=>nextTick(()=>{
 watch([showThumbnail,()=>pageCount.value],()=>showThumbnail.value&&initThumbs())
 
 // ===== 生命周期 =====
-const refresh=()=>{refreshKey.value++;props.mode==='deck'&&loadDeckCards().then(v=>deckCards.value=v)}
+const refresh=()=>{refreshKey.value++}
 const onMarks=()=>props.mode==='toc'?requestAnimationFrame(addBookmarks):refresh()
 const onSwitch=()=>{props.mode==='toc'?requestAnimationFrame(initToc):refresh();loadState()}
 watch(()=>activeView.value?.book,b=>b?.toc&&props.mode==='toc'?requestAnimationFrame(initToc):cleanupToc(),{immediate:true})
 watch(()=>props.mode,onSwitch)
 watch(isReverse,()=>{props.mode==='toc'&&requestAnimationFrame(initToc);saveState()})
 watch(filter,saveState,{deep:true})
-onMounted(()=>{window.addEventListener('sireader:marks-updated',onMarks);window.addEventListener('sireader:tab-switched',onSwitch);props.mode==='deck'&&refresh();setTimeout(loadState,500)})
+onMounted(()=>{window.addEventListener('sireader:marks-updated',onMarks);window.addEventListener('sireader:tab-switched',onSwitch);setTimeout(loadState,500)})
 onUnmounted(()=>{cleanupToc();thumbObs?.disconnect();window.removeEventListener('sireader:marks-updated',onMarks);window.removeEventListener('sireader:tab-switched',onSwitch)})
 </script>
 
@@ -527,22 +523,6 @@ onUnmounted(()=>{cleanupToc();thumbObs?.disconnect();window.removeEventListener(
       &:hover{background:rgba(244,67,54,.18)!important}}}
   :deep(li:hover .toc-bookmark-btn){opacity:.5!important}}
 .sr-list{padding:8px}
-.sr-deck-card{padding:10px 12px;margin-bottom:8px;background:var(--b3-theme-surface);border-radius:4px;border:1px solid var(--b3-border-color);cursor:pointer;transition:background .15s;&:hover{background:var(--b3-theme-surface-light);.sr-deck-btns{opacity:1}}}
-.sr-deck-head{display:flex;align-items:center;gap:8px;margin-bottom:6px}
-.sr-word{flex:1;font-size:16px;font-weight:600;color:var(--b3-theme-primary)}
-.sr-deck-btns{display:flex;gap:4px;opacity:0;transition:opacity .15s;button{width:20px;height:20px;padding:0;border:none;background:none;cursor:pointer;color:var(--b3-theme-on-surface-variant);transition:color .15s;svg{width:14px;height:14px}&:hover{color:var(--b3-theme-primary)}&:active{transform:scale(.9)}}}
-.sr-deck-meta{display:flex;align-items:center;gap:8px;font-size:12px;opacity:.7}
-.sr-deck-dict{padding:2px 8px;background:var(--b3-theme-primary-lightest);color:var(--b3-theme-primary);border-radius:4px}
-.sr-deck-time{color:var(--b3-theme-on-surface-variant)}
-.sr-deck-content{margin-top:12px;max-height:500px;overflow-y:auto;
-  :deep(.dict-card){padding:16px;box-shadow:none}
-  :deep(.dict-word){font-size:22px}
-  :deep(.dict-card-header){margin-bottom:12px}
-  :deep(.dict-badges){margin-bottom:16px}
-  :deep(.dict-meaning){padding:10px}
-  :deep(.dict-def){padding:10px}
-  :deep(.dict-example){padding:10px}
-  :deep(.b3-button){display:none}}
 .expand-enter-active,.expand-leave-active{transition:all .3s ease}
 .expand-enter-from,.expand-leave-to{max-height:0;opacity:0;margin-top:0;padding-top:0;padding-bottom:0}
 .expand-enter-to,.expand-leave-from{max-height:400px;opacity:1}
@@ -594,7 +574,10 @@ onUnmounted(()=>{cleanupToc();thumbObs?.disconnect();window.removeEventListener(
 .sr-group-preview{height:80px;margin:6px 0}
 
 // 绑定文档
-.sr-bind-menu{min-width:260px}
+.sr-select{position:relative}
+.sr-bind-menu,.sr-deck-notebook-menu{min-width:260px;right:0;top:calc(100% + 8px)}
+.sr-menu{position:absolute;background:var(--b3-theme-surface);border:1px solid var(--b3-border-color);border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,.15);max-height:300px;overflow-y:auto;z-index:1000}
+.sr-menu-item{padding:8px 12px;cursor:pointer;font-size:13px;transition:background .15s;&:hover{background:var(--b3-list-hover)}&.active{background:var(--b3-theme-primary-lightest);color:var(--b3-theme-primary)}}
 .sr-confirm{position:absolute;top:8px;left:8px;right:8px;z-index:100;display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--b3-theme-surface);border:1px solid var(--b3-border-color);border-radius:4px;box-shadow:0 4px 12px rgba(0,0,0,.15);
   span{flex:1;font-size:13px;font-weight:500}
   button{padding:4px 12px;font-size:12px}}

@@ -1,8 +1,10 @@
 import type { Plugin } from 'siyuan'
+import { getFile, putFile } from '@/api'
 
 const BASE_URL='https://dictionary.cambridge.org'
 const MXNZP_ID='guuhjloujpkfenn1',MXNZP_SECRET='izYrfPlqfRMxrXHUCf5vEbD4WSxnjSow'
 const DICT_PATH='/data/storage/petal/siyuan-sireader/dictionaries/'
+const CONFIG_PATH=`${DICT_PATH}config.json`
 
 // ===== 类型定义 =====
 export interface DictResult{word:string;phonetics:{ipa:string;audio:string;region:'us'|'uk'}[];parts:{part:string;means:string[]}[];examples:{en:string;zh:string}[]}
@@ -10,7 +12,6 @@ export interface OfflineDict{id:string;name:string;type:'stardict'|'dictd';enabl
 export interface OnlineDict{id:string;name:string;icon:string;enabled:boolean;url?:string;desc?:string}
 export interface DictConfig{dicts:{id:string;name:string;type:string;enabled:boolean;files:any}[];online?:{id:string;enabled:boolean}[]}
 export interface DictCardData{word:string;phonetic?:string;phonetics?:{text:string;audio?:string}[];badges?:{text:string;gradient:boolean}[];meanings?:{pos:string;text:string}[];defs?:string[];examples?:{en:string;zh:string}[];extras?:{label:string;text:string}[];meta?:string}
-export interface DeckCard{id:string;word:string;dictId:string;data:DictCardData;timestamp:number;cfi?:string;section?:number;bookUrl?:string;page?:number;rects?:any[]}
 
 const DICT_NAMES:Record<string,string>={ai:'AI','ai-free':'AI(免费)',cambridge:'剑桥',youdao:'有道',haici:'海词',mxnzp:'汉字',ciyu:'词语',zdic:'汉典',offline:'离线',bing:'必应'}
 export const getDictName=(id:string)=>DICT_NAMES[id]||id
@@ -33,10 +34,13 @@ class OfflineDictManager{
     plugin=p
     this.initialized=true
     try{
-      await fetch('/api/file/putFile',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:DICT_PATH,isDir:true,file:''})}).catch(()=>{})
-      const config=await plugin.loadData('dictionaries/config.json')as DictConfig|null
-      config?.dicts?.length&&(this.dicts=config.dicts.map(cfg=>({id:cfg.id,name:cfg.name,type:cfg.type as any,enabled:cfg.enabled,files:cfg.files})),this.preloadIndexes())
-    }catch(e){console.error('[Dict] Init:',e)}
+      await putFile(DICT_PATH,true,new File([],''))
+      const config=await getFile(CONFIG_PATH)
+      if(config?.dicts?.length){
+        this.dicts=config.dicts.map(cfg=>({id:cfg.id,name:cfg.name,type:cfg.type as any,enabled:cfg.enabled,files:cfg.files}))
+        this.preloadIndexes()
+      }
+    }catch(e){console.error('[Dict]',e)}
   }
   
   private async preloadIndexes(){
@@ -160,7 +164,10 @@ class OfflineDictManager{
   }
   
   private async saveConfig(){
-    if(plugin)await plugin.saveData('dictionaries/config.json',{dicts:this.dicts.map(({id,name,type,enabled,files})=>({id,name,type,enabled,files}))})
+    if(!plugin)return
+    try{
+      await putFile(CONFIG_PATH,false,new File([JSON.stringify({dicts:this.dicts.map(({id,name,type,enabled,files})=>({id,name,type,enabled,files}))},null,2)],'config.json',{type:'application/json'}))
+    }catch(e){console.error('[Dict]',e)}
   }
 }
 
@@ -170,8 +177,10 @@ export const offlineDictManager=new OfflineDictManager()
 class OnlineDictManager{
   async init(p:Plugin){
     plugin=p
-    const config=await plugin.loadData('dictionaries/config.json')as DictConfig|null
-    config?.online?.forEach(o=>{const dict=onlineDicts.find(d=>d.id===o.id);if(dict)dict.enabled=o.enabled})
+    try{
+      const config=await getFile(CONFIG_PATH)
+      config?.online?.forEach(o=>{const d=onlineDicts.find(d=>d.id===o.id);if(d)d.enabled=o.enabled})
+    }catch{}
   }
   
   getDicts=()=>onlineDicts
@@ -189,9 +198,12 @@ class OnlineDictManager{
   
   private async saveConfig(){
     if(!plugin)return
-    const config=(await plugin.loadData('dictionaries/config.json')as DictConfig)||{dicts:[]}
-    config.online=onlineDicts.map(d=>({id:d.id,enabled:d.enabled}))
-    await plugin.saveData('dictionaries/config.json',config)
+    try{
+      let config:DictConfig={dicts:[]}
+      try{const data=await getFile(CONFIG_PATH);if(data)config=data}catch{}
+      config.online=onlineDicts.map(d=>({id:d.id,enabled:d.enabled}))
+      await putFile(CONFIG_PATH,false,new File([JSON.stringify(config,null,2)],'config.json',{type:'application/json'}))
+    }catch(e){console.error('[Dict]',e)}
   }
 }
 
@@ -200,27 +212,6 @@ export function initDictModule(p:Plugin){
   plugin=p
   Promise.all([offlineDictManager.init(p),onlineDictManager.init(p)]).catch(e=>console.error('[Dict] Init error:',e))
 }
-
-// ===== 卡包管理 =====
-const deckCards:DeckCard[]=[]
-let deckLoaded=false
-const loadDeck=async()=>{if(deckLoaded||!plugin)return;try{const data=await plugin.loadData('dictionaries/deck.json');data?.cards&&deckCards.push(...data.cards);deckLoaded=true}catch(e){console.error('[Deck] Load:',e)}}
-const saveDeck=async()=>plugin&&plugin.saveData('dictionaries/deck.json',{cards:deckCards}).catch(e=>console.error('[Deck] Save:',e))
-const notifyDeckUpdate=()=>window.dispatchEvent(new Event('sireader:deck-updated'))
-
-export const addToDeck=async(word:string,dictId:string,data:DictCardData,cfi?:string,section?:number,bookUrl?:string,page?:number,rects?:any[])=>{
-  await loadDeck()
-  if(deckCards.some(c=>c.word===word&&c.dictId===dictId))return false
-  deckCards.push({id:`${dictId}-${word}-${Date.now()}`,word,dictId,data,timestamp:Date.now(),cfi,section,bookUrl,page,rects})
-  await saveDeck()
-  notifyDeckUpdate()
-  return true
-}
-
-export const loadDeckCards=async()=>(await loadDeck(),deckCards)
-export const getDeckCards=()=>deckCards
-export const removeFromDeck=async(id:string)=>{const idx=deckCards.findIndex(c=>c.id===id);if(idx>=0){deckCards.splice(idx,1);await saveDeck();notifyDeckUpdate();return true}return false}
-export const clearDeck=async()=>(deckCards.length=0,await saveDeck(),notifyDeckUpdate())
 
 // ===== 查询函数 =====
 const fetchHTML=async(url:string)=>new DOMParser().parseFromString(await(await fetch(url)).text(),'text/html')
@@ -401,13 +392,34 @@ export async function queryCambridge(w:string):Promise<DictResult|null>{
 
 // ===== 渲染函数 =====
 
+// 词典卡片默认样式
+const DICT_CARD_CSS = `
+.card{font-family:Arial,sans-serif;font-size:16px;line-height:1.6;color:#333;padding:20px;background:#fff}
+.word{font-size:24px;font-weight:700;margin-bottom:8px;color:#2c3e50}
+.phonetic{color:#7f8c8d;font-size:14px;margin-bottom:16px}
+.badge{display:inline-block;padding:2px 8px;margin:2px;background:#ecf0f1;border-radius:3px;font-size:12px;color:#7f8c8d}
+.meaning{margin:12px 0;line-height:1.8}
+.pos{display:inline-block;padding:2px 6px;margin-right:6px;background:#3498db;color:#fff;border-radius:3px;font-size:12px;font-weight:600}
+.example{margin:8px 0 8px 20px;color:#555;font-style:italic}
+.example-zh{margin-top:4px;color:#7f8c8d;font-size:14px}
+.extra{margin:8px 0;font-size:14px;color:#555}
+.extra-label{font-weight:600;color:#2c3e50;margin-right:4px}
+b{color:#2c3e50;font-weight:600}
+i{color:#7f8c8d}
+hr{border:none;border-top:1px solid #ecf0f1;margin:16px 0}
+`
+
 export function renderDictCard(data:DictCardData):string{
-  const{word,phonetic,phonetics,badges,meanings,defs,examples,extras,meta}=data
-  const phoneticHTML=phonetic?`<span class="dict-phonetic">/${phonetic}/</span>`:phonetics?.map(p=>`<span class="dict-phonetic">${p.text}</span>${p.audio?`<button class="b3-button b3-button--text dict-audio" onclick="new Audio('${p.audio}').play()">🔊</button>`:''}`).join('')||''
-  const renderSection=(items:any[]|undefined,className:string,itemRender:(item:any)=>string)=>items?.length?`<div class="${className}">${items.map(itemRender).join('')}</div>`:''
-  const examplesHTML=examples?.length?`<div class="dict-extras"><div class="dict-extra"><span class="dict-extra-label">例句</span><span class="dict-extra-text">${examples.map(ex=>`<div style="margin-bottom:8px"><div style="font-style:italic;color:var(--b3-theme-on-surface)">${ex.en}</div>${ex.zh?`<div style="color:var(--b3-theme-on-surface-light);font-size:13px;opacity:.8;margin-top:4px">${ex.zh}</div>`:''}</div>`).join('')}</span></div></div>`:''
-  const badgesHTML=badges?.length?`<div class="dict-badges">${badges.map(b=>`<span class="dict-badge ${b.gradient?'gradient':''}">${b.text}</span>`).join('')}</div>`:''
-  return`<div class="dict-card"><div class="dict-card-header"><h2 class="dict-word">${word}</h2>${phoneticHTML}</div>${badgesHTML}${meta?`<div class="dict-badges"><span class="dict-badge">${meta}</span></div>`:''}${renderSection(meanings,'dict-meanings',m=>{const p=POS_MAP[m.pos.toLowerCase()]||{name:m.pos||'',color:'var(--b3-theme-primary)'};return`<div class="dict-meaning">${m.pos?`<span class="dict-pos" style="background:${p.color}">${p.name}</span>`:''}<span class="dict-text">${m.text}</span></div>`})}${renderSection(defs,'dict-defs',d=>`<div class="dict-def">${d}</div>`)}${examplesHTML}${renderSection(extras,'dict-extras',e=>`<div class="dict-extra"><span class="dict-extra-label">${e.label}</span><span class="dict-extra-text">${e.text}</span></div>`)}</div>`
+  const{word,phonetic,phonetics,badges,meanings,defs,examples,extras}=data
+  
+  const phoneticText=phonetic?`/${phonetic}/`:phonetics?.map(p=>p.text).join(' ')||''
+  const badgesText=badges?.map(b=>b.text).join(' · ')||''
+  const meaningsText=meanings?.map(m=>`<div class="meaning">${m.pos?`<span class="pos">${m.pos}</span>`:''}${m.text}</div>`).join('')||''
+  const examplesText=examples?.length?`<hr>${examples.map(ex=>`<div class="example">${ex.en}${ex.zh?`<div class="example-zh">${ex.zh}</div>`:''}</div>`).join('')}`:''
+  const extrasText=extras?.length?`<hr>${extras.map(e=>`<div class="extra"><span class="extra-label">${e.label}：</span>${e.text}</div>`).join('')}`:''
+  const defsText=defs?.length?`<hr>${defs.join('<br>')}`:''
+  
+  return`<div class="word">${word}</div>${phoneticText?`<div class="phonetic">${phoneticText}</div>`:''}${badgesText?`<div class="phonetic">${badgesText}</div>`:''}${meaningsText}${examplesText}${extrasText}${defsText}`
 }
 
 function parseOfflineDict(results:any[]):DictCardData{
@@ -436,6 +448,7 @@ import{Dialog,showMessage}from'siyuan'
 let dialog:Dialog|null=null
 let state:{word:string;dictId:string;data?:DictCardData}={word:'',dictId:''}
 let selectionInfo:{cfi?:string;section?:number;page?:number;rects?:any[];text:string}|null=null
+let lastSelectedDeckId='default'
 
 export async function openDict(word:string,_x?:number,_y?:number,selection?:{cfi?:string;section?:number;page?:number;rects?:any[];text:string}){
   state={word,dictId:'',data:undefined}
@@ -445,19 +458,51 @@ export async function openDict(word:string,_x?:number,_y?:number,selection?:{cfi
   const offlineDicts=offlineDictManager.getDicts().filter(d=>d.enabled)
   const allDicts=[...(offlineDicts.length?[{id:'offline',name:`离线(${offlineDicts.length})`,icon:'#iconDatabase'}]:[]),...onlineDicts.filter(d=>d.enabled)]
   const makeIcon=(icon:string)=>icon.startsWith('#')?`<svg style="width:14px;height:14px"><use xlink:href="${icon}"/></svg>`:`<img src="${icon}" style="width:14px;height:14px">`
-  const tabs=allDicts.map(d=>`<button class="b3-button b3-button--outline" data-id="${d.id}" style="padding:4px 8px;font-size:12px">${makeIcon(d.icon)} ${d.name}</button>`).join('')
-  const deckBtn=selectionInfo?`<button class="b3-button b3-button--outline" id="dict-deck-btn" style="padding:4px 12px;font-size:12px;margin-left:auto"><svg style="width:14px;height:14px"><use xlink:href="#iconAdd"/></svg> 加入卡包</button>`:''
   
-  dialog=new Dialog({title:'📖 词典',content:`<div class="b3-dialog__content" style="display:flex;flex-direction:column;gap:8px;height:100%"><div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center">${tabs}${deckBtn}</div><div class="dict-body fn__flex-1" style="overflow-y:auto;padding:8px"></div></div>`,width:'540px',height:'600px'})
+  let deckSelector=''
+  if(selectionInfo){
+    const{getPack}=await import('@/components/deck')
+    const decks=await getPack()
+    deckSelector=`<select id="dict-deck-select" class="b3-select" style="padding:4px 8px;font-size:12px;margin-left:8px">${decks.map(d=>`<option value="${d.id}" ${d.id===lastSelectedDeckId?'selected':''}>${d.name}</option>`).join('')}</select><button class="b3-button b3-button--outline" id="dict-deck-btn" style="padding:4px 12px;font-size:12px;margin-left:4px"><svg style="width:14px;height:14px"><use xlink:href="#iconAdd"/></svg> 加入卡包</button>`
+  }
+  
+  const tabs=allDicts.map(d=>`<button class="b3-button b3-button--outline" data-id="${d.id}" style="padding:4px 8px;font-size:12px">${makeIcon(d.icon)} ${d.name}</button>`).join('')
+  dialog=new Dialog({title:'📖 词典',content:`<style>${DICT_CARD_CSS}</style><div class="b3-dialog__content" style="display:flex;flex-direction:column;gap:8px;height:100%"><div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center">${tabs}${deckSelector}</div><div class="dict-body fn__flex-1" style="overflow-y:auto;padding:8px"></div></div>`,width:'540px',height:'600px'})
   
   dialog.element.querySelectorAll('[data-id]').forEach(btn=>btn.addEventListener('click',()=>switchDict((btn as HTMLElement).dataset.id!)))
-  dialog.element.querySelector('#dict-deck-btn')?.addEventListener('click',async()=>{
-    if(state.data&&selectionInfo&&await addToDeck(state.word,state.dictId,state.data,selectionInfo.cfi,selectionInfo.section,(window as any).__currentBookUrl||'',selectionInfo.page,selectionInfo.rects)){
-      const btn=dialog?.element.querySelector('#dict-deck-btn')as HTMLButtonElement
-      btn&&(btn.innerHTML='<svg style="width:14px;height:14px"><use xlink:href="#iconCheck"/></svg> 已加入',btn.disabled=true,btn.style.opacity='0.6')
-      showMessage('已加入卡包',1500,'info')
-    }
-  })
+  
+  if(selectionInfo){
+    dialog.element.querySelector('#dict-deck-btn')?.addEventListener('click',async()=>{
+      if(!state.data)return
+      const deckSelect=dialog?.element.querySelector('#dict-deck-select')as HTMLSelectElement
+      const deckId=deckSelect?.value||'default'
+      lastSelectedDeckId=deckId
+      
+      const{addCard}=await import('@/components/deck')
+      const phoneticText=state.data.phonetic?` /${state.data.phonetic}/`:state.data.phonetics?.map(p=>p.text).join(' ')||''
+      const success=await addCard(deckId,
+        `${state.word}${phoneticText}`,
+        renderDictCard(state.data),
+        {
+          tags:[state.dictId],
+          source:'dict',
+          position:{cfi:selectionInfo.cfi,section:selectionInfo.section,page:selectionInfo.page,rects:selectionInfo.rects},
+          bookUrl:(window as any).__currentBookUrl||'',
+          bookTitle:(window as any).__currentBookTitle||'',
+          modelCss:DICT_CARD_CSS
+        }
+      )
+      if(success){
+        const btn=dialog?.element.querySelector('#dict-deck-btn')as HTMLButtonElement
+        if(btn){
+          btn.innerHTML='<svg style="width:14px;height:14px"><use xlink:href="#iconCheck"/></svg> 已加入'
+          btn.disabled=true
+          btn.style.opacity='0.6'
+        }
+        showMessage(`已加入「${deckSelect?.selectedOptions[0]?.text||'默认卡组'}」`,1500,'info')
+      }else showMessage('加入失败',2000,'error')
+    })
+  }
   
   switchDict(allDicts[0]?.id||'ai')
 }

@@ -362,14 +362,11 @@ export async function renderSprig(template: string): Promise<string> {
 // **************************************** File ****************************************
 
 export async function getFile(path: string): Promise<any> {
-  let data = {
-    path: path,
-  };
+  let data = { path };
   let url = "/api/file/getFile";
   try {
-    let file = await fetchSyncPost(url, data);
-    return file;
-  } catch (error_msg) {
+    return await fetchSyncPost(url, data);
+  } catch {
     return null;
   }
 }
@@ -378,12 +375,9 @@ export async function putFile(path: string, isDir: boolean, file: any) {
   let form = new FormData();
   form.append("path", path);
   form.append("isDir", isDir.toString());
-  // Copyright (c) 2023, terwer.
-  // https://github.com/terwer/siyuan-plugin-importer/blob/v1.4.1/src/api/kernel-api.ts
   form.append("modTime", Math.floor(Date.now() / 1000).toString());
   form.append("file", file);
-  let url = "/api/file/putFile";
-  return request(url, form);
+  return request("/api/file/putFile", form);
 }
 
 export async function removeFile(path: string) {

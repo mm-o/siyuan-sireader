@@ -81,7 +81,9 @@ class BookSourceManager {
       const snippet = this.snippets.find((s: any) => s.type === 'js' && s.enabled && s.content?.includes('siyuanBookSources'))
       if (snippet) {
         const t: any = {}
-        eval(snippet.content.replace(/window\./g, 't.'))
+        // 使用 Function 构造函数替代 eval，更安全
+        const fn = new Function('t', snippet.content.replace(/window\./g, 't.'))
+        fn(t)
         ;(window as any).siyuanBookSources = t.siyuanBookSources || { sources: [] }
         return
       }

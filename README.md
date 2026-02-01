@@ -3,10 +3,15 @@
 <h1 style="color: white; margin: 0 0 0.3em; font-size: 2.5em; font-weight: 600;">📖 SiReader</h1>
 <p style="color: rgba(255,255,255,0.9); margin: 0 0 1.5em; font-size: 1.1em;">Professional eBook Reader · Smart Annotation · Multi-format Support</p>
 <p style="color: rgba(255,255,255,0.85); margin: 0 0 1.5em; line-height: 1.6; font-size: 0.95em;">Transform SiYuan Notes into a professional eBook reader<br>Support EPUB/PDF/TXT/Online novels with smart annotation, multi-theme switching, dictionary lookup, AI translation, deck system, and more for an immersive reading experience</p>
-<p style="margin: 0;">
+<p style="margin: 0 0 1em;">
 <img src="https://img.shields.io/badge/version-0.7.2-blue.svg" alt="Version" style="display: inline-block; margin: 0 4px;">
 <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License" style="display: inline-block; margin: 0 4px;">
 <img src="https://img.shields.io/badge/SiYuan-3.0+-orange.svg" alt="SiYuan" style="display: inline-block; margin: 0 4px;">
+</p>
+<p style="margin: 0;">
+<a href="https://my.feishu.cn/wiki/Czp8wrf2NibwA9krhvmcHnbtnMc?from=from_copylink" style="display: inline-block; margin: 0 4px; color: white; text-decoration: none;">📖 User Guide</a>
+<a href="https://my.feishu.cn/wiki/XzefwHqz4inde7k7rJKce7shn8d?from=from_copylink" style="display: inline-block; margin: 0 4px; color: white; text-decoration: none;">🔄 Changelog</a>
+<a href="https://qm.qq.com/q/wpHDtsfxCw" style="display: inline-block; margin: 0 4px; color: white; text-decoration: none;">👥 QQ Group</a>
 </p>
 </div>
 </div>
@@ -43,6 +48,13 @@
 - **Smart Parsing** - Full support for JSONPath, CSS, XPath, JavaScript, Regex
 - **Rule Combination** - Support `&&`/`||`/`%%` combination, `{$.path}` nesting, `@put/@get` data sharing
 
+### 🎴 Flashcard Learning System
+- **Anki Import** - Full .apkg file import with deck structure and card content preserved (learning progress import not yet supported)
+- **Spaced Repetition** - Four-level rating system, smart queue, customizable learning steps
+- **FSRS Algorithm** - Advanced memory algorithm for optimized review intervals
+- **Data Statistics** - 11 visualization charts: ring charts, line charts, bubble charts, radar charts, heatmaps, etc.
+- **Comprehensive Settings** - 30+ configurable parameters, daily limits, learning steps, advanced options
+
 ---
 
 ## 🚀 Quick Start
@@ -60,6 +72,81 @@
 ---
 
 ## 📝 Latest Updates
+
+### v0.8.0 (2026.2.1)
+
+> **⚠️ Important Notice for Next Version**  
+> - **Database Unification**: v0.9.0 will unify all data storage into a single SQLite database. **This is a breaking update, please backup your data in advance**  
+> - **Membership Features**: v0.9.0 will introduce professional subscription to unlock more advanced features
+
+#### ✨ New Features
+
+- **📦 Anki Deck Import** - Full support for .apkg file import, preserving deck structure and card content
+  - Auto-parse Anki database, extract decks, cards, templates
+  - Auto-extract media files (images, audio) and load on-demand
+  - **Note**: Current version does not support importing original learning progress, multi-level deck structure, custom CSS styles. Will be supported in future versions
+  
+- **🎴 Complete Flashcard Learning System** - Professional spaced repetition learning functionality
+  - Four-level rating system: Again, Hard, Good, Easy
+  - Smart learning queue: new cards, learning, review cards auto-sorted
+  - Learning steps: support custom learning steps (e.g., 1 minute, 10 minutes, 1 day)
+  - Daily limits: set daily new cards and review cards limits
+  - Deck enable/disable: flexible learning content control
+  - Study session: record study start time and statistics
+  
+- **📊 Multi-dimensional Data Statistics** - Comprehensive learning data analysis and visualization
+  - **Today's Stats**: new cards, reviews, correct rate, streak days
+  - **Today's Rating**: ring chart showing rating distribution (again/hard/good/easy)
+  - **Memory Curve**: line chart showing 7-day/30-day memory retention trend
+  - **Overall Stats**: total cards, reviewed, average correct rate, streak days
+  - **Lapse Analysis**: categorized by lapse count (0, 1-2, 3-5, >5)
+  - **Learning Efficiency**: bubble chart showing review count vs interval days (efficient mastery/steady progress/needs consolidation/difficult cards)
+  - **Memory Strength**: categorized by Ease value (difficult<130%, average 130-200%, good 200-250%, excellent≥250%)
+  - **FSRS Stats**: target retention, FSRS cards, average stability, average difficulty
+  - **Difficulty Distribution**: radar chart showing FSRS difficulty distribution (easy/medium/hard/very hard)
+  - **Interval Distribution**: ring chart showing interval distribution (<1 day, 1-3 days, 4-14 days, ≥15 days)
+  - **Review Intervals**: detailed interval distribution (<1 day, 1-7 days, 1-4 weeks, 1-3 months, 3-6 months, >6 months)
+  - **Study Calendar**: heatmap showing annual study activity, support date filtering and navigation
+  
+- **🧠 FSRS Algorithm Integration** - Advanced spaced repetition algorithm
+  - Support FSRS (Free Spaced Repetition Scheduler) algorithm
+  - Auto-calculate card stability and difficulty
+  - Set desired memory retention rate (default 90%)
+  - Support custom FSRS weight parameters
+  - Seamless switch with traditional SM-2 algorithm
+  
+- **💾 Independent Database Management** - High-performance data storage solution
+  - Use SQL.js to implement client-side SQLite database (WebAssembly version)
+  - Separate learning progress and card content for optimized query performance
+  - Support complex queries: filter by state, interval, difficulty, date
+  - Auto-indexing optimization, support large card collections (10000+)
+  - Data persistence to SiYuan Notes `/data/storage/petal/siyuan-sireader/`
+  - Support Anki database and SiYuan database dual storage
+  
+- **⚙️ Comprehensive Deck Settings** - 20+ configurable parameters
+  - **Daily Limits**: new cards/review cards daily count (default 20/200)
+  - **Learning Steps**: new card learning steps (default 1,10 minutes), graduating interval (1 day), easy interval (4 days)
+  - **Lapse Handling**: relearning steps (10 minutes), minimum interval (1 day), leech threshold (8 times)
+  - **Display Order**: new card order (random/sequential), review sort (due/random/interval), new review priority (mixed/new first/review first), new card collection priority (deck/position/random)
+  - **FSRS Options**: enable/disable, desired retention (default 90%), custom weights
+  - **Advanced Options**: maximum interval (36500 days), starting ease (2.5), easy bonus (1.3), interval modifier (1.0), hard interval (1.2), new interval (0.0)
+  - **Related Cards**: related new cards/review cards temporarily hidden (avoid showing related content simultaneously)
+  - **Future Support**: audio settings, timer, auto-advance, easy days, notebook binding will be implemented in future versions
+
+#### ⚡ Performance Optimization
+
+- **🚀 Database Query Optimization** - Add indexes for high-frequency query fields, improve query speed by 10x+
+- **💾 Caching Mechanism** - Anki database caching to avoid repeated loading
+- **📦 Lazy Loading** - Media files (images, audio) extracted on-demand from .apkg, reduce memory usage
+- **🔄 Batch Operations** - Support batch import, batch update, improve large card collection processing efficiency
+
+#### 🐛 Bug Fixes
+
+- **📊 Statistics Accuracy** - Fix incorrect streak days calculation
+- **🎴 Card State Sync** - Fix inaccurate learning progress save timing
+- **💾 Database Initialization** - Fix database creation failure on first use
+
+---
 
 ### v0.7.3 (2026.1.24)
 
@@ -302,6 +389,59 @@ Vocabulary learning and review:
 - **Data Persistence** - Store as `deck.json` file
 - **Position Record** - Record word location in book, chapter, page
 - **Smart Annotation** - Deck words auto-highlight in purple
+
+### 🎴 Flashcard Learning System
+Complete spaced repetition learning functionality:
+
+**Anki Deck Import:**
+- **Full Compatibility** - Support .apkg file import with all data preserved
+- **Learning Progress** - Retain original intervals, difficulty, review counts
+- **Deck Structure** - Support multi-level decks (e.g., Language::English::Vocabulary)
+- **Media Files** - Auto-extract images and audio, load on-demand
+- **Custom Templates** - Preserve Anki card templates and CSS styles
+
+**Learning Features:**
+- **Four-level Rating** - Again, Hard, Good, Easy
+- **Smart Queue** - Auto-sort new cards, learning cards, review cards
+- **Learning Steps** - Customizable steps (e.g., 1 minute, 10 minutes, 1 day)
+- **Daily Limits** - Set daily new cards and review cards limits
+- **Deck Management** - Enable/disable decks for flexible learning control
+- **Study Session** - Track study time and statistics
+
+**FSRS Algorithm:**
+- **Advanced Algorithm** - Free Spaced Repetition Scheduler
+- **Smart Calculation** - Auto-calculate card stability and difficulty
+- **Memory Optimization** - Set desired retention rate (default 90%)
+- **Custom Weights** - Support custom FSRS parameters
+- **Seamless Switch** - Free switch between FSRS and traditional SM-2
+
+**Data Statistics:**
+- **Today's Stats** - New cards, reviews, correct rate, study time, rating distribution
+- **History** - 365-day study data with chart visualization
+- **Overall Stats** - Total cards, reviews, study days, average correct rate, streak
+- **Interval Distribution** - Statistics by time range (<1 day, 1-7 days, 1-4 weeks, etc.)
+- **Retention Rate** - Memory effectiveness by interval and difficulty
+- **Forecast** - Predict study load for next 7 and 30 days
+
+**Deck Settings (30+ Parameters):**
+- **Daily Limits** - New cards/review cards per day
+- **Learning Steps** - New card steps, graduating interval, easy interval
+- **Lapse Handling** - Relearning steps, minimum interval, leech threshold
+- **Display Order** - New card order (random/sequential), review sort (due/random/interval)
+- **FSRS Options** - Enable/disable, desired retention, custom weights
+- **Advanced Options** - Maximum interval, starting ease, easy bonus, interval modifier
+- **Related Cards** - Temporarily hide related new cards/review cards (avoid showing related content simultaneously)
+- **Audio Settings** - Auto-play, answer audio
+- **Timer** - Show timer, maximum answer time
+- **Auto-advance** - Auto-show answer, auto-next card
+
+**Database Management:**
+- **High Performance** - Browser-based SQLite using SQL.js
+- **Separated Storage** - Learning progress and card content separated for optimized queries
+- **Complex Queries** - Filter by state, interval, difficulty, date
+- **Auto-indexing** - Support large card collections (10000+)
+- **Data Persistence** - Store in SiYuan `/data/storage/petal/siyuan-sireader/`
+- **Dual Database** - Anki database and SiYuan database coexist
 
 ### 📚 Bookshelf Management
 Complete book management system:

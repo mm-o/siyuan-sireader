@@ -11,6 +11,8 @@
   "openModeDesc": "选择打开书籍时的显示位置",
   "navPosition": "导航栏位置",
   "navPositionDesc": "选择侧边栏按钮的显示位置",
+  "left": "左侧",
+  "right": "右侧",
   "top": "顶部",
   "bottom": "底部",
   "newTab": "新标签",

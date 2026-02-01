@@ -11,6 +11,8 @@
   "openModeDesc": "Choose where to open books",
   "navPosition": "Navigation Position",
   "navPositionDesc": "Choose where to display the navigation bar",
+  "left": "Left",
+  "right": "Right",
   "top": "Top",
   "bottom": "Bottom",
   "newTab": "New Tab",

@@ -199,8 +199,8 @@ export class MarkManager{
 
   private async loadDeck(){
     try{
-      const{loadDeckCards}=await import('@/core/dictionary')
-      const cards=(await loadDeckCards()).filter(c=>c.bookUrl===this.bookUrl)
+      const{getCard}=await import('@/components/deck')
+      const cards=(await getCard()).filter(c=>c.bookUrl===this.bookUrl)
       this.marks.filter(m=>m.type==='vocab').forEach(v=>this.del(String(v.cfi||v.page||`s${v.section}`)))
       for(const c of cards){
         const note=`${c.word}\n${c.data.phonetic?`/${c.data.phonetic}/`:''}\n${c.data.meanings?.map((m:any)=>`${m.pos} ${m.text}`).join('\n')||''}`
@@ -446,8 +446,8 @@ export class MarkManager{
     // 删除词典卡包
     if(m.type==='vocab'&&m.text){
       try{
-        const{getDeckCards,removeFromDeck}=await import('@/core/dictionary'),card=getDeckCards().find(c=>c.word===m.text&&c.cfi===m.cfi&&c.section===m.section)
-        if(card)await removeFromDeck(card.id)
+        const{getCardsSync,removeCard}=await import('@/components/deck'),card=getCardsSync().find(c=>c.word===m.text&&c.cfi===m.cfi&&c.section===m.section)
+        if(card)await removeCard(card.id)
       }catch(e){console.error('[Mark]',e)}
     }
     

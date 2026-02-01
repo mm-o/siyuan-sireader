@@ -1,4 +1,4 @@
-
+﻿
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import type { ReaderSettings, FontFileInfo } from '@/composables/useSetting'
