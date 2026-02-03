@@ -204,7 +204,7 @@
         <Transition name="expand"><div v-if="expanded==='date'&&filtered.length" class="stat-expand"><div class="stat-expand-title">{{expandTitle}} ({{filtered.length}}张)</div><div class="stat-expand-list"><div v-for="c in displayedCards" :key="c.id" class="deck-card" :class="{expanded:detail===c.id}" @click="toggleCard($event,c)"><span class="sr-bar" :style="{background:getMasteryColor(c)}"></span><div class="deck-card-main"><div class="deck-card-mastery">{{getMasteryIcon(c)}}</div><div class="deck-card-title" v-html="getTitle(c)" @click.capture="stopIfAudio"></div><div class="deck-card-hint" v-html="getHint(c)"></div><Transition name="expand"><div v-if="detail===c.id" class="deck-card-content" v-html="renderAnki(c)" @click.capture="stopIfAudio"></div></Transition><div class="deck-card-source">{{c.model||'Anki'}} · 复习 {{c.learning?.reps||0}}次</div></div></div></div><button v-if="hasMore" class="stat-load-more" @click="loadMore">加载更多 ({{filtered.length-displayCount}})</button></div></Transition>
       </div>
 
-      <div v-if="!totalRatingDist.length&&!intervals.length&&!calendar.length" class="sr-empty">暂无统计数据</div>
+      <div v-if="!totalRatingDist.length&&!intervals.length&&!cal.data.length" class="sr-empty">暂无统计数据</div>
     </template>
   </div>
 </template>
@@ -381,7 +381,7 @@ const fsrsCards=computed(()=>[
   {value:fsrsStats.value.avgDifficulty.toFixed(1),label:'平均难度',type:null}
 ])
 
-const intervals=computed(()=>props.intervals.ranges.filter(r=>r.count>0))
+const intervals=computed(()=>props.intervals?.ranges?.filter(r=>r.count>0)||[])
 
 const calcDist=(cards:any[],fn:(c:any)=>number,ranges:any[])=>{
   const counts=ranges.map(r=>({...r,count:cards.filter(c=>fn(c)>=r.min&&fn(c)<r.max).length}))

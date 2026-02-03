@@ -99,7 +99,7 @@ export interface Pack {
   color?: string          // 主题色
   titleImg?: string       // 题头图
   tags?: string[]         // 标签
-  parent?: string         // 父卡组名称（Anki 层级结构）
+  parent?: string         // 父卡组 ID（层级结构）
   
   // Anki 关联
   collectionId?: string   // 所属集合 ID（对应文件夹）

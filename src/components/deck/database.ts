@@ -58,7 +58,11 @@ export class DeckDatabase {
     if (this.initialized) return
     
     const SQL = await getSqlJs()
-    
+    this.db = await this.loadOrCreate(SQL)
+    this.initialized = true
+  }
+  
+  private async loadOrCreate(SQL: any): Promise<any> {
     try {
       const res = await fetch('/api/file/getFile', {
         method: 'POST',
@@ -69,22 +73,17 @@ export class DeckDatabase {
       if (res.ok) {
         const buffer = await res.arrayBuffer()
         if (buffer.byteLength > 100) {
-          this.db = new SQL.Database(new Uint8Array(buffer))
-          this.db.exec('SELECT 1 FROM card_progress LIMIT 1')
+          const db = new SQL.Database(new Uint8Array(buffer))
+          db.exec('SELECT 1 FROM card_progress LIMIT 1')
+          return db
         }
       }
-    } catch {}
-    
-    if (!this.db) {
-      this.db = new SQL.Database()
-      this.createTables()
+    } catch (e) {
+      console.warn('[DeckDB] Load failed, creating new:', e)
     }
     
-    this.initialized = true
-  }
-  
-  private createTables(): void {
-    this.db.exec(`
+    const db = new SQL.Database()
+    db.exec(`
       -- 卡片学习进度（不存储内容）
       CREATE TABLE IF NOT EXISTS card_progress (
         id TEXT PRIMARY KEY,
@@ -239,7 +238,9 @@ export class DeckDatabase {
         updated_at INTEGER NOT NULL
       );
     `)
+    return db
   }
+  
   
   private async saveDb(): Promise<void> {
     const data = this.db.export()
@@ -405,7 +406,14 @@ export class DeckDatabase {
   
   async deleteDeck(id: string): Promise<void> {
     await this.init()
-    this.db.run('DELETE FROM decks WHERE id = ?', [id])
+    // 级联删除所有相关数据
+    const sqls = [
+      `DELETE FROM card_progress WHERE deck_id = '${id}'`,
+      `DELETE FROM deck_settings WHERE deck_id = '${id}'`,
+      `DELETE FROM reviews WHERE deck_id = '${id}'`,
+      `DELETE FROM decks WHERE id = '${id}'`
+    ]
+    this.db.exec(sqls.join(';'))
     await this.saveDb()
   }
   
@@ -809,21 +817,10 @@ export class DeckDatabase {
 }
 
 let db: DeckDatabase | null = null
-let initPromise: Promise<DeckDatabase> | null = null
 
-export const initDatabase = () => {
-  if (!db && !initPromise) {
-    initPromise = Promise.resolve().then(() => {
-      db = new DeckDatabase()
-      return db
-    })
-  }
-  return initPromise
+export const initDatabase = async (): Promise<DeckDatabase> => {
+  if (!db) db = new DeckDatabase()
+  return db
 }
 
-export const getDatabase = async (): Promise<DeckDatabase> => {
-  if (db) return db
-  if (initPromise) return initPromise
-  // 如果还没初始化，自动初始化
-  return initDatabase()!
-}
+export const getDatabase = (): Promise<DeckDatabase> => initDatabase()

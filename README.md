@@ -4,7 +4,7 @@
 <p style="color: rgba(255,255,255,0.9); margin: 0 0 1.5em; font-size: 1.1em;">Professional eBook Reader · Smart Annotation · Multi-format Support</p>
 <p style="color: rgba(255,255,255,0.85); margin: 0 0 1.5em; line-height: 1.6; font-size: 0.95em;">Transform SiYuan Notes into a professional eBook reader<br>Support EPUB/PDF/TXT/Online novels with smart annotation, multi-theme switching, dictionary lookup, AI translation, deck system, and more for an immersive reading experience</p>
 <p style="margin: 0 0 1em;">
-<img src="https://img.shields.io/badge/version-0.7.2-blue.svg" alt="Version" style="display: inline-block; margin: 0 4px;">
+<img src="https://img.shields.io/badge/version-0.8.1-blue.svg" alt="Version" style="display: inline-block; margin: 0 4px;">
 <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License" style="display: inline-block; margin: 0 4px;">
 <img src="https://img.shields.io/badge/SiYuan-3.0+-orange.svg" alt="SiYuan" style="display: inline-block; margin: 0 4px;">
 </p>
@@ -72,6 +72,42 @@
 ---
 
 ## 📝 Latest Updates
+
+### v0.8.1 (2026.2.3)
+
+#### ✨ New Features
+
+**🎨 Deck Template Editor**
+- **View Template Info** - Display deck field list, front template, back template
+- **Edit Templates** - Support editing front template, back template, and CSS styles
+- **Live Preview** - Preview changes immediately, support front/back toggle
+- **Auto Save** - Changes auto-save, settings persist on next open
+
+**🎯 Complete Anki Template System Support**
+- **Template Syntax** - Full support for Anki template syntax (conditional display, nested conditions, front content reference)
+- **Advanced Filters** - Japanese furigana, kanji/kana extraction, hint buttons, type input, plain text
+- **Perfect Styling** - Custom fonts, colors, layouts all work correctly
+- **Math Formulas** - Auto-recognize and render LaTeX formulas (inline and block)
+- **Card Editing** - Support direct editing of card content (front/back independent editing)
+
+**📦 Full Support for New Anki Format**
+- **Auto Format Detection** - Support `.anki21b` (compressed), `.anki2`, `.anki21` all formats
+- **Smart Decompression** - Auto-handle compressed database and media files
+- **Backward Compatible** - Perfect compatibility with old Anki formats
+- **Hierarchical Decks** - Correctly recognize and import multi-level deck structures
+
+#### 🐛 Bug Fixes
+
+- **✅ Database Initialization** - Fixed database creation failure after plugin update
+- **✅ Statistics Page Error** - Fixed error when clicking "Total" tab with no learning data
+
+#### ⚡ Performance Optimization
+
+- **Emoji Picker** - Load 50 emojis initially, scroll to load more, faster opening
+- **Code Simplification** - Optimized code structure, reduced 20% code size, smoother operation
+- **Style Unification** - Unified style management, more coordinated interface
+
+---
 
 ### v0.8.0 (2026.2.1)
 
@@ -146,172 +182,7 @@
 - **🎴 Card State Sync** - Fix inaccurate learning progress save timing
 - **💾 Database Initialization** - Fix database creation failure on first use
 
----
 
-### v0.7.3 (2026.1.24)
-
-#### ✨ New Features
-- **📚 Bookshelf Cover Size** - New bookshelf cover size setting (80-160px), support dynamic adjustment for 3 or 4 covers per row
-- **📄 Open Document Assets** - Support opening book links directly from document assets folder, auto-extract metadata and add to bookshelf on first click, open directly on subsequent clicks
-- **💾 Interface State Persistence** - Auto-save and restore reading interface state
-  - Annotation filters: color filter, sort method (time/date/chapter)
-  - TOC state: normal/reverse order
-  - Note filters: all filter conditions
-  - Auto-restore last filter state when switching books or reopening
-- **🔄 Batch Sync Annotations** - New "Sync All" feature, one-click import all unsynced annotations to bound document
-  - Refresh button added next to "Sync on Add" option
-  - Smart detection of imported annotations to avoid duplicates
-  - Auto-handle deleted blocks, re-import and update association if block deleted in document
-- **🔄 Bidirectional Annotation Sync** - Auto-sync updates to bound document after editing annotation content in annotation panel or reading interface
-  - Auto-locate all blocks containing the annotation
-  - Auto-update block content to keep annotation and document consistent
-  - Unified handling of all types including highlights and shapes
-- **🎨 PDF Shape Annotation Enhancement** - Complete PDF shape annotation feature, unified to auto-sync logic
-  - Auto-sync to bound document on add
-  - Include complete chapter path information
-  - Support block association and bidirectional sync
-  - Fully consistent with highlight annotation logic
-
-#### ⚡ Performance Optimization
-- **📑 TOC Performance** - Optimize TOC interaction experience with 10-second cooldown mechanism, lazy-load bookmark buttons, delayed rendering
-- **🔧 Code Refactor** - Unify book opening logic, eliminate duplicate code, enhance maintainability
-- **🚀 Annotation Detection** - Use database queries instead of cache solution, real-time accurate, better performance
-- **🎯 Logic Unification** - Comprehensive review of annotation copy and sync logic, unified method calls, optimized code structure, improved performance and stability
-- **💾 State Management** - Unified state loading and saving logic, removed duplicate code, simplified function calls
-
-#### 🐛 Bug Fixes
-- **🖼️ PDF Thumbnail** - Fix PDF thumbnail not displaying, proactively load unrendered pages, use compression to reduce data, add complete error handling
-- **📖 Chapter Path Integrity** - Fix annotation only showing current chapter name, now shows complete hierarchical path (e.g., `Volume 1 - Five-character Ancient Poetry - Drinking Alone Under the Moon`)
-  - PDF: Convert flat TOC to structure with complete paths, traverse forward to build ancestor chain
-  - EPUB/TXT: Recursively search TOC tree, build complete path through link matching
-- **📋 Custom Link Format** - Fix copy, export, auto-export annotations not using custom link format
-- **🔗 Shape Annotation Block Association** - Fix shape annotation still showing import button after auto-import
-- **🔄 TOC Reverse Function** - Fix TOC normal/reverse order button not working, now supports TOC reverse display
-- **⬆️ Scroll Button** - Fix scroll button logic, intelligently switch to top/bottom based on current position
-- **🔗 Unbind Document Interaction** - Optimize unbind document button position and interaction, add confirmation to prevent accidental clicks
-
----
-
-### v0.7.1 (2026.1.22)
-
-#### ✨ New Features
-- **🎨 Follow SiYuan Theme** - New "Follow SiYuan" theme option, auto-adapt to SiYuan's light/dark theme and custom themes
-- **🌓 Auto Theme Switch** - Reader theme automatically syncs when switching SiYuan theme, perfectly integrated into SiYuan interface
-- **📝 Popnote Enhancement** - Support various non-standard EPUB popnote formats (footnotes/endnotes/references, etc.)
-- **🎯 Popnote Jump** - Click popnote title bar to jump to original text position
-- **📋 Content Copy** - Popnote content area supports text selection and copying
-- **🌐 Internationalization** - Popnote types and prompt text support Chinese/English switching
-- **🛠️ PDF Toolbar Style** - New toolbar style settings, support floating (default) and fixed modes
-  - Floating mode: Draggable rounded card in top-right corner, collapsible
-  - Fixed mode: Top-fixed WPS-style toolbar, horizontal layout, always expanded
-
-#### 🎨 UI Optimization
-- **🎨 Popnote Style** - Optimize popnote popup style, clickable title bar, selectable content area
-- **💡 Interaction Hint** - Title bar shows "(Click to jump)" hint, pointer cursor on hover
-- **🔍 PDF Zoom** - Remove PDF 500% max zoom limit, support unlimited zoom
-- **📑 Group Optimization** - After grouping annotations by chapter or date, redundant chapter and date info no longer shown within groups
-- **✏️ Note Editing** - Optimize note interaction, click note area to enter edit directly, click annotation text to jump and locate
-- **🛠️ Toolbar Optimization** - Fixed mode toolbar occupies full width, no rounded corners, light shadow, content area auto-reserves space
-- **📚 Book Source Management** - Delete confirmation uses inline UI, remove dialogs, more concise and efficient interaction
-
-#### 🐛 Bug Fixes
-- **🌙 PDF Dark Mode** - Fix incorrect text color in PDF dark mode
-  - Dark mode: canvas renders with inverted background + invert filter = perfect match with SiYuan dark theme
-  - Light mode: canvas uses theme background color directly, no filter
-  
-- **🎨 EPUB Theme Sync** - Fix outer background not updating when switching EPUB theme
-  - foliate-view uses closed Shadow DOM, internal paginator reads background color from iframe
-  - Use `requestAnimationFrame` + `renderer.render()` to trigger re-render, sync inner/outer background
-  
-- **🎨 Theme Parsing** - Optimize CSS variable parsing logic, ensure theme colors correctly applied to all elements
-- **🔖 Tab Switch** - Fix PDF text selection still showing annotation menu when in inactive tab
-
-#### ⚡ Code Optimization
-- **🧹 Remove Deprecated** - Remove deprecated "TOC Position" setting and related code
-- **🔧 Extract Utilities** - Extract `resolveColor`, `resolveTheme`, `getTheme` and other common functions, code more concise and efficient
-- **📦 Book Source Refactor** - Extreme code simplification, use SiYuan native UI components, 40% code reduction
-
----
-
-### v0.7.0 (2026.1.21)
-
-#### ✨ New Features
-- **Chapter Display** - Annotations automatically show chapter name, display page number for PDF without TOC
-- **Smart Grouping** - Support grouping by chapter, date, or time with collapsible sections
-- **Auto Sync on Add** - New annotations automatically import to bound SiYuan document
-- **Auto Sync on Delete** - Deleting annotations synchronously removes corresponding blocks in document
-- **Smart Deduplication** - Auto-detect imported annotations to avoid duplicates
-
-#### 🐛 Bug Fixes
-- **Chapter Export** - Fix missing chapter name in annotation export link format
-- **PDF Page Number** - Fix missing location info for PDF annotations without TOC
-- **Style Filter** - Fix EPUB annotations showing PDF-only styles (dotted, dashed, double line)
-
-#### 🎨 UI Optimization
-- **Annotation Layout** - Chapter name and time displayed side by side, chapter on left, time on right
-- **Card Style** - Comprehensive annotation card style optimization, bar height only covers first line
-- **Button Position** - Move action buttons to bottom right to avoid covering content
-- **Note Style** - Note content displayed in italic for clearer visual hierarchy
-- **Group Icon** - Group collapse uses vertical line/dot toggle for more intuitive interaction
-
----
-
-### v0.6.9 (2026.1.11)
-
-#### ✨ New Features
-- **Bidirectional Annotation Binding** - Auto-record block ID after importing annotations to SiYuan document, enabling bidirectional association
-- **Block Jump** - Bound annotations show link icon, click to jump directly to the corresponding SiYuan document block
-- **Hover Preview** - Hover over bound annotations to show SiYuan native floating preview window after 620ms
-- **Document Binding** - Add document binding feature in annotation/note panel, associate book annotations to specified SiYuan document
-- **Anna Settings** - New Anna's Archive settings window with file type filtering, domain selection and custom domain support
-
-#### 🎨 UI Optimization
-- **Navigation Style** - Optimize navigation bar style to better match SiYuan style
-- **Icon Switch** - Imported annotations automatically change download icon to link icon to distinguish import status
-
-#### 🐛 Bug Fixes
-- **ZAW3 Jump** - Fix zaw3 jump flicker causing annotations to cover text
-
----
-
-### v0.6.8 (2026.1.8)
-
-#### 🐛 Bug Fixes
-- **Deck Display** - Fix deck not showing content when book is not opened
-- **Bookshelf Duplicate Open** - Optimize bookshelf open book logic to avoid duplicate tabs
-
-#### 🎨 UI Optimization
-- **Tab Icon** - Add reader icon to book tabs for easier identification
-
-#### 📝 PDF Annotation Enhancement
-- **Style Extension** - PDF annotation adds dotted, dashed, double line styles, consistent with EPUB
-
-#### 📖 TXT Annotation Optimization
-- **Render Optimization** - Fix other annotations disappearing after annotation, now only render new annotations
-- **Delete Optimization** - Fix text being deleted after annotation deletion, now only remove annotation style
-- **Jump Function** - Support clicking annotation to jump precisely to annotation position, not just chapter start
-- **Link Copy** - Fix annotation copy not generating hyperlink, now correctly copy and jump
-
----
-
-### v0.6.7 (2025.12.29)
-
-#### 🎯 Interaction Optimization
-- **Unified Sidebar** - Optimize top button and plugin settings button click logic, unified to open SiReader sidebar
-- **Quick TOC Access** - Add TOC button to reading page bottom toolbar, click to popup compact window from bottom, no need to open sidebar
-
-#### 🛠️ UI Optimization
-- **Navigation Adaptive** - Optimize navigation button adaptive layout, responsive layout more smooth
-- **Settings Preview Enhancement** - Settings preview add collapse function, optimize space utilization, real-time preview more intuitive
-- **Search Interaction** - Optimize search interface dropdown button, click blank area to auto hide
-- **Tooltip Complete** - Unify all interface button tooltip display, prompt information more clear
-
-#### 🐛 Bug Fixes
-- **TOC Scroll** - Fix TOC scroll position reset after page turn
-- **Sidebar Name** - Fix sidebar button name display as "Settings", unified to "SiReader"
-- **Cover Display** - Optimize cover loading failure display logic
-
----
 
 ## 📖 Feature Details
 

@@ -98,7 +98,7 @@
           </div>
           
           <div v-else class="card-face back">
-            <div v-html="renderAnki(currentCard)" class="anki-content" @click.capture="stopIfAudio"></div>
+            <div v-html="renderAnki(currentCard, '.anki-content')" class="anki-content" @click.capture="stopIfAudio"></div>
           </div>
         </div>
 
@@ -139,7 +139,7 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { showMessage } from 'siyuan'
 import { recordReview } from './stat'
-import { playAudio, setupImageLazyLoad } from './utils'
+import { playAudio, setupImageLazyLoad, renderAnki, setupInteractive } from './utils'
 import { startFlashSession, endFlashSession, getRatingTimeText } from './flash'
 import type { DeckCard } from './types'
 
@@ -208,13 +208,20 @@ const getConfettiStyle = (i: number) => {
   }
 }
 
-const renderAnki = (card: DeckCard) => card.modelCss ? `<style>${card.modelCss}</style>${card.back}` : card.back
-const stopIfAudio = (e: Event) => { if ((e.target as HTMLElement).closest('.anki-audio')) e.stopPropagation() }
+const stopIfAudio = (e: Event) => { 
+  if ((e.target as HTMLElement).closest('.anki-audio')) {
+    e.stopPropagation()
+    playAudio(e)
+  }
+}
+
 const flip = async () => { 
   if (!isFlipped.value) { 
     isFlipped.value = true
-    setTimeout(observeImages, 50)
-    // 加载评分按钮时间
+    setTimeout(() => {
+      observeImages()
+      setupInteractive('.anki-content')
+    }, 50)
     await updateRatingTimes()
   }
 }
