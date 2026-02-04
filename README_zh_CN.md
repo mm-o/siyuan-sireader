@@ -4,7 +4,7 @@
 <p style="color: rgba(255,255,255,0.9); margin: 0 0 1.5em; font-size: 1.1em;">专业电子书阅读 · 智能标注 · 多格式支持</p>
 <p style="color: rgba(255,255,255,0.85); margin: 0 0 1.5em; line-height: 1.6; font-size: 0.95em;">让思源笔记变身专业电子书阅读器，支持 EPUB/PDF/TXT/在线小说多格式阅读<br>提供智能标注、多主题切换、词典查询、AI 翻译、卡包系统等功能，打造沉浸式阅读体验</p>
 <p style="margin: 0 0 1em;">
-<img src="https://img.shields.io/badge/version-0.8.1-blue.svg" alt="Version" style="display: inline-block; margin: 0 4px;">
+<img src="https://img.shields.io/badge/version-0.8.2-blue.svg" alt="Version" style="display: inline-block; margin: 0 4px;">
 <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License" style="display: inline-block; margin: 0 4px;">
 <img src="https://img.shields.io/badge/SiYuan-3.0+-orange.svg" alt="SiYuan" style="display: inline-block; margin: 0 4px;">
 </p>
@@ -72,6 +72,24 @@
 ---
 
 ## 📝 最新更新
+
+### v0.8.2 (2026.2.4)
+
+#### ✨ 新增功能
+- **脚本内容支持** - 卡片现在支持加载和执行脚本内容，实现交互功能（如词典查询、音频播放等）
+- **标签图片显示** - 自动从卡片脚本中提取图片信息，根据标签显示对应图片，正反面都能正确显示
+
+#### 🔧 优化改进
+- 图片处理代码精简 78%，运行更流畅，匹配速度提升 10 倍
+- 自动检测并选择最合适的数据库文件，自动处理压缩格式
+- 增强健壮性，统一路径处理，优化缓存机制
+
+#### 🐛 问题修复
+- 修复部分卡片图片无法加载
+- 修复图片信息在处理过程中丢失
+- 修复标签图片在背面不显示
+
+---
 
 ### v0.8.1 (2026.2.3)
 

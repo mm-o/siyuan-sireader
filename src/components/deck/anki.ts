@@ -58,20 +58,42 @@ export const saveAnkiDb = async (cid: string, db: any) => {
 
 // ========== 格式兼容层 ==========
 const getModels = async (db: any) => {
+  // 尝试旧版格式
   try {
     const r = db.exec('SELECT models FROM col')
     if (r?.[0]?.values[0]?.[0]) return JSON.parse(r[0].values[0][0] as string)
+  } catch {}
+  
+  // 新版格式
+  try {
+    const nt = db.exec('SELECT id, name, config FROM notetypes')?.[0]
+    if (!nt) return {}
     
-    const nt = db.exec('SELECT id, name FROM notetypes')
-    if (!nt?.[0]) return {}
+    const templates = db.exec('SELECT ntid, name, ord, qfmt, afmt FROM templates')?.[0]?.values || []
+    const fields = db.exec('SELECT ntid, name, ord FROM fields')?.[0]?.values || []
     
-    return Object.fromEntries(nt[0].values.map((row: any) => [row[0], {
-      id: row[0], name: row[1],
-      flds: [{ name: 'Front', ord: 0 }, { name: 'Back', ord: 1 }],
-      tmpls: [{ name: 'Card 1', ord: 0, qfmt: '{{Front}}', afmt: '{{FrontSide}}<hr>{{Back}}' }],
-      css: '.card{font-family:arial;font-size:20px;text-align:center;color:#000;background-color:#fff;}'
-    }]))
-  } catch {
+    const byNtid = (arr: any[]) => arr.reduce((m, row) => {
+      const [ntid, ...data] = row
+      if (!m.has(ntid)) m.set(ntid, [])
+      m.get(ntid).push(row.length === 5 ? { name: data[0], ord: data[1], qfmt: data[2], afmt: data[3] } : { name: data[0], ord: data[1] })
+      return m
+    }, new Map())
+    
+    const templatesByNtid = byNtid(templates)
+    const fieldsByNtid = byNtid(fields)
+    
+    return Object.fromEntries(nt.values.map((row: any) => {
+      const [id, name, config] = row
+      const cfg = config ? JSON.parse(config) : {}
+      return [id, {
+        id, name,
+        flds: (fieldsByNtid.get(id) || []).sort((a: any, b: any) => a.ord - b.ord),
+        tmpls: (templatesByNtid.get(id) || []).sort((a: any, b: any) => a.ord - b.ord),
+        css: cfg.css || '.card{font-family:arial;font-size:20px;text-align:center;color:#000;background-color:#fff;}'
+      }]
+    }))
+  } catch (e) {
+    console.error('[getModels]', e)
     return {}
   }
 }
@@ -79,27 +101,35 @@ const getModels = async (db: any) => {
 const getDecks = async (db: any) => {
   const parse = (id: any, name: string, desc = '') => {
     const n = name.replace(/\x1F/g, '::')
-    const p = n.split('::')
-    return { id, name: n, desc, parent: p.length > 1 ? p.slice(0, -1).join('::') : undefined }
+    return { id, name: n, desc, parent: n.includes('::') ? n.split('::').slice(0, -1).join('::') : undefined }
   }
   
+  // 尝试旧版格式
   try {
-    const r = db.exec('SELECT decks FROM col')
-    if (r?.[0]?.values[0]?.[0]) {
-      const decks = JSON.parse(r[0].values[0][0] as string)
-      return Object.entries(decks).map(([did, info]: any) => parse(parseInt(did), info.name, info.desc))
-    }
+    const r = db.exec('SELECT decks FROM col')?.[0]?.values[0]?.[0]
+    if (r) return Object.entries(JSON.parse(r as string)).map(([did, info]: any) => parse(parseInt(did), info.name, info.desc))
   } catch {}
   
+  // 新版格式
   try {
-    const r = db.exec('SELECT id, name FROM decks')
-    if (r?.[0]) return r[0].values.map((row: any) => parse(row[0], row[1]))
+    const r = db.exec('SELECT id, name FROM decks')?.[0]
+    if (r) return r.values.map((row: any) => parse(row[0], row[1]))
   } catch {}
   
   return []
 }
 
 // ========== 卡片操作 ==========
+// 模板过滤器（提取到外部避免重复创建）
+const TEMPLATE_FILTERS: Record<string, (v: string) => string> = {
+  furigana: (v) => v.replace(/([^\[\s]+)\[([^\]]+)\]/g, '<ruby>$1<rt>$2</rt></ruby>'),
+  kanji: (v) => v.replace(/\[([^\]]*?)\]/g, ''),
+  kana: (v) => v.replace(/[^\[]+\[([^\]]+)\]/g, '$1').replace(/[^\[]+/g, ''),
+  hint: (v) => v ? `<a class="hint" href="#" onclick="this.style.display='none';this.nextSibling.style.display='inline';return false;">[...]</a><span style="display:none">${v}</span>` : '',
+  type: () => `<input type="text" id="typeans" />`,
+  text: (v) => v.replace(/<[^>]+>/g, '')
+}
+
 export const queryAnkiCards = async (cid: string, deckId: number, limit = 100, offset = 0): Promise<any[]> => {
   try {
     const db = await getAnkiDb(cid)
@@ -122,44 +152,63 @@ export const queryAnkiCards = async (cid: string, deckId: number, limit = 100, o
       const template = model?.tmpls?.[ord]
       const cardTags = tags.trim().split(' ').filter(Boolean)
       
-      let front = fields[0] || '', back = fields[1] || ''
+      const baseCard = { id, nid, did, ord, type, queue, due, ivl, factor, reps, lapses, fields, tags: cardTags, 
+        model: model?.name || 'Unknown', modelCss: model?.css || '' }
       
-      if (template && model?.flds) {
-        const fieldMap = Object.fromEntries([
-          ...model.flds.map((f: any, i: number) => [f.name, fields[i] || '']),
-          ['Tags', cardTags.join(' ')], ['Type', model.name || ''], ['Deck', ''], ['Subdeck', ''], ['Card', template.name || '']
-        ] as [string, string][])
-        
-        const parseTemplate = (html: string): string => {
-          html = html.replace(/\{\{#([^}]+)\}\}([\s\S]*?)\{\{\/\1\}\}/g, (_, f, c) => fieldMap[f.trim()] ? parseTemplate(c) : '')
-          html = html.replace(/\{\{\^([^}]+)\}\}([\s\S]*?)\{\{\/\1\}\}/g, (_, f, c) => !fieldMap[f.trim()] ? parseTemplate(c) : '')
-          html = html.replace(/\{\{([^:}]+):([^}]+)\}\}/g, (_, filter, field) => {
-            const v = fieldMap[field.trim()] || ''
-            const filters: Record<string, () => string> = {
-              furigana: () => v.replace(/\[([^\]]+)\]/g, '<ruby>$1</ruby>').replace(/\s/g, ''),
-              kanji: () => v.replace(/\[([^\]]*?)\]/g, (_, r: string) => r.split(' ')[0] || ''),
-              kana: () => v.replace(/\[([^\]]*?)\]/g, (_, r: string) => r.split(' ')[1] || ''),
-              hint: () => v ? `<a class="hint" href="#" onclick="this.style.display='none';this.nextSibling.style.display='inline';return false;">[...]</a><span style="display:none">${v}</span>` : '',
-              type: () => `<input type="text" id="typeans" />`,
-              text: () => v.replace(/<[^>]+>/g, '')
-            }
-            return filters[filter.trim()]?.() || v
-          })
-          html = html.replace(/\{\{([^}]+)\}\}/g, (m, f) => {
-            const fn = f.trim()
-            return fn === 'FrontSide' ? m : (fieldMap[fn] ?? '')
-          })
-          return html
-        }
-        
-        front = parseTemplate(template.qfmt || front)
-        back = parseTemplate(template.afmt || back)
+      if (!template || !model?.flds) {
+        return { ...baseCard, 
+          front: processMedia(fields[0] || '', cid), 
+          back: processMedia(fields[1] || '', cid), 
+          scripts: [] }
       }
       
-      const pf = processMedia(front, cid, cardTags)
-      const pb = back.includes('{{FrontSide}}') ? back.replace(/\{\{FrontSide\}\}/g, pf) : processMedia(back.replace(/\{\{FrontSide\}\}/g, pf), cid, cardTags)
+      // 构建字段映射
+      const fieldMap = Object.fromEntries([
+        ...model.flds.map((f: any, i: number) => [f.name, fields[i] || '']),
+        ['Tags', cardTags.join(' ')], ['Type', model.name || ''], ['Deck', ''], ['Subdeck', ''], ['Card', template.name || '']
+      ] as [string, string][])
       
-      return { id, nid, did, ord, type, queue, due, ivl, factor, reps, lapses, fields, tags: cardTags, model: model?.name || 'Unknown', modelCss: model?.css || '', front: pf, back: pb }
+      // 模板解析器（优化：减少函数调用）
+      const parseTemplate = (html: string): string => {
+        return html
+          .replace(/\{\{#([^}]+)\}\}([\s\S]*?)\{\{\/\1\}\}/g, (_, f, c) => fieldMap[f.trim()] ? parseTemplate(c) : '')
+          .replace(/\{\{\^([^}]+)\}\}([\s\S]*?)\{\{\/\1\}\}/g, (_, f, c) => !fieldMap[f.trim()] ? parseTemplate(c) : '')
+          .replace(/\{\{([^:}]+):([^}]+)\}\}/g, (_, filter, field) => {
+            const v = fieldMap[field.trim()] || ''
+            return TEMPLATE_FILTERS[filter.trim()]?.(v) || v
+          })
+          .replace(/\{\{([^}]+)\}\}/g, (m, f) => f.trim() === 'FrontSide' ? m : (fieldMap[f.trim()] ?? ''))
+      }
+      
+      // 提取脚本并解析（优化：合并操作）
+      const extractScripts = (html: string) => {
+        const scripts: string[] = []
+        return [html.replace(/<script\b[^>]*>([\s\S]*?)<\/script>/gi, (m) => (scripts.push(m), '')), scripts] as const
+      }
+      
+      // 处理正面：先处理脚本图片映射，再解析模板，最后处理媒体
+      let frontHtml = processScriptImgMappings(template.qfmt || fields[0], cid, cardTags)
+      const [frontHtmlNoScript, frontScripts] = extractScripts(frontHtml)
+      const front = processMedia(parseTemplate(frontHtmlNoScript), cid)
+      
+      // 处理背面：先处理脚本图片映射，再解析模板，最后处理媒体
+      let backHtml = processScriptImgMappings(template.afmt || fields[1], cid, cardTags)
+      const [backHtmlNoScript, backScripts] = extractScripts(backHtml)
+      const back = processMedia(parseTemplate(backHtmlNoScript).replace(/\{\{FrontSide\}\}/g, front), cid)
+      
+      // 提取脚本内容并替换变量（优化：预编译正则）
+      const scripts = [...backScripts, ...frontScripts].map(s => {
+        const m = s.match(/<script\b[^>]*>([\s\S]*?)<\/script>/i)
+        if (!m) return ''
+        let code = m[1].trim()
+        for (const [k, v] of Object.entries(fieldMap)) {
+          const val = (v as string).replace(/'/g, "\\'").replace(/[\n\r]/g, '\\n')
+          code = code.replace(new RegExp(`\\{\\{${k}\\}\\}`, 'g'), val)
+        }
+        return code
+      }).filter(Boolean)
+      
+      return { ...baseCard, front, back, scripts }
     })
   } catch (e) {
     console.error('[Query]', e)
@@ -168,16 +217,17 @@ export const queryAnkiCards = async (cid: string, deckId: number, limit = 100, o
 }
 
 export const insertAnkiCard = async (cid: string, deckId: number, front: string, back: string, tags: string[] = [], modelCss?: string) => {
+  const db = await getAnkiDb(cid)
+  if (!db) return null
+  
   try {
-    const db = await getAnkiDb(cid)
-    if (!db) return null
-    
     const now = Date.now()
     
+    // 更新 CSS（如果提供）
     if (modelCss) {
-      const r = db.exec('SELECT models FROM col')
-      if (r?.[0]) {
-        const models = JSON.parse(r[0].values[0][0] as string)
+      const r = db.exec('SELECT models FROM col')?.[0]
+      if (r) {
+        const models = JSON.parse(r.values[0][0] as string)
         if (models['1']) {
           models['1'].css = modelCss
           db.run('UPDATE col SET models = ?', [JSON.stringify(models)])
@@ -196,9 +246,10 @@ export const insertAnkiCard = async (cid: string, deckId: number, front: string,
 }
 
 export const deleteAnkiCard = async (cid: string, cardId: number, noteId?: number) => {
+  const db = await getAnkiDb(cid)
+  if (!db) return false
+  
   try {
-    const db = await getAnkiDb(cid)
-    if (!db) return false
     db.run('DELETE FROM cards WHERE id = ?', [cardId])
     if (noteId) db.run('DELETE FROM notes WHERE id = ?', [noteId])
     await saveAnkiDb(cid, db)
@@ -209,11 +260,10 @@ export const deleteAnkiCard = async (cid: string, cardId: number, noteId?: numbe
 }
 
 export const getAnkiCardCount = async (cid: string, deckId: number) => {
+  const db = await getAnkiDb(cid)
+  if (!db) return 0
   try {
-    const db = await getAnkiDb(cid)
-    if (!db) return 0
-    const r = db.exec(`SELECT COUNT(*) FROM cards WHERE did = ${deckId}`)
-    return r?.[0]?.values[0][0] || 0
+    return db.exec(`SELECT COUNT(*) FROM cards WHERE did = ${deckId}`)?.[0]?.values[0][0] || 0
   } catch {
     return 0
   }
@@ -246,75 +296,72 @@ export const createAnkiDatabase = async (cid: string, name: string) => {
 }
 
 // ========== 媒体处理 ==========
-const processMedia = (html: string, cid: string, tags: string[] = []) => {
-  html = html.replace(/\[sound:([^\]]+)\]/g, (_, f) => `<svg class="anki-audio" data-cid="${cid}" data-file="${f}"><use xlink:href="#iconRecord"/></svg>`)
-  html = html.replace(/<audio[^>]*?src=["']([^"']+)["'][^>]*?>.*?<\/audio>/gi, (_, src) => {
-    const isUrl = src.startsWith('http')
-    return isUrl ? `<svg class="anki-audio" data-url="${src}"><use xlink:href="#iconRecord"/></svg>` : `<svg class="anki-audio" data-cid="${cid}" data-file="${src.split('?')[0].split('/').pop() || src}"><use xlink:href="#iconRecord"/></svg>`
-  })
+const audioSvg = (cid: string, file: string) => `<svg class="anki-audio" data-cid="${cid}" data-file="${file}"><use xlink:href="#iconRecord"/></svg>`
+const audioSvgUrl = (url: string) => `<svg class="anki-audio" data-url="${url}"><use xlink:href="#iconRecord"/></svg>`
+
+// 从脚本中提取图片映射并转换为 HTML
+const processScriptImgMappings = (html: string, cid: string, tags: string[]): string => {
+  const m = html.match(/<script\b[^>]*>([\s\S]*?imgMappings[\s\S]*?)<\/script>/i)
+  if (!m) return html
   
-  const jsImgMatches = html.match(/(\w+):\s*\{\s*imgSrc:\s*["']([^"']+)["']/g)
-  if (jsImgMatches) {
-    const imgMap = new Map(jsImgMatches.map(m => {
-      const [, tag, file] = m.match(/(\w+):\s*\{\s*imgSrc:\s*["']([^"']+)["']/) || []
-      return [tag?.toLowerCase(), decodeURIComponent(file?.split('?')[0].split('/').pop() || file || '')] as [string, string]
-    }).filter(([k, v]) => k && v))
-    
-    const tagsMatch = html.match(/<div id="tags"[^>]*>(.*?)<\/div>/i)
-    const tagText = tagsMatch?.[1]?.trim() || ''
-    const displayTags = tagText ? tagText.split(/\s+/).filter(Boolean) : tags
-    
-    if (!tagText && tags.length) html = html.replace(/<div id="tags"([^>]*)><\/div>/, `<div id="tags"$1>${tags.join(' ')}</div>`)
-    
-    const imgs = displayTags.map(t => imgMap.get(t.toLowerCase())).filter(Boolean).map(f => `<img data-cid="${cid}" data-file="${f}" loading="lazy" style="max-width:70px;height:70px;margin:0 4px;display:inline-block;vertical-align:middle;object-fit:contain">`).join('')
-    if (imgs) html = html.replace(/<div id="category"><\/div>/, `<div id="category">${imgs}</div>`)
-  }
+  // 括号计数提取对象
+  const s = m[1], i = s.indexOf('{', s.indexOf('imgMappings'))
+  if (i === -1) return html
   
-  html = html.replace(/<img([^>]*?)src=["']([^"']+)["']([^>]*?)>/gi, (m, before, src, after) => {
-    if (src.startsWith('http')) return m
-    const filename = decodeURIComponent(src.split('?')[0].split('/').pop() || src)
-    return `<img ${`${before}${after}`.replace(/\s+/g, ' ').trim()} data-cid="${cid}" data-file="${filename}" loading="lazy" style="max-width:100%;height:auto">`
-  })
+  for (var d = 0, e = i, j = i; j < s.length && (s[j] === '{' ? ++d : s[j] === '}' && !--d && (e = j, 0)); j++);
   
-  return html
+  // 提取映射并生成图片
+  const imgs = tags.map(t => {
+    const r = s.slice(i, e + 1).match(new RegExp(`${t}:\\s*\\{\\s*imgSrc:\\s*["']([^"']+)["']`, 'i'))
+    return r?.[1] ? `<img data-cid="${cid}" data-file="${decodeURIComponent(r[1].split(/[?/]/).pop()!)}" loading="lazy" style="max-width:70px;height:70px;margin:0 4px;display:inline-block;vertical-align:middle;object-fit:contain">` : ''
+  }).filter(Boolean).join('')
+  
+  return imgs ? html.replace(/<div id="category"><\/div>/, `<div id="category">${imgs}</div>`).replace(m[0], '') : html
 }
+
+const processMedia = (html: string, cid: string) => html
+  .replace(/\[sound:([^\]]+)\]/g, (_, f) => audioSvg(cid, f))
+  .replace(/<audio[^>]*?src=["']([^"']+)["'][^>]*?>.*?<\/audio>/gi, (_, s) => s.startsWith('http') ? audioSvgUrl(s) : audioSvg(cid, s.split(/[?/]/).pop() || s))
+  .replace(/<img([^>]*?)src=["']([^"']+)["']([^>]*?)>/gi, (m, b, s, a) => s.startsWith('http') ? m : `<img ${`${b}${a}`.replace(/\s+/g, ' ').trim()} data-cid="${cid}" data-file="${decodeURIComponent(s.split(/[?/]/).pop() || s)}" loading="lazy" style="max-width:100%;height:auto">`)
 
 export const getMediaFromApkg = async (cid: string, filename: string): Promise<Blob | null> => {
   const key = `${cid}:${filename}`
-  if (mediaCache.has(key)) return mediaCache.get(key)!
+  const cached = mediaCache.get(key)
+  if (cached) return cached
   
   try {
     const { getDatabase } = await import('./database')
     const col = (await (await getDatabase()).getCollections()).find(c => c.id === cid)
     if (!col?.apkgPath) return null
     
-    const res = await fetch('/api/file/getFile', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: col.apkgPath }) })
+    const res = await fetch('/api/file/getFile', { 
+      method: 'POST', 
+      headers: { 'Content-Type': 'application/json' }, 
+      body: JSON.stringify({ path: col.apkgPath }) 
+    })
     if (!res.ok) return null
     
     const zip = await JSZip.loadAsync(await res.arrayBuffer())
     const mediaFile = zip.file('media')
     if (!mediaFile) return null
     
-    let mediaMap: Record<string, string> = {}
-    try {
-      const text = await mediaFile.async('text')
-      mediaMap = text ? JSON.parse(text) : {}
-    } catch {
-      const compressed = await mediaFile.async('uint8array')
-      const text = new TextDecoder().decode(decompress(compressed))
-      mediaMap = text ? JSON.parse(text) : {}
-    }
+    // 解析 media 映射（优化：合并 try-catch）
+    const mediaMap: Record<string, string> = await mediaFile.async('text')
+      .then(text => JSON.parse(text) || {})
+      .catch(async () => JSON.parse(new TextDecoder().decode(decompress(await mediaFile.async('uint8array')))) || {})
     
     if (!Object.keys(mediaMap).length) return null
     
+    // 查找文件（优化：预计算变体）
     const cleanName = filename.replace(/^_+/, '')
+    const variants = new Set([filename, cleanName, filename.toLowerCase(), cleanName.toLowerCase()])
     const num = Object.entries(mediaMap).find(([_, n]) => {
-      const name = n as string
-      return [filename, cleanName].some(f => [name, name.toLowerCase(), name.replace(/^_+/, '')].includes(f) || [name, name.toLowerCase(), name.replace(/^_+/, '')].includes(f.toLowerCase()))
+      const name = (n as string).replace(/^_+/, '')
+      return variants.has(name) || variants.has(name.toLowerCase())
     })?.[0]
     
     if (!num) return null
-    const file = zip.file(num as string)
+    const file = zip.file(num)
     if (!file) return null
     
     const ext = filename.toLowerCase().split('.').pop() || ''
@@ -332,20 +379,21 @@ export const importApkg = async (file: File, onProgress?: (msg: string) => void)
     onProgress?.('解析文件...')
     const zip = await JSZip.loadAsync(file)
     
-    let dbFile = zip.file('collection.anki21b') || zip.file('collection.anki2') || zip.file('collection.anki21')
-    if (!dbFile) throw new Error('无效 .apkg 文件：未找到数据库')
-    
-    let dbBuffer: ArrayBuffer
-    if (dbFile.name === 'collection.anki21b') {
-      onProgress?.('解压数据库...')
-      const compressed = await dbFile.async('uint8array')
-      dbBuffer = decompress(compressed).buffer.slice(0) as ArrayBuffer
-    } else {
-      dbBuffer = await dbFile.async('arraybuffer')
+    // 按优先级选择数据库
+    onProgress?.('加载数据库...')
+    let dbBuffer: ArrayBuffer | null = null
+    for (const name of ['collection.anki21b', 'collection.anki21', 'collection.anki2']) {
+      const f = zip.file(name)
+      if (f) {
+        try {
+          dbBuffer = name === 'collection.anki21b' ? decompress(await f.async('uint8array')).buffer.slice(0) as ArrayBuffer : await f.async('arraybuffer')
+          break
+        } catch (e) { console.warn(`[Import] 跳过 ${name}:`, e) }
+      }
     }
+    if (!dbBuffer) throw new Error('无效 .apkg 文件：未找到有效数据库')
     
     const cid = `col-${Date.now()}`
-    const name = file.name.replace('.apkg', '')
     const dbPath = getAnkiDbPath(cid)
     
     onProgress?.('保存数据...')
@@ -364,10 +412,16 @@ export const importApkg = async (file: File, onProgress?: (msg: string) => void)
     deckList.sort((a, b) => a.name.split('::').length - b.name.split('::').length)
     
     const { getDatabase } = await import('./database')
-    await (await getDatabase()).saveCollection({ id: cid, name, path: dbPath, imported: Date.now(), apkgPath: `${ANKI_BASE}/${cid}/source.apkg` })
+    await (await getDatabase()).saveCollection({ 
+      id: cid, 
+      name: file.name.replace('.apkg', ''), 
+      path: dbPath, 
+      imported: Date.now(), 
+      apkgPath: `${ANKI_BASE}/${cid}/source.apkg` 
+    })
     
     clearAnkiDbCache()
-    return { collectionId: cid, name, decks: deckList }
+    return { collectionId: cid, name: file.name.replace('.apkg', ''), decks: deckList }
   } catch (e) {
     console.error('[Import]', e)
     throw e

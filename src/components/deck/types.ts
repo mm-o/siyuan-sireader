@@ -174,6 +174,7 @@ export interface DeckCard {
   // Anki 模板
   model?: string
   modelCss?: string
+  scripts?: string[]
   
   timestamp: number
 }

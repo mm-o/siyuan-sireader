@@ -33,7 +33,8 @@ const mergeCardData = (ankiCards: any[], progressList: CardProgress[], deckId: s
       difficulty: progressMap.get(c.id)!.difficulty
     } as any : undefined,
     model: c.model,
-    modelCss: c.modelCss
+    modelCss: c.modelCss,
+    scripts: c.scripts || []
   } as DeckCard))
 }
 

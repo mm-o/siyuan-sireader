@@ -3,104 +3,91 @@ import { getMediaFromApkg } from './pack'
 
 // ========== Anki 文本清理 ==========
 const cleanHtml = (html: string) => html
-  .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-  .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-  .replace(/<[^>]+>/g, ' ')
-  .replace(/\[sound:[^\]]+\]/g, '')
-  .replace(/{{[^}]+}}/g, '')
+  .replace(/<(style|script)[^>]*>[\s\S]*?<\/\1>/gi, '')
+  .replace(/<[^>]+>|(\[sound:[^\]]+\]|{{[^}]+}})/g, ' ')
   .replace(/\s+/g, ' ')
   .trim()
 
 // ========== Anki 标题/释义提取 ==========
-export const extractAnkiTitle = (card: any): string => {
-  if (card._titleCache) return card._titleCache
-  const front = card.front || card.fields?.[0] || ''
-  const phonetic = front.match(/\[[^\]]+\]/)?.[0] || ''
-  const text = cleanHtml(front.replace(/[（(][^)）]*[)）]/g, '').replace(/\[[^\]]+\]/g, ''))
-  card._titleCache = (text + (phonetic ? ' ' + phonetic : '')).trim() || '(无标题)'
-  return card._titleCache
-}
+export const extractAnkiTitle = (card: any): string => 
+  card._titleCache || (card._titleCache = (() => {
+    const front = card.front || card.fields?.[0] || ''
+    const phonetic = front.match(/\[[^\]]+\]/)?.[0] || ''
+    const text = cleanHtml(front.replace(/[（(][^)）]*[)）]|\[[^\]]+\]/g, ''))
+    return (text + (phonetic ? ' ' + phonetic : '')).trim() || '(无标题)'
+  })())
 
-export const extractAnkiHint = (card: any): string => {
-  if (card._hintCache) return card._hintCache
-  const back = card.back || card.fields?.[1] || ''
-  const text = cleanHtml(back.replace(/<br\s*\/?>/gi, ' ').replace(/[高研四六托推]+\s*\d+\/\d+\s*-?\d*/g, '').replace(/[（(][^)）]*\d+[^)）]*[)）]/g, ''))
-  const matches = text.match(/[\u4e00-\u9fa5]+(?:[，。；：、的地得了着过吗呢啊][\u4e00-\u9fa5]*)*[，。；：！？]?/g)
-  card._hintCache = matches?.filter((m: string) => m.length > 1).slice(0, 3).join('，').slice(0, 60) || text.slice(0, 60)
-  return card._hintCache
-}
+export const extractAnkiHint = (card: any): string => 
+  card._hintCache || (card._hintCache = (() => {
+    const back = card.back || card.fields?.[1] || ''
+    const text = cleanHtml(back.replace(/<br\s*\/?>/gi, ' ').replace(/([高研四六托推]+\s*\d+\/\d+\s*-?\d*|[（(][^)）]*\d+[^)）]*[)）])/g, ''))
+    const matches = text.match(/[\u4e00-\u9fa5]+(?:[，。；：、的地得了着过吗呢啊][\u4e00-\u9fa5]*)*[，。；：！？]?/g)
+    return matches?.filter((m: string) => m.length > 1).slice(0, 3).join('，').slice(0, 60) || text.slice(0, 60)
+  })())
 
 // ========== Anki 渲染 ==========
-// 清理HTML中的不安全内联事件
 const sanitizeHtml = (html: string) => html
-  .replace(/\s+on(click|change|input|submit|load|error)\s*=\s*["'](?!this\.checked)[^"']*["']/gi, '')
   .replace(/\s+on\w+\s*=\s*["'][^"']*["']/gi, '')
   .replace(/href\s*=\s*["']javascript:[^"']*["']/gi, 'href="#"')
 
-// CSS作用域化
-const scopeCss = (css: string, scope: string) => css
-  .split('}')
-  .map(rule => {
-    if (!rule.trim()) return ''
-    const [selector, ...rest] = rule.split('{')
-    if (!selector || !rest.length) return rule + '}'
-    const scoped = selector.split(',').map(s => `${scope} ${s.trim()}`).join(', ')
+const scopeCss = (css: string, scope: string): string => {
+  const globals = [':root', 'html', 'body']
+  return css.split('}').map(rule => {
+    const t = rule.trim()
+    if (!t) return ''
+    
+    // @规则
+    if (t.startsWith('@')) {
+      if (!t.includes('{')) return rule + '}'
+      const [at, ...rest] = t.split('{')
+      return (at.includes('@font-face') || at.includes('@keyframes')) ? rule + '}' : `${at} {${scopeCss(rest.join('{'), scope)}`
+    }
+    
+    const [sel, ...rest] = rule.split('{')
+    if (!sel || !rest.length) return rule + '}'
+    
+    const scoped = sel.split(',').map(s => {
+      const ss = s.trim()
+      return globals.some(g => ss === g || ss.startsWith(g + ' ')) ? ss : (ss.startsWith(':') ? `${scope}${ss}` : `${scope} ${ss}`)
+    }).join(', ')
+    
     return `${scoped} {${rest.join('{')}`
-  })
-  .join('}')
+  }).join('}')
+}
 
-// 渲染Anki卡片
 export const renderAnki = (card: any, scope = '.deck-card-back') => {
-  const html = sanitizeHtml(card.back || '')
-  return card.modelCss ? `<style>${scopeCss(card.modelCss, scope)}</style>${html}` : html
+  let html = card.back || ''
+  const scripts: string[] = card.scripts || []
+  
+  // 降级：从 HTML 提取脚本
+  if (!scripts.length) html = html.replace(/<script\b[^>]*>([\s\S]*?)<\/script\s*>/gi, (_, code: string) => (scripts.push(code.trim()), ''))
+  
+  html = sanitizeHtml(html)
+  if (card.modelCss) html = `<style>${scopeCss(card.modelCss, scope)}</style>${html}`
+  
+  if (scripts.length) setTimeout(() => scripts.forEach(code => {
+    try { ;(0, eval)(code) } catch (err: any) { console.warn('[Anki Script]', err.message) }
+  }), 100)
+  
+  return html
 }
 
 // ========== 交互元素处理 ==========
 export const setupInteractive = (selector: string) => {
+  const stop = (ev: Event) => ev.stopPropagation()
+  const prevent = (ev: Event) => { ev.preventDefault(); ev.stopPropagation() }
+  
   document.querySelectorAll(selector).forEach(container => {
-    // 复选框
-    container.querySelectorAll('input[type="checkbox"]').forEach(el => {
-      const e = el as HTMLInputElement
-      e.removeAttribute('onchange')
-      e.removeAttribute('onclick')
-      e.addEventListener('click', ev => ev.stopPropagation(), { capture: false })
-      e.addEventListener('change', ev => ev.stopPropagation(), { capture: false })
+    // 表单元素（优化：批量处理）
+    container.querySelectorAll('input, textarea, select, button:not(.b3-button):not(.rating-btn)').forEach(el => {
+      ['onclick', 'onchange', 'oninput'].forEach(attr => el.removeAttribute(attr))
+      ;['click', 'change', 'input', 'focus'].forEach(evt => el.addEventListener(evt, stop, false))
     })
     
-    // 输入框
-    container.querySelectorAll('input[type="text"], input:not([type]), textarea').forEach(el => {
-      const e = el as HTMLInputElement
-      e.removeAttribute('onclick')
-      e.removeAttribute('oninput')
-      e.removeAttribute('onchange')
-      e.addEventListener('click', ev => ev.stopPropagation(), { capture: false })
-      e.addEventListener('focus', ev => ev.stopPropagation(), { capture: false })
-      e.addEventListener('input', ev => ev.stopPropagation(), { capture: false })
-    })
-    
-    // 按钮
-    container.querySelectorAll('button:not(.b3-button):not(.rating-btn)').forEach(el => {
-      const e = el as HTMLButtonElement
-      e.removeAttribute('onclick')
-      e.addEventListener('click', ev => ev.stopPropagation(), { capture: false })
-    })
-    
-    // 选择框
-    container.querySelectorAll('select').forEach(el => {
-      const e = el as HTMLSelectElement
-      e.removeAttribute('onchange')
-      e.removeAttribute('onclick')
-      e.addEventListener('click', ev => ev.stopPropagation(), { capture: false })
-      e.addEventListener('change', ev => ev.stopPropagation(), { capture: false })
-    })
-    
-    // 链接
-    container.querySelectorAll('a').forEach(el => {
-      const e = el as HTMLAnchorElement
-      if (e.href.startsWith('javascript:') || e.getAttribute('href') === '#') {
-        e.addEventListener('click', ev => { ev.preventDefault(); ev.stopPropagation() }, { capture: false })
-      }
-    })
+    // 链接（优化：简化判断）
+    container.querySelectorAll('a[href^="javascript:"], a[href="#"]').forEach(el => 
+      el.addEventListener('click', prevent, false)
+    )
   })
 }
 
@@ -118,8 +105,9 @@ export const playAudio = async (e: Event) => {
   const use = svg.querySelector('use')
   if (!use) return
   
-  svg.style.opacity = '0.5'
-  use.setAttribute('xlink:href', '#iconRefresh')
+  const setIcon = (icon: string, opacity = '1') => (use.setAttribute('xlink:href', icon), svg.style.opacity = opacity)
+  
+  setIcon('#iconRefresh', '0.5')
   
   try {
     const key = url || `${cid}:${file}`
@@ -127,19 +115,17 @@ export const playAudio = async (e: Event) => {
     
     if (!audio) {
       const src = url || (cid && file ? URL.createObjectURL((await getMediaFromApkg(cid, file))!) : '')
-      if (!src) throw new Error('音频加载失败')
+      if (!src) throw new Error()
       audio = new Audio(src)
-      audio.onended = () => { use.setAttribute('xlink:href', '#iconRecord'); svg.style.opacity = '1' }
-      audio.onerror = () => { use.setAttribute('xlink:href', '#iconClose'); svg.style.opacity = '1' }
+      audio.onended = () => setIcon('#iconRecord')
+      audio.onerror = () => setIcon('#iconClose')
       audioCache.set(key, audio)
     }
     
-    use.setAttribute('xlink:href', '#iconRecord')
-    svg.style.opacity = '1'
+    setIcon('#iconRecord')
     await audio.play()
   } catch {
-    use.setAttribute('xlink:href', '#iconClose')
-    svg.style.opacity = '1'
+    setIcon('#iconClose')
   }
 }
 
@@ -149,23 +135,19 @@ export const setupImageLazyLoad = () => new IntersectionObserver(
     if (!entry.isIntersecting) return
     const img = entry.target as HTMLImageElement
     const { cid, file } = img.dataset
-    if (!cid || !file || (img.src && img.src.startsWith('blob:'))) return
+    if (!cid || !file || img.src?.startsWith('blob:')) return
     
+    img.style.opacity = '0.5'
     try {
-      img.style.opacity = '0.5'
       const blob = await getMediaFromApkg(cid, file)
-      if (blob) {
-        img.src = URL.createObjectURL(blob)
-        img.style.opacity = '1'
-      } else {
-        img.alt = `[${file}]`
-        img.style.opacity = '0.3'
-      }
+      if (!blob) throw new Error()
+      img.src = URL.createObjectURL(blob)
+      img.style.opacity = '1'
     } catch {
       img.alt = `[${file}]`
       img.style.opacity = '0.3'
     }
   }),
-  { root: null, rootMargin: '200px', threshold: 0.01 }
+  { rootMargin: '200px', threshold: 0.01 }
 )
 

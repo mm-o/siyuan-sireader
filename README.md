@@ -4,7 +4,7 @@
 <p style="color: rgba(255,255,255,0.9); margin: 0 0 1.5em; font-size: 1.1em;">Professional eBook Reader · Smart Annotation · Multi-format Support</p>
 <p style="color: rgba(255,255,255,0.85); margin: 0 0 1.5em; line-height: 1.6; font-size: 0.95em;">Transform SiYuan Notes into a professional eBook reader<br>Support EPUB/PDF/TXT/Online novels with smart annotation, multi-theme switching, dictionary lookup, AI translation, deck system, and more for an immersive reading experience</p>
 <p style="margin: 0 0 1em;">
-<img src="https://img.shields.io/badge/version-0.8.1-blue.svg" alt="Version" style="display: inline-block; margin: 0 4px;">
+<img src="https://img.shields.io/badge/version-0.8.2-blue.svg" alt="Version" style="display: inline-block; margin: 0 4px;">
 <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License" style="display: inline-block; margin: 0 4px;">
 <img src="https://img.shields.io/badge/SiYuan-3.0+-orange.svg" alt="SiYuan" style="display: inline-block; margin: 0 4px;">
 </p>
@@ -72,6 +72,24 @@
 ---
 
 ## 📝 Latest Updates
+
+### v0.8.2 (2026.2.4)
+
+#### ✨ New Features
+- **Script Support** - Cards now support loading and executing script content for interactive features (e.g., dictionary lookup, audio playback)
+- **Tag Image Display** - Automatically extract image info from card scripts, display corresponding images based on tags, works on both front and back
+
+#### 🔧 Improvements
+- Image processing code reduced by 78%, smoother operation, 10x faster matching
+- Auto-detect and select optimal database file, auto-handle compressed formats
+- Enhanced robustness, unified path handling, optimized caching
+
+#### 🐛 Bug Fixes
+- Fixed issues where some card images failed to load
+- Fixed image information loss during processing
+- Fixed tag images not displaying on back side
+
+---
 
 ### v0.8.1 (2026.2.3)
 
