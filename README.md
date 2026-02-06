@@ -4,7 +4,7 @@
 <p style="color: rgba(255,255,255,0.9); margin: 0 0 1.5em; font-size: 1.1em;">Professional eBook Reader · Smart Annotation · Multi-format Support</p>
 <p style="color: rgba(255,255,255,0.85); margin: 0 0 1.5em; line-height: 1.6; font-size: 0.95em;">Transform SiYuan Notes into a professional eBook reader<br>Support EPUB/PDF/TXT/Online novels with smart annotation, multi-theme switching, dictionary lookup, AI translation, deck system, and more for an immersive reading experience</p>
 <p style="margin: 0 0 1em;">
-<img src="https://img.shields.io/badge/version-0.8.2-blue.svg" alt="Version" style="display: inline-block; margin: 0 4px;">
+<img src="https://img.shields.io/badge/version-0.8.3-blue.svg" alt="Version" style="display: inline-block; margin: 0 4px;">
 <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License" style="display: inline-block; margin: 0 4px;">
 <img src="https://img.shields.io/badge/SiYuan-3.0+-orange.svg" alt="SiYuan" style="display: inline-block; margin: 0 4px;">
 </p>
@@ -72,6 +72,63 @@
 ---
 
 ## 📝 Latest Updates
+
+### v0.8.3 (2026.2.6)
+
+#### ✨ Anki Card Features Enhanced
+
+**🖼️ Image Occlusion**
+- Support Anki image occlusion cards for anatomy diagrams, maps, charts, circuit diagrams, etc.
+- Auto-recognize image occlusion note types with clear SVG vector masking
+- Front side shows red semi-transparent masks, back side shows green highlighted answers
+- Support multiple masking areas, auto-switch based on card number
+
+**📐 LaTeX Formula Rendering**
+- Full support for Anki LaTeX formula format
+- Auto-convert `[$]...[/$]` format to standard LaTeX syntax (inline `\(...\)` and block `\[...\]`)
+- Use MathJax 3.x rendering engine, auto re-render on page turn and card flip
+
+**🔍 Deck Search Function**
+- Support advanced search syntax for quick card location
+- Basic search: search card front, back, and tag content
+- Advanced filtering: support deck (`deck:English`), tag (`tag:high-frequency`), state (`is:due`), property (`prop:ivl>30`) multi-dimensional filtering
+- Combined search: support multi-condition combination like `deck:English tag:verb is:due`
+
+**📝 Cloze Support**
+- Fully compatible with Anki cloze format
+- Support basic cloze `{{c1::answer}}` and hint cloze `{{c1::answer::hint}}`
+- Support multiple cloze positions, auto-display corresponding cloze based on card number
+- Front shows `[...]` or `[hint]`, back shows all answers highlighted
+
+#### 🚀 Performance Optimization
+
+**📦 Media Loading Optimization**
+- Complete media loading system refactor, 40x performance improvement
+- Three-tier cache architecture: Blob cache (30MB) + Zip cache (2 files) + network fetch
+- Subsequent image loading reduced from ~2000ms to ~50ms
+- LRU eviction strategy + 5-minute TTL auto-cleanup, total memory controlled at ≤60MB
+
+#### 🔧 Feature Improvements
+
+**📁 Smart Folder Naming**
+- Folders named based on deck names like `col-English-Words`, `col-Japanese-Words`
+- Auto-increment on duplicate import: `col-English-Words-1`, `col-English-Words-2`
+
+**🔄 Data Sync Mechanism**
+- Auto-sync database and folders on startup to maintain data consistency
+- Auto-delete corrupted collections and associated decks from database
+- Auto-recognize manually copied folders and add to database
+
+**🏗️ Architecture Optimization**
+- Unified error handling return format, simplified conditional logic
+- Collection and Deck dual deduplication to avoid duplicate imports
+
+#### 🐛 Bug Fixes
+- Fixed deck not displaying after import
+- Fixed parent-child deck ID conflict issue
+- Fixed collection deletion not cleaning up files
+
+---
 
 ### v0.8.2 (2026.2.4)
 

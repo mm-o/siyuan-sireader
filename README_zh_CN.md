@@ -4,7 +4,7 @@
 <p style="color: rgba(255,255,255,0.9); margin: 0 0 1.5em; font-size: 1.1em;">专业电子书阅读 · 智能标注 · 多格式支持</p>
 <p style="color: rgba(255,255,255,0.85); margin: 0 0 1.5em; line-height: 1.6; font-size: 0.95em;">让思源笔记变身专业电子书阅读器，支持 EPUB/PDF/TXT/在线小说多格式阅读<br>提供智能标注、多主题切换、词典查询、AI 翻译、卡包系统等功能，打造沉浸式阅读体验</p>
 <p style="margin: 0 0 1em;">
-<img src="https://img.shields.io/badge/version-0.8.2-blue.svg" alt="Version" style="display: inline-block; margin: 0 4px;">
+<img src="https://img.shields.io/badge/version-0.8.3-blue.svg" alt="Version" style="display: inline-block; margin: 0 4px;">
 <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License" style="display: inline-block; margin: 0 4px;">
 <img src="https://img.shields.io/badge/SiYuan-3.0+-orange.svg" alt="SiYuan" style="display: inline-block; margin: 0 4px;">
 </p>
@@ -72,6 +72,63 @@
 ---
 
 ## 📝 最新更新
+
+### v0.8.3 (2026.2.6)
+
+#### ✨ Anki 卡片功能增强
+
+**🖼️ 图片遮挡（Image Occlusion）**
+- 支持 Anki 图片遮挡卡片，适用于解剖图、地图、图表、电路图等学习场景
+- 自动识别图片遮挡笔记类型，SVG 矢量遮挡清晰精确
+- 正面红色半透明遮挡，背面绿色高亮显示答案
+- 支持多个遮挡区域，根据卡片序号自动切换
+
+**📐 LaTeX 公式渲染**
+- 完整支持 Anki LaTeX 公式格式
+- 自动转换 `[$]...[/$]` 格式为标准 LaTeX 语法（行内 `\(...\)` 和块级 `\[...\]`）
+- 使用 MathJax 3.x 渲染引擎，翻页、翻转卡片时自动重新渲染
+
+**🔍 卡组搜索功能**
+- 支持高级搜索语法，快速定位卡片
+- 基础搜索：搜索卡片正面、背面和标签内容
+- 高级筛选：支持卡组（`卡组:英语`）、标签（`标签:高频词`）、状态（`状态:due`）、属性（`属性:ivl>30`）等多维度筛选
+- 组合搜索：支持多条件组合，如 `卡组:英语 标签:动词 状态:due`
+
+**📝 填空题（Cloze）支持**
+- 完全兼容 Anki 填空题格式
+- 支持基础填空 `{{c1::答案}}` 和带提示填空 `{{c1::答案::提示}}`
+- 支持多个填空位置，根据卡片序号自动显示对应填空
+- 正面显示 `[...]` 或 `[提示]`，背面显示所有答案并高亮
+
+#### 🚀 性能优化
+
+**📦 媒体加载优化**
+- 完整重构媒体加载系统，性能提升 40 倍
+- 三层缓存架构：Blob 缓存（30MB）+ Zip 缓存（2个文件）+ 网络获取
+- 后续图片加载从 ~2000ms 降至 ~50ms
+- LRU 淘汰策略 + 5 分钟 TTL 自动清理，总内存控制在 ≤60MB
+
+#### 🔧 功能改进
+
+**📁 智能文件夹命名**
+- 文件夹基于卡组名称命名，如 `col-英语单词`、`col-日语单词`
+- 重名导入时自动递增：`col-英语单词-1`、`col-英语单词-2`
+
+**🔄 数据同步机制**
+- 启动时自动同步数据库和文件夹，保持数据一致性
+- 自动删除数据库损坏的 collection 和关联卡组
+- 自动识别手动复制的文件夹并添加到数据库
+
+**🏗️ 架构优化**
+- 统一错误处理返回格式，简化条件判断
+- Collection 和 Deck 双重查重，避免重复导入
+
+#### 🐛 Bug 修复
+- 修复卡组导入后不显示的问题
+- 修复父子卡组 ID 相同的问题
+- 修复 collection 删除时未清理文件的问题
+
+---
 
 ### v0.8.2 (2026.2.4)
 

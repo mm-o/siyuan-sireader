@@ -151,31 +151,34 @@ const loadSiyuanEmojis = async () => {
 }
 
 const loadCards = async () => {
-  const { getDatabase } = await import('./database')
-  const db = await getDatabase()
-  const enabledPacks = await db.getEnabledDecks()
-  
-  // 加载所有卡片
-  let allCardsData: any[] = []
-  for (const pack of enabledPacks) {
-    const packCards = await getCards(pack.id)
-    allCardsData.push(...packCards)
-  }
-  
-  // 按优先级排序：今日待学习 > 其他
-  const now = Date.now()
-  allCardsData.sort((a, b) => {
-    const aDue = a.learning?.due || 0
-    const bDue = b.learning?.due || 0
-    const aIsDue = aDue <= now
-    const bIsDue = bDue <= now
-    if (aIsDue && !bIsDue) return -1
-    if (!aIsDue && bIsDue) return 1
-    return aDue - bDue
-  })
-  
-  allCards.value = allCardsData
-  cards.value = allCardsData.slice(0, 8) // 初始显示8张
+  try {
+    const { getDatabase } = await import('./database')
+    const { syncDeckData } = await import('./pack')
+    const db = await getDatabase()
+    let allCardsData: any[] = [], hasError = false
+    
+    for (const pack of await db.getEnabledDecks()) {
+      try { allCardsData.push(...await getCards(pack.id)) } 
+      catch { hasError = true }
+    }
+    
+    if (hasError) {
+      await syncDeckData(true)
+      allCardsData = []
+      for (const pack of await db.getEnabledDecks()) {
+        try { allCardsData.push(...await getCards(pack.id)) } catch {}
+      }
+    }
+    
+    const now = Date.now()
+    allCardsData.sort((a, b) => {
+      const aDue = a.learning?.due || 0, bDue = b.learning?.due || 0
+      return (aDue <= now ? 0 : 1) - (bDue <= now ? 0 : 1) || aDue - bDue
+    })
+    
+    allCards.value = allCardsData
+    cards.value = allCardsData.slice(0, 8)
+  } catch { allCards.value = []; cards.value = [] }
 }
 
 const loadMore = () => {
@@ -206,20 +209,52 @@ const togglePackActive = async (pack: Pack) => {
 }
 
 const filteredCards = computed(() => {
-  const kw = props.keyword.toLowerCase()
+  const kw = props.keyword.trim()
   if (!kw) return cards.value
   
+  // 解析搜索：deck: tag: is: prop:
+  const f: any = { text: [] }
+  for (const t of kw.match(/(\w+):("[^"]+"|[^\s]+)|[^\s]+/g) || []) {
+    const m = t.match(/^(\w+):(.+)$/)
+    if (!m) { f.text.push(t.toLowerCase()); continue }
+    const [, k, v] = m, val = v.replace(/^"|"$/g, '')
+    if (k === 'deck') f.deck = val.toLowerCase()
+    else if (k === 'tag') (f.tags ||= []).push(val.toLowerCase())
+    else if (k === 'is') f.state = val.toLowerCase()
+    else if (k === 'prop') {
+      const pm = val.match(/^(\w+)([<>=]+)(.+)$/)
+      if (pm) f.prop = { f: pm[1], op: pm[2], v: parseFloat(pm[3]) || pm[3] }
+    } else f.text.push(t.toLowerCase())
+  }
+  
   return allCards.value.filter(c => {
-    const text = (c.front || '').replace(/<[^>]*>/g, '').toLowerCase()
-    return text.includes(kw)
+    // 文本
+    if (f.text.length) {
+      const txt = [(c.front || '').replace(/<[^>]*>/g, ''), (c.back || '').replace(/<[^>]*>/g, ''), ...(c.tags || [])].join(' ').toLowerCase()
+      if (!f.text.every((t: string) => txt.includes(t))) return false
+    }
+    // 卡组
+    if (f.deck && !(packs.value.find(p => p.id === c.deckId)?.name?.toLowerCase() || '').includes(f.deck)) return false
+    // 标签
+    if (f.tags?.length && !f.tags.some((t: string) => (c.tags || []).map((x: string) => x.toLowerCase()).includes(t))) return false
+    // 状态
+    if (f.state && (f.state === 'due' ? !c.learning?.due || c.learning.due > Date.now() : (c.learning?.state || 'new') !== f.state)) return false
+    // 属性
+    if (f.prop) {
+      const { f: field, op, v: val } = f.prop
+      const cv = { ivl: Math.floor((c.learning?.interval || 0) / 1440), ease: c.learning?.ease || 2.5, reps: c.learning?.reps || 0, lapses: c.learning?.lapses || 0 }[field]
+      if (cv === undefined) return true
+      if (op === '>') return cv > val
+      if (op === '<') return cv < val
+      if (op === '>=') return cv >= val
+      if (op === '<=') return cv <= val
+      if (op === '=') return cv === val
+    }
+    return true
   })
 })
 
-const displayCards = computed(() => {
-  const filtered = filteredCards.value
-  // 搜索时显示所有匹配结果，否则显示当前加载的卡片
-  return props.keyword ? filtered : cards.value
-})
+const displayCards = computed(() => props.keyword ? filteredCards.value : cards.value)
 
 const reviewCards = computed(() => displayCards.value.filter(c => c.learning))
 

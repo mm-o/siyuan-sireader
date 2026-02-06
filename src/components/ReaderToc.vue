@@ -242,7 +242,7 @@ const showBindMenu=ref(false),bindSearch=ref(''),bindResults=ref<any[]>([]),bind
 
 // ===== 常量 =====
 const colors=getColorMap()
-const placeholders={toc:'搜索目录...',bookmark:'搜索书签...',mark:'搜索标注...',note:'搜索笔记...',deck:'搜索卡包...'}
+const placeholders={toc:'搜索目录...',bookmark:'搜索书签...',mark:'搜索标注...',note:'搜索笔记...',deck:'搜索 · 卡组: 标签: 状态: 属性:'}
 
 // ===== Computed =====
 const filterOpts=computed(()=>({

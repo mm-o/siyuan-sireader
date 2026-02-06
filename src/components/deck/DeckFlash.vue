@@ -215,12 +215,16 @@ const stopIfAudio = (e: Event) => {
   }
 }
 
+// LaTeX 渲染
+const renderMath = (selector: string) => window.MathJax?.typesetPromise?.([document.querySelector(selector)]).catch(() => {})
+
 const flip = async () => { 
   if (!isFlipped.value) { 
     isFlipped.value = true
     setTimeout(() => {
       observeImages()
       setupInteractive('.anki-content')
+      renderMath('.flash-card .card-face.back')
     }, 50)
     await updateRatingTimes()
   }
@@ -260,36 +264,9 @@ let imgObserver: IntersectionObserver | null = null
 
 const observeImages = () => {
   if (!imgObserver) return
-  const container = document.querySelector('.flash-card .card-face')
-  if (!container) return
-  
-  container.querySelectorAll('img[data-cid]').forEach(el => {
-    const img = el as HTMLImageElement
-    const { cid, file } = img.dataset
-    const srcAttr = img.getAttribute('src')
-    
-    if (cid && file && (!srcAttr || !srcAttr.startsWith('blob:'))) {
-      imgObserver?.observe(img)
-      const rect = img.getBoundingClientRect()
-      if (rect.width === 0 || rect.height === 0) loadImageDirectly(img, cid, file)
-    }
+  document.querySelectorAll('.flash-card img[data-cid]').forEach(img => {
+    if (!(img as HTMLImageElement).src?.startsWith('blob:')) imgObserver?.observe(img)
   })
-}
-
-const loadImageDirectly = async (img: HTMLImageElement, cid: string, file: string) => {
-  try {
-    const { getMediaFromApkg } = await import('./pack')
-    const blob = await getMediaFromApkg(cid, file)
-    if (blob) {
-      img.src = URL.createObjectURL(blob)
-      img.style.background = ''
-      img.style.minHeight = ''
-    } else {
-      img.style.display = 'none'
-    }
-  } catch {
-    img.style.display = 'none'
-  }
 }
 
 // 评分
@@ -434,7 +411,7 @@ onUnmounted(() => {
   document.removeEventListener('click', playAudio, true)
 })
 
-watch(() => currentCard.value, () => setTimeout(observeImages, 100))
+watch(() => currentCard.value, () => setTimeout(() => { observeImages(); renderMath('.flash-card .card-face.front') }, 100))
 watch(() => isFlipped.value, (v) => { if (v) setTimeout(observeImages, 100) })
 </script>
 

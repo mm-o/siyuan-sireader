@@ -26,31 +26,22 @@ export const extractAnkiHint = (card: any): string =>
   })())
 
 // ========== Anki 渲染 ==========
-const sanitizeHtml = (html: string) => html
-  .replace(/\s+on\w+\s*=\s*["'][^"']*["']/gi, '')
-  .replace(/href\s*=\s*["']javascript:[^"']*["']/gi, 'href="#"')
-
 const scopeCss = (css: string, scope: string): string => {
   const globals = [':root', 'html', 'body']
   return css.split('}').map(rule => {
     const t = rule.trim()
     if (!t) return ''
-    
-    // @规则
     if (t.startsWith('@')) {
       if (!t.includes('{')) return rule + '}'
       const [at, ...rest] = t.split('{')
       return (at.includes('@font-face') || at.includes('@keyframes')) ? rule + '}' : `${at} {${scopeCss(rest.join('{'), scope)}`
     }
-    
     const [sel, ...rest] = rule.split('{')
     if (!sel || !rest.length) return rule + '}'
-    
     const scoped = sel.split(',').map(s => {
       const ss = s.trim()
       return globals.some(g => ss === g || ss.startsWith(g + ' ')) ? ss : (ss.startsWith(':') ? `${scope}${ss}` : `${scope} ${ss}`)
     }).join(', ')
-    
     return `${scoped} {${rest.join('{')}`
   }).join('}')
 }
@@ -58,36 +49,18 @@ const scopeCss = (css: string, scope: string): string => {
 export const renderAnki = (card: any, scope = '.deck-card-back') => {
   let html = card.back || ''
   const scripts: string[] = card.scripts || []
-  
-  // 降级：从 HTML 提取脚本
-  if (!scripts.length) html = html.replace(/<script\b[^>]*>([\s\S]*?)<\/script\s*>/gi, (_, code: string) => (scripts.push(code.trim()), ''))
-  
-  html = sanitizeHtml(html)
+  if (!scripts.length) html = html.replace(/<script\b[^>]*>([\s\S]*?)<\/script\s*>/gi, (_, c: string) => (scripts.push(c.trim()), ''))
   if (card.modelCss) html = `<style>${scopeCss(card.modelCss, scope)}</style>${html}`
-  
-  if (scripts.length) setTimeout(() => scripts.forEach(code => {
-    try { ;(0, eval)(code) } catch (err: any) { console.warn('[Anki Script]', err.message) }
-  }), 100)
-  
+  if (scripts.length) setTimeout(() => scripts.forEach(c => { try { ;(0, eval)(c) } catch (e: any) { console.warn('[Anki]', e.message) } }), 50)
   return html
 }
 
 // ========== 交互元素处理 ==========
 export const setupInteractive = (selector: string) => {
-  const stop = (ev: Event) => ev.stopPropagation()
-  const prevent = (ev: Event) => { ev.preventDefault(); ev.stopPropagation() }
-  
-  document.querySelectorAll(selector).forEach(container => {
-    // 表单元素（优化：批量处理）
-    container.querySelectorAll('input, textarea, select, button:not(.b3-button):not(.rating-btn)').forEach(el => {
-      ['onclick', 'onchange', 'oninput'].forEach(attr => el.removeAttribute(attr))
-      ;['click', 'change', 'input', 'focus'].forEach(evt => el.addEventListener(evt, stop, false))
-    })
-    
-    // 链接（优化：简化判断）
-    container.querySelectorAll('a[href^="javascript:"], a[href="#"]').forEach(el => 
-      el.addEventListener('click', prevent, false)
-    )
+  const stop = (e: Event) => e.stopPropagation()
+  document.querySelectorAll(selector).forEach(c => {
+    c.querySelectorAll('input, textarea, select').forEach(el => ['click', 'change', 'input', 'focus'].forEach(evt => el.addEventListener(evt, stop, false)))
+    c.querySelectorAll('button:not(.b3-button):not(.rating-btn)').forEach(el => el.addEventListener('click', stop, false))
   })
 }
 
@@ -97,7 +70,6 @@ const audioCache = new Map<string, HTMLAudioElement>()
 export const playAudio = async (e: Event) => {
   const svg = (e.target as HTMLElement).closest('.anki-audio') as SVGElement
   if (!svg) return
-  
   e.stopPropagation()
   e.preventDefault()
   
@@ -106,13 +78,11 @@ export const playAudio = async (e: Event) => {
   if (!use) return
   
   const setIcon = (icon: string, opacity = '1') => (use.setAttribute('xlink:href', icon), svg.style.opacity = opacity)
-  
   setIcon('#iconRefresh', '0.5')
   
   try {
     const key = url || `${cid}:${file}`
     let audio = audioCache.get(key)
-    
     if (!audio) {
       const src = url || (cid && file ? URL.createObjectURL((await getMediaFromApkg(cid, file))!) : '')
       if (!src) throw new Error()
@@ -121,7 +91,6 @@ export const playAudio = async (e: Event) => {
       audio.onerror = () => setIcon('#iconClose')
       audioCache.set(key, audio)
     }
-    
     setIcon('#iconRecord')
     await audio.play()
   } catch {
@@ -130,6 +99,20 @@ export const playAudio = async (e: Event) => {
 }
 
 // ========== 图片懒加载 ==========
+const imgCache = new Map<string, string>()
+
+const loadImg = async (cid: string, file: string) => {
+  const key = `${cid}:${file}`
+  if (imgCache.has(key)) return imgCache.get(key)!
+  try {
+    const blob = await getMediaFromApkg(cid, file)
+    if (!blob) return null
+    const url = URL.createObjectURL(blob)
+    imgCache.set(key, url)
+    return url
+  } catch { return null }
+}
+
 export const setupImageLazyLoad = () => new IntersectionObserver(
   (entries) => entries.forEach(async (entry) => {
     if (!entry.isIntersecting) return
@@ -137,16 +120,23 @@ export const setupImageLazyLoad = () => new IntersectionObserver(
     const { cid, file } = img.dataset
     if (!cid || !file || img.src?.startsWith('blob:')) return
     
-    img.style.opacity = '0.5'
-    try {
-      const blob = await getMediaFromApkg(cid, file)
-      if (!blob) throw new Error()
-      img.src = URL.createObjectURL(blob)
-      img.style.opacity = '1'
-    } catch {
-      img.alt = `[${file}]`
-      img.style.opacity = '0.3'
+    // 图片遮挡：并行加载原图和遮罩
+    const w = img.closest('#io-wrapper') as HTMLElement
+    if (w) {
+      const orig = w.querySelector('#io-original img') as HTMLImageElement
+      const mask = w.querySelector('#io-overlay img') as HTMLImageElement
+      if (!orig || !mask || orig.src?.startsWith('blob:')) return
+      w.style.opacity = '0'
+      const [u1, u2] = await Promise.all([loadImg(orig.dataset.cid!, orig.dataset.file!), loadImg(mask.dataset.cid!, mask.dataset.file!)])
+      if (u1 && u2) { orig.src = u1; mask.src = u2 }
+      w.style.opacity = '1'
+      return
     }
+    
+    // 普通图片
+    img.style.opacity = '0.5'
+    const url = await loadImg(cid, file)
+    if (url) { img.src = url; img.style.opacity = '1' } else { img.alt = `[${file}]`; img.style.opacity = '0.3' }
   }),
   { rootMargin: '200px', threshold: 0.01 }
 )

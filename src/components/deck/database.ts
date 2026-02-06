@@ -561,6 +561,12 @@ export class DeckDatabase {
     }))
   }
   
+  async deleteCollection(id: string): Promise<void> {
+    await this.init()
+    this.db.run('DELETE FROM collections WHERE id = ?', [id])
+    await this.saveDb()
+  }
+  
   // ========== 设置操作 ==========
   async getSettings(deckId: string): Promise<any | null> {
     await this.init()

@@ -1,7 +1,6 @@
 <template>
   <div class="sr-list">
     <div v-if="!displayCards.length" class="sr-empty">{{ keyword?t('deckNoMatch','未找到匹配的卡片'):t('deckNoCards','暂无卡片') }}</div>
-    
     <div v-for="card in displayCards" :key="card.id" class="deck-card" :class="{expanded: s.exp===card.id, editing: s.edit===card.id}" @click="toggle($event, card)">
       <span class="sr-bar" :style="{background: mastery(card).c}"></span>
       <div class="deck-card-mastery">{{ mastery(card).i }}</div>
@@ -107,15 +106,13 @@ const mastery = (card: any) => {
 
 let obs: IntersectionObserver | null = null
 
-// 刷新
 const refresh = () => {
   setTimeout(() => {
-    document.querySelectorAll('.deck-card img[data-cid]').forEach(el => {
-      const img = el as HTMLImageElement
-      if (!img.src || !img.src.startsWith('blob:')) obs?.observe(img)
+    document.querySelectorAll('.deck-card img[data-cid]').forEach(img => {
+      if (!(img as HTMLImageElement).src?.startsWith('blob:')) obs?.observe(img)
     })
     window.MathJax?.typesetPromise?.()
-    setupInteractive('.deck-card-back')
+    setTimeout(() => setupInteractive('.deck-card-back'), 100)
   }, 100)
 }
 

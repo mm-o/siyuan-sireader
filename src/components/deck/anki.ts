@@ -5,129 +5,95 @@ import { decompress } from 'fzstd'
 import { putFile } from '@/api'
 
 const ANKI_BASE = '/data/storage/petal/siyuan-sireader/anki'
-const MIME_TYPES: Record<string, string> = {
-  svg: 'image/svg+xml', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg',
-  gif: 'image/gif', webp: 'image/webp', mp3: 'audio/mpeg', wav: 'audio/wav', ogg: 'audio/ogg'
-}
+const MIME_TYPES: Record<string, string> = { svg: 'image/svg+xml', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', mp3: 'audio/mpeg', wav: 'audio/wav', ogg: 'audio/ogg' }
 
 // ========== 数据库管理 ==========
 let sqlJs: any = null
 const ankiDbCache = new Map<string, any>()
 const mediaCache = new Map<string, Blob>()
+const zipCache = new Map<string, { zip: any; mediaMap: Record<string, string>; lastUsed: number }>()
 
-const getSqlJs = async () => {
-  if (!sqlJs) sqlJs = await initSqlJs({ locateFile: (f) => `https://cdn.jsdelivr.net/npm/sql.js@1.13.0/dist/${f}` })
-  return sqlJs
-}
+// 内存管理：智能缓存策略
+const MAX_MEDIA_CACHE = 30 * 1024 * 1024 // 30MB（降低内存占用）
+const MAX_ZIP_CACHE = 2 // 最多 2 个 zip（降低内存占用）
+const ZIP_CACHE_TTL = 5 * 60 * 1000 // 5 分钟过期
+let mediaCacheSize = 0
 
+export const getSqlJs = async () => { if (!sqlJs) sqlJs = await initSqlJs({ locateFile: (f) => `https://cdn.jsdelivr.net/npm/sql.js@1.13.0/dist/${f}` }); return sqlJs }
 export const getAnkiDbPath = (cid: string) => `${ANKI_BASE}/${cid}/collection.anki21`
-export const clearAnkiDbCache = () => ankiDbCache.clear()
+export const clearAnkiDbCache = () => { 
+  ankiDbCache.clear()
+  zipCache.clear()
+  mediaCache.clear()
+  mediaCacheSize = 0
+}
 
 export const getAnkiDb = async (cid: string) => {
   const path = getAnkiDbPath(cid)
   if (ankiDbCache.has(path)) return ankiDbCache.get(path)
-  
   try {
-    const res = await fetch('/api/file/getFile', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path })
-    })
+    const res = await fetch('/api/file/getFile', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path }) })
     if (!res.ok) return null
-    
     const buffer = await res.arrayBuffer()
     if (!buffer.byteLength) return null
-    
     const db = new (await getSqlJs()).Database(new Uint8Array(buffer))
-    ankiDbCache.set(path, db)
-    return db
-  } catch {
-    return null
-  }
+    try { db.exec('SELECT 1 FROM sqlite_master LIMIT 1'); ankiDbCache.set(path, db); return db } 
+    catch { db.close(); return null }
+  } catch { return null }
 }
 
 export const saveAnkiDb = async (cid: string, db: any) => {
-  const path = getAnkiDbPath(cid)
   const formData = new FormData()
-  formData.append('path', path)
+  formData.append('path', getAnkiDbPath(cid))
   formData.append('file', new File([db.export()], 'collection.anki21', { type: 'application/x-sqlite3' }))
   formData.append('isDir', 'false')
   await fetch('/api/file/putFile', { method: 'POST', body: formData })
-  ankiDbCache.delete(path)
+  ankiDbCache.delete(getAnkiDbPath(cid))
 }
 
 // ========== 格式兼容层 ==========
 const getModels = async (db: any) => {
-  // 尝试旧版格式
   try {
     const r = db.exec('SELECT models FROM col')
     if (r?.[0]?.values[0]?.[0]) return JSON.parse(r[0].values[0][0] as string)
   } catch {}
-  
-  // 新版格式
   try {
     const nt = db.exec('SELECT id, name, config FROM notetypes')?.[0]
     if (!nt) return {}
-    
     const templates = db.exec('SELECT ntid, name, ord, qfmt, afmt FROM templates')?.[0]?.values || []
     const fields = db.exec('SELECT ntid, name, ord FROM fields')?.[0]?.values || []
-    
-    const byNtid = (arr: any[]) => arr.reduce((m, row) => {
-      const [ntid, ...data] = row
-      if (!m.has(ntid)) m.set(ntid, [])
-      m.get(ntid).push(row.length === 5 ? { name: data[0], ord: data[1], qfmt: data[2], afmt: data[3] } : { name: data[0], ord: data[1] })
-      return m
-    }, new Map())
-    
-    const templatesByNtid = byNtid(templates)
-    const fieldsByNtid = byNtid(fields)
-    
+    const byNtid = (arr: any[]) => arr.reduce((m, row) => { const [ntid, ...data] = row; if (!m.has(ntid)) m.set(ntid, []); m.get(ntid).push(row.length === 5 ? { name: data[0], ord: data[1], qfmt: data[2], afmt: data[3] } : { name: data[0], ord: data[1] }); return m }, new Map())
+    const templatesByNtid = byNtid(templates), fieldsByNtid = byNtid(fields)
     return Object.fromEntries(nt.values.map((row: any) => {
-      const [id, name, config] = row
-      const cfg = config ? JSON.parse(config) : {}
-      return [id, {
-        id, name,
-        flds: (fieldsByNtid.get(id) || []).sort((a: any, b: any) => a.ord - b.ord),
-        tmpls: (templatesByNtid.get(id) || []).sort((a: any, b: any) => a.ord - b.ord),
-        css: cfg.css || '.card{font-family:arial;font-size:20px;text-align:center;color:#000;background-color:#fff;}'
-      }]
+      const [id, name, config] = row, cfg = config ? JSON.parse(config) : {}
+      return [id, { id, name, flds: (fieldsByNtid.get(id) || []).sort((a: any, b: any) => a.ord - b.ord), tmpls: (templatesByNtid.get(id) || []).sort((a: any, b: any) => a.ord - b.ord), css: cfg.css || '.card{font-family:arial;font-size:20px;text-align:center;color:#000;background-color:#fff;}' }]
     }))
-  } catch (e) {
-    console.error('[getModels]', e)
-    return {}
-  }
+  } catch { return {} }
 }
 
-const getDecks = async (db: any) => {
-  const parse = (id: any, name: string, desc = '') => {
-    const n = name.replace(/\x1F/g, '::')
-    return { id, name: n, desc, parent: n.includes('::') ? n.split('::').slice(0, -1).join('::') : undefined }
-  }
-  
-  // 尝试旧版格式
-  try {
-    const r = db.exec('SELECT decks FROM col')?.[0]?.values[0]?.[0]
-    if (r) return Object.entries(JSON.parse(r as string)).map(([did, info]: any) => parse(parseInt(did), info.name, info.desc))
-  } catch {}
-  
-  // 新版格式
-  try {
-    const r = db.exec('SELECT id, name FROM decks')?.[0]
-    if (r) return r.values.map((row: any) => parse(row[0], row[1]))
-  } catch {}
-  
+export const getDecks = async (db: any) => {
+  const parse = (id: any, name: string, desc = '') => { const n = name.replace(/\x1F/g, '::'); return { id, name: n, desc, parent: n.includes('::') ? n.split('::').slice(0, -1).join('::') : undefined } }
+  try { const r = db.exec('SELECT decks FROM col')?.[0]?.values[0]?.[0]; if (r) return Object.entries(JSON.parse(r as string)).map(([did, info]: any) => parse(parseInt(did), info.name, info.desc)) } catch {}
+  try { const r = db.exec('SELECT id, name FROM decks')?.[0]; if (r) return r.values.map((row: any) => parse(row[0], row[1])) } catch {}
   return []
 }
 
 // ========== 卡片操作 ==========
-// 模板过滤器（提取到外部避免重复创建）
-const TEMPLATE_FILTERS: Record<string, (v: string) => string> = {
+// 填空题处理（统一全角/半角括号）
+const processCloze = (text: string, ord: number, isFront: boolean) => 
+  text.replace(/｛｛/g, '{{').replace(/｝｝/g, '}}').replace(/\{\{c(\d+)::([^:}]+)(?:::([^}]+))?\}\}/g, (_, n, a) => 
+    isFront ? (+n === ord + 1 ? `<span class="cloze">[...]</span>` : a) : `<span class="cloze-answer">${a}</span>`
+  )
+
+// 模板过滤器
+const TEMPLATE_FILTERS: Record<string, (v: string, ctx?: any) => string> = {
   furigana: (v) => v.replace(/([^\[\s]+)\[([^\]]+)\]/g, '<ruby>$1<rt>$2</rt></ruby>'),
   kanji: (v) => v.replace(/\[([^\]]*?)\]/g, ''),
   kana: (v) => v.replace(/[^\[]+\[([^\]]+)\]/g, '$1').replace(/[^\[]+/g, ''),
   hint: (v) => v ? `<a class="hint" href="#" onclick="this.style.display='none';this.nextSibling.style.display='inline';return false;">[...]</a><span style="display:none">${v}</span>` : '',
   type: () => `<input type="text" id="typeans" />`,
-  text: (v) => v.replace(/<[^>]+>/g, '')
+  text: (v) => v.replace(/<[^>]+>/g, ''),
+  cloze: (v, ctx) => processCloze(v, ctx?.ord ?? 0, ctx?.isFront ?? true)
 }
 
 export const queryAnkiCards = async (cid: string, deckId: number, limit = 100, offset = 0): Promise<any[]> => {
@@ -156,9 +122,12 @@ export const queryAnkiCards = async (cid: string, deckId: number, limit = 100, o
         model: model?.name || 'Unknown', modelCss: model?.css || '' }
       
       if (!template || !model?.flds) {
+        // 无模板：检测填空题，正反面使用相同字段
+        const field = fields[0] || ''
+        const isCloze = /\{\{c\d+::/i.test(field)
         return { ...baseCard, 
-          front: processMedia(fields[0] || '', cid), 
-          back: processMedia(fields[1] || '', cid), 
+          front: processMedia(processCloze(field, ord, true), cid), 
+          back: processMedia(processCloze(isCloze ? field : (fields[1] || ''), ord, false), cid), 
           scripts: [] }
       }
       
@@ -168,17 +137,14 @@ export const queryAnkiCards = async (cid: string, deckId: number, limit = 100, o
         ['Tags', cardTags.join(' ')], ['Type', model.name || ''], ['Deck', ''], ['Subdeck', ''], ['Card', template.name || '']
       ] as [string, string][])
       
-      // 模板解析器（优化：减少函数调用）
-      const parseTemplate = (html: string): string => {
-        return html
-          .replace(/\{\{#([^}]+)\}\}([\s\S]*?)\{\{\/\1\}\}/g, (_, f, c) => fieldMap[f.trim()] ? parseTemplate(c) : '')
-          .replace(/\{\{\^([^}]+)\}\}([\s\S]*?)\{\{\/\1\}\}/g, (_, f, c) => !fieldMap[f.trim()] ? parseTemplate(c) : '')
-          .replace(/\{\{([^:}]+):([^}]+)\}\}/g, (_, filter, field) => {
-            const v = fieldMap[field.trim()] || ''
-            return TEMPLATE_FILTERS[filter.trim()]?.(v) || v
-          })
-          .replace(/\{\{([^}]+)\}\}/g, (m, f) => f.trim() === 'FrontSide' ? m : (fieldMap[f.trim()] ?? ''))
-      }
+      // 模板解析器
+      const parseTemplate = (html: string, isFront = true): string => 
+        processCloze(html
+          .replace(/\{\{#([^}]+)\}\}([\s\S]*?)\{\{\/\1\}\}/g, (_, f, c) => fieldMap[f.trim()] ? parseTemplate(c, isFront) : '')
+          .replace(/\{\{\^([^}]+)\}\}([\s\S]*?)\{\{\/\1\}\}/g, (_, f, c) => !fieldMap[f.trim()] ? parseTemplate(c, isFront) : '')
+          .replace(/\{\{([^:}]+):([^}]+)\}\}/g, (_, filter, field) => TEMPLATE_FILTERS[filter.trim()]?.(fieldMap[field.trim()] || '', { ord, isFront }) || (fieldMap[field.trim()] || ''))
+          .replace(/\{\{([^}]+)\}\}/g, (m, f) => f.trim() === 'FrontSide' ? m : (fieldMap[f.trim()] ?? '')), 
+        ord, isFront)
       
       // 提取脚本并解析（优化：合并操作）
       const extractScripts = (html: string) => {
@@ -189,12 +155,12 @@ export const queryAnkiCards = async (cid: string, deckId: number, limit = 100, o
       // 处理正面：先处理脚本图片映射，再解析模板，最后处理媒体
       let frontHtml = processScriptImgMappings(template.qfmt || fields[0], cid, cardTags)
       const [frontHtmlNoScript, frontScripts] = extractScripts(frontHtml)
-      const front = processMedia(parseTemplate(frontHtmlNoScript), cid)
+      const front = processMedia(parseTemplate(frontHtmlNoScript, true), cid)
       
       // 处理背面：先处理脚本图片映射，再解析模板，最后处理媒体
       let backHtml = processScriptImgMappings(template.afmt || fields[1], cid, cardTags)
       const [backHtmlNoScript, backScripts] = extractScripts(backHtml)
-      const back = processMedia(parseTemplate(backHtmlNoScript).replace(/\{\{FrontSide\}\}/g, front), cid)
+      const back = processMedia(parseTemplate(backHtmlNoScript, false).replace(/\{\{FrontSide\}\}/g, front), cid)
       
       // 提取脚本内容并替换变量（优化：预编译正则）
       const scripts = [...backScripts, ...frontScripts].map(s => {
@@ -323,54 +289,69 @@ const processMedia = (html: string, cid: string) => html
   .replace(/\[sound:([^\]]+)\]/g, (_, f) => audioSvg(cid, f))
   .replace(/<audio[^>]*?src=["']([^"']+)["'][^>]*?>.*?<\/audio>/gi, (_, s) => s.startsWith('http') ? audioSvgUrl(s) : audioSvg(cid, s.split(/[?/]/).pop() || s))
   .replace(/<img([^>]*?)src=["']([^"']+)["']([^>]*?)>/gi, (m, b, s, a) => s.startsWith('http') ? m : `<img ${`${b}${a}`.replace(/\s+/g, ' ').trim()} data-cid="${cid}" data-file="${decodeURIComponent(s.split(/[?/]/).pop() || s)}" loading="lazy" style="max-width:100%;height:auto">`)
+  .replace(/\[(\$\$?)\](.*?)\[\/\1\]/g, (_, d, t) => d === '$$' ? `\\[${t}\\]` : `\\(${t}\\)`) // LaTeX: [$]行内[/$] [$$]块级[/$$]
 
 export const getMediaFromApkg = async (cid: string, filename: string): Promise<Blob | null> => {
   const key = `${cid}:${filename}`
-  const cached = mediaCache.get(key)
-  if (cached) return cached
+  if (mediaCache.has(key)) return mediaCache.get(key)!
   
   try {
-    const { getDatabase } = await import('./database')
-    const col = (await (await getDatabase()).getCollections()).find(c => c.id === cid)
-    if (!col?.apkgPath) return null
+    const now = Date.now()
     
-    const res = await fetch('/api/file/getFile', { 
-      method: 'POST', 
-      headers: { 'Content-Type': 'application/json' }, 
-      body: JSON.stringify({ path: col.apkgPath }) 
-    })
-    if (!res.ok) return null
+    // 清理过期 zip
+    for (const [k, v] of zipCache) if (now - v.lastUsed > ZIP_CACHE_TTL) zipCache.delete(k)
     
-    const zip = await JSZip.loadAsync(await res.arrayBuffer())
-    const mediaFile = zip.file('media')
-    if (!mediaFile) return null
+    // 获取 zip
+    let zipData = zipCache.get(cid)
+    if (!zipData) {
+      const { getDatabase } = await import('./database')
+      const col = (await (await getDatabase()).getCollections()).find(c => c.id === cid)
+      if (!col?.apkgPath) return null
+      
+      const res = await fetch('/api/file/getFile', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: col.apkgPath }) })
+      if (!res.ok) return null
+      
+      const zip = await JSZip.loadAsync(await res.arrayBuffer())
+      const mediaFile = zip.file('media')
+      if (!mediaFile) return null
+      
+      const mediaMap: Record<string, string> = await mediaFile.async('text').then(t => JSON.parse(t) || {}).catch(async () => JSON.parse(new TextDecoder().decode(decompress(await mediaFile.async('uint8array')))) || {})
+      if (!Object.keys(mediaMap).length) return null
+      
+      if (zipCache.size >= MAX_ZIP_CACHE) zipCache.delete(zipCache.keys().next().value)
+      zipData = { zip, mediaMap, lastUsed: now }
+      zipCache.set(cid, zipData)
+    } else zipData.lastUsed = now
     
-    // 解析 media 映射（优化：合并 try-catch）
-    const mediaMap: Record<string, string> = await mediaFile.async('text')
-      .then(text => JSON.parse(text) || {})
-      .catch(async () => JSON.parse(new TextDecoder().decode(decompress(await mediaFile.async('uint8array')))) || {})
-    
-    if (!Object.keys(mediaMap).length) return null
-    
-    // 查找文件（优化：预计算变体）
+    // 查找文件
+    const { zip, mediaMap } = zipData
     const cleanName = filename.replace(/^_+/, '')
-    const variants = new Set([filename, cleanName, filename.toLowerCase(), cleanName.toLowerCase()])
+    const variants = [filename, cleanName, filename.toLowerCase(), cleanName.toLowerCase()]
     const num = Object.entries(mediaMap).find(([_, n]) => {
       const name = (n as string).replace(/^_+/, '')
-      return variants.has(name) || variants.has(name.toLowerCase())
+      return variants.includes(name) || variants.includes(name.toLowerCase())
     })?.[0]
     
     if (!num) return null
     const file = zip.file(num)
     if (!file) return null
     
-    const ext = filename.toLowerCase().split('.').pop() || ''
-    const blob = new Blob([await file.async('arraybuffer')], { type: MIME_TYPES[ext] || 'application/octet-stream' })
-    if (blob.size < 5 * 1024 * 1024) mediaCache.set(key, blob)
+    const blob = new Blob([await file.async('arraybuffer')], { type: MIME_TYPES[filename.toLowerCase().split('.').pop() || ''] || 'application/octet-stream' })
+    
+    // 缓存小文件
+    if (blob.size < 2 * 1024 * 1024) {
+      if (mediaCacheSize + blob.size > MAX_MEDIA_CACHE) {
+        const firstKey = mediaCache.keys().next().value
+        const firstBlob = mediaCache.get(firstKey)
+        if (firstBlob) mediaCacheSize -= firstBlob.size
+        mediaCache.delete(firstKey)
+      }
+      mediaCache.set(key, blob)
+      mediaCacheSize += blob.size
+    }
+    
     return blob
-  } catch {
-    return null
-  }
+  } catch { return null }
 }
 
 // ========== 导入 ==========
@@ -378,48 +359,34 @@ export const importApkg = async (file: File, onProgress?: (msg: string) => void)
   try {
     onProgress?.('解析文件...')
     const zip = await JSZip.loadAsync(file)
-    
-    // 按优先级选择数据库
     onProgress?.('加载数据库...')
     let dbBuffer: ArrayBuffer | null = null
     for (const name of ['collection.anki21b', 'collection.anki21', 'collection.anki2']) {
       const f = zip.file(name)
       if (f) {
-        try {
-          dbBuffer = name === 'collection.anki21b' ? decompress(await f.async('uint8array')).buffer.slice(0) as ArrayBuffer : await f.async('arraybuffer')
-          break
-        } catch (e) { console.warn(`[Import] 跳过 ${name}:`, e) }
+        try { dbBuffer = name === 'collection.anki21b' ? decompress(await f.async('uint8array')).buffer.slice(0) as ArrayBuffer : await f.async('arraybuffer'); break } 
+        catch (e) { console.warn(`[Import] 跳过 ${name}:`, e) }
       }
     }
     if (!dbBuffer) throw new Error('无效 .apkg 文件：未找到有效数据库')
     
-    const cid = `col-${Date.now()}`
-    const dbPath = getAnkiDbPath(cid)
-    
-    onProgress?.('保存数据...')
-    await Promise.all([
-      putFile(dbPath, false, new File([dbBuffer], 'collection.anki21', { type: 'application/x-sqlite3' })),
-      putFile(`${ANKI_BASE}/${cid}/source.apkg`, false, file)
-    ])
-    
-    onProgress?.('解析卡组...')
-    const db = await getAnkiDb(cid)
-    if (!db) throw new Error('无效数据库')
-    
-    const deckList = await getDecks(db)
+    const SQL = await getSqlJs(), tempDb = new SQL.Database(new Uint8Array(dbBuffer)), deckList = await getDecks(tempDb)
+    tempDb.close()
     if (!deckList.length) throw new Error('未找到卡组数据')
-    
     deckList.sort((a, b) => a.name.split('::').length - b.name.split('::').length)
     
-    const { getDatabase } = await import('./database')
-    await (await getDatabase()).saveCollection({ 
-      id: cid, 
-      name: file.name.replace('.apkg', ''), 
-      path: dbPath, 
-      imported: Date.now(), 
-      apkgPath: `${ANKI_BASE}/${cid}/source.apkg` 
-    })
+    const mainDeckName = deckList.find(d => d.name !== 'Default')?.name.split('::')[0] || deckList[0].name
+    const sanitized = mainDeckName.replace(/[^a-zA-Z0-9\u4e00-\u9fa5]/g, '_').slice(0, 50)
+    const { getDatabase } = await import('./database'), db = await getDatabase(), existingCols = await db.getCollections()
+    let cid = `col-${sanitized}`, counter = 1
+    while (existingCols.some(c => c.id === cid)) cid = `col-${sanitized}-${counter++}`
     
+    onProgress?.('保存数据...')
+    await Promise.all([putFile(getAnkiDbPath(cid), false, new File([dbBuffer], 'collection.anki21', { type: 'application/x-sqlite3' })), putFile(`${ANKI_BASE}/${cid}/source.apkg`, false, file)])
+    
+    onProgress?.('解析卡组...')
+    if (!(await getAnkiDb(cid))) throw new Error('无效数据库')
+    await db.saveCollection({ id: cid, name: file.name.replace('.apkg', ''), path: getAnkiDbPath(cid), imported: Date.now(), apkgPath: `${ANKI_BASE}/${cid}/source.apkg` })
     clearAnkiDbCache()
     return { collectionId: cid, name: file.name.replace('.apkg', ''), decks: deckList }
   } catch (e) {

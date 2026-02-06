@@ -39,16 +39,16 @@ const mergeCardData = (ankiCards: any[], progressList: CardProgress[], deckId: s
 }
 
 export const getCards = async (deckId: string, limit = 20, offset = 0): Promise<DeckCard[]> => {
-  const { getDatabase } = await import('./database')
-  const deck = await (await getDatabase()).getDeck(deckId)
-  if (!deck?.collectionId) return []
-  
-  const [ankiCards, progressList] = await Promise.all([
-    queryAnkiCards(deck.collectionId, deck.ankiDeckId || 1, limit, offset),
-    (await getDatabase()).getProgressByDeck(deckId)
-  ])
-  
-  return mergeCardData(ankiCards, progressList, deckId, deck.collectionId)
+  try {
+    const { getDatabase } = await import('./database')
+    const deck = await (await getDatabase()).getDeck(deckId)
+    if (!deck?.collectionId) return []
+    const [ankiCards, progressList] = await Promise.all([
+      queryAnkiCards(deck.collectionId, deck.ankiDeckId || 1, limit, offset).catch(() => []),
+      (await getDatabase()).getProgressByDeck(deckId)
+    ])
+    return mergeCardData(ankiCards, progressList, deckId, deck.collectionId)
+  } catch { return [] }
 }
 
 export const getTodayDueCards = async (deckId: string): Promise<DeckCard[]> => {
