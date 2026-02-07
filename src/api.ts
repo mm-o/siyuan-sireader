@@ -490,3 +490,216 @@ export async function version(): Promise<string> {
 export async function currentTime(): Promise<number> {
   return request("/api/system/currentTime", {});
 }
+
+// **************************************** Flashcard / Riff ****************************************
+
+/**
+ * 获取所有闪卡卡组（不包括内置卡组）
+ * Get all flashcard decks (excluding built-in deck)
+ * 
+ * 注意：思源有两种卡组类型：
+ * 1. 传统卡组（Traditional Deck）：通过此 API 返回，有独立的卡组 ID
+ * 2. 快速制卡（Quick Flashcard）：通过块属性 custom-riff-decks 标记，所有快速制卡都属于内置卡组 (builtinDeckID: "20230218211946-2kw8jgx")
+ * 
+ * 快速制卡获取方式：
+ * - SQL 查询：SELECT DISTINCT a.value FROM attributes a WHERE a.name='custom-riff-decks' AND a.value!=''
+ * - 或使用 getTreeRiffCards / getNotebookRiffCards 按文档树/笔记本获取
+ */
+export async function getRiffDecks(): Promise<IRiffDeck[]> {
+  return request("/api/riff/getRiffDecks", {});
+}
+
+/**
+ * 创建闪卡卡组
+ * Create a flashcard deck
+ */
+export async function createRiffDeck(name: string): Promise<IRiffDeck> {
+  return request("/api/riff/createRiffDeck", { name });
+}
+
+/**
+ * 重命名闪卡卡组
+ * Rename a flashcard deck
+ */
+export async function renameRiffDeck(deckID: string, name: string) {
+  return request("/api/riff/renameRiffDeck", { deckID, name });
+}
+
+/**
+ * 删除闪卡卡组
+ * Remove a flashcard deck
+ */
+export async function removeRiffDeck(deckID: string) {
+  return request("/api/riff/removeRiffDeck", { deckID });
+}
+
+/**
+ * 添加闪卡到卡组
+ * Add flashcards to a deck
+ */
+export async function addRiffCards(deckID: string, blockIDs: string[]) {
+  return request("/api/riff/addRiffCards", { deckID, blockIDs });
+}
+
+/**
+ * 从卡组移除闪卡
+ * Remove flashcards from a deck
+ */
+export async function removeRiffCards(deckID: string, blockIDs: string[]) {
+  return request("/api/riff/removeRiffCards", { deckID, blockIDs });
+}
+
+/**
+ * 获取卡组中的闪卡（分页）
+ * Get flashcards in a deck (paginated)
+ */
+export async function getRiffCards(
+  deckID: string,
+  page: number = 1,
+  pageSize: number = 20
+): Promise<IRiffCardsResult> {
+  return request("/api/riff/getRiffCards", { id: deckID, page, pageSize });
+}
+
+/**
+ * 获取文档树中的闪卡（分页）
+ * Get flashcards in a document tree (paginated)
+ */
+export async function getTreeRiffCards(
+  rootID: string,
+  page: number = 1,
+  pageSize: number = 20
+): Promise<IRiffCardsResult> {
+  return request("/api/riff/getTreeRiffCards", { id: rootID, page, pageSize });
+}
+
+/**
+ * 获取笔记本中的闪卡（分页）
+ * Get flashcards in a notebook (paginated)
+ */
+export async function getNotebookRiffCards(
+  notebookID: string,
+  page: number = 1,
+  pageSize: number = 20
+): Promise<IRiffCardsResult> {
+  return request("/api/riff/getNotebookRiffCards", { id: notebookID, page, pageSize });
+}
+
+/**
+ * 根据块 ID 批量获取闪卡信息
+ * Get flashcards by block IDs
+ * 
+ * 这是获取快速制卡详细信息的推荐方式
+ */
+export async function getRiffCardsByBlockIDs(blockIDs: string[]): Promise<{ blocks: any[] }> {
+  return request("/api/riff/getRiffCardsByBlockIDs", { blockIDs });
+}
+
+/**
+ * 获取卡组中到期的闪卡
+ * Get due flashcards in a deck
+ */
+export async function getRiffDueCards(
+  deckID: string,
+  reviewedCards?: Array<{ cardID: string }>
+): Promise<IRiffDueCardsResult> {
+  return request("/api/riff/getRiffDueCards", { deckID, reviewedCards });
+}
+
+/**
+ * 获取文档树中到期的闪卡
+ * Get due flashcards in a document tree
+ */
+export async function getTreeRiffDueCards(
+  rootID: string,
+  reviewedCards?: Array<{ cardID: string }>
+): Promise<IRiffDueCardsResult> {
+  return request("/api/riff/getTreeRiffDueCards", { rootID, reviewedCards });
+}
+
+/**
+ * 获取笔记本中到期的闪卡
+ * Get due flashcards in a notebook
+ */
+export async function getNotebookRiffDueCards(
+  notebookID: string,
+  reviewedCards?: Array<{ cardID: string }>
+): Promise<IRiffDueCardsResult> {
+  return request("/api/riff/getNotebookRiffDueCards", { notebook: notebookID, reviewedCards });
+}
+
+/**
+ * 复习闪卡
+ * Review a flashcard
+ * 
+ * @param rating 评分 1-4: 1=Again, 2=Hard, 3=Good, 4=Easy
+ */
+export async function reviewRiffCard(
+  deckID: string,
+  cardID: string,
+  rating: 1 | 2 | 3 | 4,
+  reviewedCards?: Array<{ cardID: string }>
+) {
+  return request("/api/riff/reviewRiffCard", { deckID, cardID, rating, reviewedCards });
+}
+
+/**
+ * 跳过复习闪卡
+ * Skip reviewing a flashcard
+ */
+export async function skipReviewRiffCard(deckID: string, cardID: string) {
+  return request("/api/riff/skipReviewRiffCard", { deckID, cardID });
+}
+
+/**
+ * 重置闪卡学习进度
+ * Reset flashcard learning progress
+ * 
+ * @param type 类型: "notebook" | "tree" | "deck"
+ * @param id 对应的 ID（笔记本 ID / 文档树根 ID / 卡组 ID）
+ * @param deckID 卡组 ID
+ * @param blockIDs 要重置的块 ID 列表，为空则重置所有
+ */
+export async function resetRiffCards(
+  type: "notebook" | "tree" | "deck",
+  id: string,
+  deckID: string,
+  blockIDs?: string[]
+) {
+  return request("/api/riff/resetRiffCards", { type, id, deckID, blockIDs: blockIDs || [] });
+}
+
+/**
+ * 批量设置闪卡到期时间
+ * Batch set flashcard due time
+ * 
+ * @param cardDues 卡片到期时间列表 [{ id: cardID, due: "20240101120000" }]
+ */
+export async function batchSetRiffCardsDueTime(
+  cardDues: Array<{ id: string; due: string }>
+) {
+  return request("/api/riff/batchSetRiffCardsDueTime", { cardDues });
+}
+
+// **************************************** Flashcard Types ****************************************
+
+export interface IRiffDeck {
+  id: string;
+  name: string;
+  size: number;
+  created: string;
+  updated: string;
+}
+
+export interface IRiffCardsResult {
+  blocks: any[];
+  total: number;
+  pageCount: number;
+}
+
+export interface IRiffDueCardsResult {
+  cards: any[];
+  unreviewedCount: number;
+  unreviewedNewCardCount: number;
+  unreviewedOldCardCount: number;
+}

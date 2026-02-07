@@ -22,10 +22,10 @@
       :loadingEmojis="loadingEmojis"
       :allTags="allTags"
       @save="savePackHandler"
+      @reload="loadPackList"
       @delete="deletePackHandler"
       @toggle="togglePackActive"
       @export="exportPack"
-      @sync="syncPackToDoc"
       @import="importAnkiPack"
     />
 
@@ -63,7 +63,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { fetchSyncPost, showMessage } from 'siyuan'
 import { getCards, getTodayDueCards, getPack, createPack, updatePack, deletePack, importApkg, exportApkg } from './pack'
-import { getStat, syncPackToSiyuan } from './stat'
+import { getStat } from './stat'
 import DeckFlash from './DeckFlash.vue'
 import DeckPack from './DeckPack.vue'
 import DeckStat from './DeckStat.vue'
@@ -292,7 +292,6 @@ const deletePackHandler = async (id: string) => {
 }
 
 const exportPack = async (pack: Pack) => { await exportApkg(pack.id) }
-const syncPackToDoc = async (pack: Pack) => { await syncPackToSiyuan(pack.id) }
 const importAnkiPack = () => { fileInput.value?.click() }
 
 const handleAnkiImport = async (e: Event) => {

@@ -89,7 +89,7 @@
       <div class="flash-study-area">
         <div class="flash-card" :class="{flipped: isFlipped}">
           <div v-if="!isFlipped" class="card-face front" @click="flip">
-            <div v-html="currentCard.front" class="anki-content" @click.capture="stopIfAudio"></div>
+            <div v-html="renderFront(currentCard)" class="anki-content" @click.capture="stopIfAudio"></div>
             <div class="card-hint">
               <svg viewBox="0 0 24 24"><use xlink:href="#iconEye"/></svg>
               <div>{{t('deckShowAnswer','点击显示答案')}}</div>
@@ -139,280 +139,133 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { showMessage } from 'siyuan'
 import { recordReview } from './stat'
-import { playAudio, setupImageLazyLoad, renderAnki, setupInteractive } from './utils'
+import { playAudio, setupImageLazyLoad, renderAnki, renderFront, setupInteractive, initMathJax, renderMath, formatTime, stopIfAudio } from './utils'
 import { startFlashSession, endFlashSession, getRatingTimeText } from './flash'
 import type { DeckCard } from './types'
 
-const emit = defineEmits<{ close: [] }>()
-
-// i18n 辅助函数 - 需要从父组件传递
-// 由于这个组件没有 props.i18n，我们需要添加它
-const props = defineProps<{ i18n?: any }>()
-const t = (key: string, fallback: string) => props.i18n?.[key] || fallback
+const props=defineProps<{i18n?:any}>()
+const emit=defineEmits<{close:[]}>()
+const t=(key:string,fallback:string)=>props.i18n?.[key]||fallback
 
 // 状态
-const isStarted = ref(false)
-const isCompleted = ref(false)
-const isFlipped = ref(false)
-
-// 会话数据
-const sessionCards = ref<DeckCard[]>([])
-const currentIndex = ref(0)
-const sessionStartTime = ref(0)
-const reviewStartTime = ref(Date.now())
-
-// 评分按钮时间文本
-const ratingTimes = ref({ 1: '', 2: '', 3: '', 4: '' })
-
-// 统计数据
-const sessionStats = ref({ new: 0, learning: 0, review: 0 })
-const sessionSummary = ref({
-  total: 0,
-  timeSpent: 0,
-  accuracy: 0,
-  newCards: 0,
-  reviewCards: 0,
-  againCount: 0,
-  hardCount: 0,
-  goodCount: 0,
-  easyCount: 0
-})
+const isStarted=ref(false),isCompleted=ref(false),isFlipped=ref(false)
+const sessionCards=ref<DeckCard[]>([]),currentIndex=ref(0),sessionStartTime=ref(0),reviewStartTime=ref(Date.now())
+const ratingTimes=ref({1:'',2:'',3:'',4:''})
+const sessionStats=ref({new:0,learning:0,review:0})
+const sessionSummary=ref({total:0,timeSpent:0,accuracy:0,newCards:0,reviewCards:0,againCount:0,hardCount:0,goodCount:0,easyCount:0})
 
 // 计算属性
-const totalCards = computed(() => sessionStats.value.new + sessionStats.value.learning + sessionStats.value.review)
-const currentCard = computed(() => sessionCards.value[currentIndex.value])
-const progress = computed(() => sessionCards.value.length ? ((currentIndex.value + 1) / sessionCards.value.length) * 100 : 0)
-const stats = computed(() => {
-  const remaining = sessionCards.value.slice(currentIndex.value)
-  return {
-    new: remaining.filter(c => !c.learning || c.learning.state === 'new').length,
-    learning: remaining.filter(c => c.learning?.state === 'learning').length,
-    review: remaining.filter(c => c.learning?.state === 'review').length
+const totalCards=computed(()=>sessionStats.value.new+sessionStats.value.learning+sessionStats.value.review)
+const currentCard=computed(()=>sessionCards.value[currentIndex.value])
+const progress=computed(()=>sessionCards.value.length?((currentIndex.value+1)/sessionCards.value.length)*100:0)
+const stats=computed(()=>{
+  const remaining=sessionCards.value.slice(currentIndex.value)
+  return{
+    new:remaining.filter(c=>!c.learning||c.learning.state==='new').length,
+    learning:remaining.filter(c=>c.learning?.state==='learning').length,
+    review:remaining.filter(c=>c.learning?.state==='review').length
   }
 })
 
 // 工具函数
-const formatTime = (seconds: number) => {
-  const m = Math.floor(seconds / 60)
-  const s = seconds % 60
-  return m > 0 ? `${m}分${s}秒` : `${s}秒`
+const getConfettiStyle=(i:number)=>{
+  const colors=['#667eea','#764ba2','#f093fb','#4facfe','#43e97b','#fa709a','#fee140','#30cfd0']
+  return{'--color':colors[i%colors.length],'--x':`${Math.random()*100}%`,'--delay':`${Math.random()*0.5}s`,'--duration':`${2+Math.random()}s`}
 }
 
-const getConfettiStyle = (i: number) => {
-  const colors = ['#667eea', '#764ba2', '#f093fb', '#4facfe', '#43e97b', '#fa709a', '#fee140', '#30cfd0']
-  return {
-    '--color': colors[i % colors.length],
-    '--x': `${Math.random() * 100}%`,
-    '--delay': `${Math.random() * 0.5}s`,
-    '--duration': `${2 + Math.random()}s`
-  }
-}
-
-const stopIfAudio = (e: Event) => { 
-  if ((e.target as HTMLElement).closest('.anki-audio')) {
-    e.stopPropagation()
-    playAudio(e)
-  }
-}
-
-// LaTeX 渲染
-const renderMath = (selector: string) => window.MathJax?.typesetPromise?.([document.querySelector(selector)]).catch(() => {})
-
-const flip = async () => { 
-  if (!isFlipped.value) { 
-    isFlipped.value = true
-    setTimeout(() => {
-      observeImages()
-      setupInteractive('.anki-content')
-      renderMath('.flash-card .card-face.back')
-    }, 50)
+const flip=async()=>{
+  if(!isFlipped.value){
+    isFlipped.value=true
+    setTimeout(()=>{observeImages();setupInteractive('.anki-content');renderMath('.flash-card .card-face.back')},50)
     await updateRatingTimes()
   }
 }
 
-// 更新评分按钮时间文本
-const updateRatingTimes = async () => {
-  if (!currentCard.value) return
-  const times = await Promise.all([
-    getRatingTimeText(1, currentCard.value),
-    getRatingTimeText(2, currentCard.value),
-    getRatingTimeText(3, currentCard.value),
-    getRatingTimeText(4, currentCard.value)
-  ])
-  ratingTimes.value = { 1: times[0], 2: times[1], 3: times[2], 4: times[3] }
+const updateRatingTimes=async()=>{
+  if(!currentCard.value)return
+  const times=await Promise.all([1,2,3,4].map(r=>getRatingTimeText(r,currentCard.value)))
+  ratingTimes.value={1:times[0],2:times[1],3:times[2],4:times[3]}
 }
 
-// 启动学习会话
-const startSession = async () => {
-  const session = await startFlashSession()
-  if (!session) {
-    showMessage('没有需要学习的卡片', 2000, 'info')
-    return
-  }
-  
-  sessionCards.value = session.cards
-  sessionStats.value = session.stats
-  isStarted.value = true
-  sessionStartTime.value = Date.now()
-  reviewStartTime.value = Date.now()
-  // 预加载第一张卡片的评分时间
+const startSession=async()=>{
+  const session=await startFlashSession()
+  if(!session){showMessage('没有需要学习的卡片',2000,'info');return}
+  sessionCards.value=session.cards
+  sessionStats.value=session.stats
+  isStarted.value=true
+  sessionStartTime.value=Date.now()
+  reviewStartTime.value=Date.now()
   await updateRatingTimes()
 }
 
-// 图片懒加载
-let imgObserver: IntersectionObserver | null = null
+let imgObserver:IntersectionObserver|null=null
+const observeImages=()=>{if(!imgObserver)return;document.querySelectorAll('.flash-card img[data-cid]').forEach(img=>{if(!(img as HTMLImageElement).src?.startsWith('blob:'))imgObserver?.observe(img)})}
 
-const observeImages = () => {
-  if (!imgObserver) return
-  document.querySelectorAll('.flash-card img[data-cid]').forEach(img => {
-    if (!(img as HTMLImageElement).src?.startsWith('blob:')) imgObserver?.observe(img)
-  })
-}
-
-// 评分
-const rate = async (rating: 1 | 2 | 3 | 4) => {
-  try {
-    const card = currentCard.value
-    if (!card) return
-    
-    const timeSpent = Math.floor((Date.now() - reviewStartTime.value) / 1000)
-    const isNew = !card.learning || card.learning.state === 'new'
-    
-    // 更新会话统计
+const rate=async(rating:1|2|3|4)=>{
+  try{
+    const card=currentCard.value
+    if(!card)return
+    const timeSpent=Math.floor((Date.now()-reviewStartTime.value)/1000)
+    const isNew=!card.learning||card.learning.state==='new'
     sessionSummary.value.total++
-    if (isNew) sessionSummary.value.newCards++
+    if(isNew)sessionSummary.value.newCards++
     else sessionSummary.value.reviewCards++
-    
-    const ratingMap = { 1: 'againCount', 2: 'hardCount', 3: 'goodCount', 4: 'easyCount' } as const
+    const ratingMap={1:'againCount',2:'hardCount',3:'goodCount',4:'easyCount'}as const
     sessionSummary.value[ratingMap[rating]]++
-    
-    // 计算下次复习时间
-    const { calculateNextReview, saveCardProgress } = await import('./flash')
-    const result = await calculateNextReview(rating, card)
-    
-    // 更新学习数据
-    card.learning = {
-      state: result.state,
-      due: Date.now() + result.interval * 60 * 1000,
-      interval: result.interval,
-      ease: result.ease,
-      lapses: rating === 1 ? (card.learning?.lapses || 0) + 1 : (card.learning?.lapses || 0),
-      reps: (card.learning?.reps || 0) + 1,
-      lastReview: Date.now(),
-      ...(result.stability !== undefined && { stability: result.stability }),
-      ...(result.difficulty !== undefined && { difficulty: result.difficulty })
-    } as any
-    
-    // 保存进度
+    const{calculateNextReview,saveCardProgress}=await import('./flash')
+    const result=await calculateNextReview(rating,card)
+    card.learning={state:result.state,due:Date.now()+result.interval*60*1000,interval:result.interval,ease:result.ease,lapses:rating===1?(card.learning?.lapses||0)+1:(card.learning?.lapses||0),reps:(card.learning?.reps||0)+1,lastReview:Date.now(),...(result.stability!==undefined&&{stability:result.stability}),...(result.difficulty!==undefined&&{difficulty:result.difficulty})}as any
     await saveCardProgress(card)
-    
-    // 记录学习历史
-    const { getDatabase } = await import('./database')
-    const db = await getDatabase()
-    await db.recordReview(card.id, card.deckId, rating, isNew, timeSpent)
-    await recordReview(rating, isNew, timeSpent, false, card.id)
-    
-    // 下一张卡片
-    isFlipped.value = false
+    const{getDatabase}=await import('./database')
+    const db=await getDatabase()
+    await db.recordReview(card.id,card.deckId,rating,isNew,timeSpent)
+    await recordReview(rating,isNew,timeSpent,false,card.id)
+    isFlipped.value=false
     currentIndex.value++
-    reviewStartTime.value = Date.now()
-    
-    // 预加载下一张卡片的评分时间
-    if (currentIndex.value < sessionCards.value.length) {
-      await updateRatingTimes()
-    }
-    
-    // 检查是否完成
-    if (currentIndex.value >= sessionCards.value.length) {
-      const totalTime = Math.floor((Date.now() - sessionStartTime.value) / 1000)
-      sessionSummary.value.timeSpent = totalTime
-      const correctCount = sessionSummary.value.goodCount + sessionSummary.value.easyCount
-      sessionSummary.value.accuracy = sessionSummary.value.total > 0 
-        ? Math.round((correctCount / sessionSummary.value.total) * 100) 
-        : 0
-      
+    reviewStartTime.value=Date.now()
+    if(currentIndex.value<sessionCards.value.length)await updateRatingTimes()
+    if(currentIndex.value>=sessionCards.value.length){
+      const totalTime=Math.floor((Date.now()-sessionStartTime.value)/1000)
+      sessionSummary.value.timeSpent=totalTime
+      const correctCount=sessionSummary.value.goodCount+sessionSummary.value.easyCount
+      sessionSummary.value.accuracy=sessionSummary.value.total>0?Math.round((correctCount/sessionSummary.value.total)*100):0
       endFlashSession()
       window.dispatchEvent(new Event('sireader:stat-updated'))
       window.dispatchEvent(new Event('sireader:deck-updated'))
-      
-      isCompleted.value = true
+      isCompleted.value=true
       await refreshStats()
     }
-  } catch (e) {
-    console.error('[Flash]', e)
-    showMessage('评分失败', 3000, 'error')
+  }catch(e){console.error('[Flash]',e);showMessage('评分失败',3000,'error')}
+}
+
+const refreshStats=async()=>{
+  const{getDueCards}=await import('./flash')
+  const cards=await getDueCards()
+  sessionStats.value={
+    new:cards.filter((c:DeckCard)=>!c.learning||c.learning.state==='new').length,
+    learning:cards.filter((c:DeckCard)=>c.learning?.state==='learning').length,
+    review:cards.filter((c:DeckCard)=>c.learning?.state==='review').length
   }
 }
 
-// 刷新统计数据
-const refreshStats = async () => {
-  const { getDueCards } = await import('./flash')
-  const cards = await getDueCards()
-  
-  sessionStats.value = {
-    new: cards.filter((c: DeckCard) => !c.learning || c.learning.state === 'new').length,
-    learning: cards.filter((c: DeckCard) => c.learning?.state === 'learning').length,
-    review: cards.filter((c: DeckCard) => c.learning?.state === 'review').length
-  }
+const backToStart=()=>{
+  isStarted.value=false;isCompleted.value=false;sessionCards.value=[];currentIndex.value=0;isFlipped.value=false
+  sessionSummary.value={total:0,timeSpent:0,accuracy:0,newCards:0,reviewCards:0,againCount:0,hardCount:0,goodCount:0,easyCount:0}
+  endFlashSession();refreshStats()
 }
 
-// 返回启动页面
-const backToStart = () => {
-  isStarted.value = false
-  isCompleted.value = false
-  sessionCards.value = []
-  currentIndex.value = 0
-  isFlipped.value = false
-  sessionSummary.value = {
-    total: 0,
-    timeSpent: 0,
-    accuracy: 0,
-    newCards: 0,
-    reviewCards: 0,
-    againCount: 0,
-    hardCount: 0,
-    goodCount: 0,
-    easyCount: 0
-  }
-  endFlashSession()
-  refreshStats()
+const handleKey=(e:KeyboardEvent)=>{
+  if(isCompleted.value){if(e.key==='Enter'||e.key==='Escape')backToStart();return}
+  if(!isStarted.value){if(e.key==='Enter'&&totalCards.value>0)startSession();if(e.key==='Escape')emit('close');return}
+  if(e.key===' '){e.preventDefault();if(!isFlipped.value)flip()}
+  if(e.key==='Escape')backToStart()
+  if(isFlipped.value&&['1','2','3','4'].includes(e.key))rate(+e.key as any)
 }
 
-// 键盘事件
-const handleKey = (e: KeyboardEvent) => {
-  if (isCompleted.value) {
-    if (e.key === 'Enter' || e.key === 'Escape') backToStart()
-    return
-  }
-  
-  if (!isStarted.value) {
-    if (e.key === 'Enter' && totalCards.value > 0) startSession()
-    if (e.key === 'Escape') emit('close')
-    return
-  }
-  
-  if (e.key === ' ') { e.preventDefault(); if (!isFlipped.value) flip() }
-  if (e.key === 'Escape') backToStart()
-  if (isFlipped.value && ['1','2','3','4'].includes(e.key)) rate(+e.key as any)
-}
-
-// 生命周期
-onMounted(async () => {
-  await refreshStats()
-  imgObserver = setupImageLazyLoad()
-  window.addEventListener('keydown', handleKey)
-  document.addEventListener('click', playAudio, true)
-})
-
-onUnmounted(() => {
-  endFlashSession()
-  imgObserver?.disconnect()
-  window.removeEventListener('keydown', handleKey)
-  document.removeEventListener('click', playAudio, true)
-})
-
-watch(() => currentCard.value, () => setTimeout(() => { observeImages(); renderMath('.flash-card .card-face.front') }, 100))
-watch(() => isFlipped.value, (v) => { if (v) setTimeout(observeImages, 100) })
+onMounted(async()=>{await refreshStats();imgObserver=setupImageLazyLoad();window.addEventListener('keydown',handleKey);document.addEventListener('click',playAudio,true);initMathJax()})
+onUnmounted(()=>{endFlashSession();imgObserver?.disconnect();window.removeEventListener('keydown',handleKey);document.removeEventListener('click',playAudio,true)})
+watch(()=>currentCard.value,()=>setTimeout(()=>{observeImages();renderMath('.flash-card .card-face.front')},100))
+watch(()=>isFlipped.value,(v)=>{if(v)setTimeout(observeImages,100)})
 </script>
 
 <style scoped lang="scss">

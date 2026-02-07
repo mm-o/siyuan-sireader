@@ -1,15 +1,9 @@
 // 统计数据管理（使用统一数据库）
 import { fetchSyncPost } from 'siyuan'
-import { prependBlock } from '@/api'
 import type { StudyStats, DailyStats, DeckCard, IntervalStats, RetentionStats, ForecastStats } from './types'
 import { getDatabase } from './database'
 
-const DECK_ID = '20230218211946-2kw8jgx'
-const NB_KEY = 'sireader-deck-notebook'
 const DAY = 86400000
-
-let nbID: string | null = null
-
 const today = () => new Date().toISOString().split('T')[0]
 
 // 获取统计数据
@@ -45,7 +39,6 @@ export const recordReview = async (
   const todayDate = today()
   const stats = await db.getDailyStats(todayDate)
   
-  // 更新今日统计
   if (isNew) stats.newCards++
   stats.reviews++
   stats.studyTime += time
@@ -61,24 +54,19 @@ export const recordReview = async (
   
   await db.saveDailyStats(stats)
   
-  // 更新总体统计
   const total = await db.getTotalStats()
   total.reviews++
   total.totalTime += time
   
-  // 计算平均正确率
   const history = await db.getStatsHistory(365)
   const allRev = history.reduce((s, d) => s + d.reviews, 0) + stats.reviews
   const allCor = history.reduce((s, d) => s + (d.reviews * d.correctRate / 100), 0) + (stats.reviews * stats.correctRate / 100)
   total.avgCorrectRate = allRev > 0 ? Math.round((allCor / allRev) * 100) : 0
   
-  // 计算学习天数
   total.studyDays = new Set([...history.map(d => d.date), stats.date]).size
   total.avgStudyTime = Math.round(total.totalTime / total.studyDays)
   
-  // 计算连续学习天数
   updateStreak(total, history, stats)
-  
   await db.updateTotalStats(total)
 }
 
@@ -176,7 +164,7 @@ export const calcForecast = (cards: DeckCard[]): ForecastStats => {
   return { next7Days: n7, next30Days: n30 }
 }
 
-// ========== 思源闪卡 API ==========
+// 思源闪卡 API
 export type RiffCardState = 0 | 1 | 2 | 3
 export type Rating = 1 | 2 | 3 | 4
 
@@ -189,112 +177,9 @@ export const reviewRiffCard = (deckID: string, cardID: string, rating: Rating) =
 export const skipRiffCard = (deckID: string, cardID: string) =>
   fetchSyncPost('/api/riff/skipReviewRiffCard', { deckID, cardID })
 
-export const addRiffCard = (deckID: string, blockIDs: string[]) =>
-  fetchSyncPost('/api/riff/addRiffCards', { deckID, blockIDs })
-
-export const removeRiffCard = (deckID: string, blockIDs: string[]) =>
-  fetchSyncPost('/api/riff/removeRiffCards', { deckID, blockIDs })
-
-export const getRiffCard = (deckID: string, page = 1, pageSize = 100) =>
-  fetchSyncPost('/api/riff/getRiffCards', { id: deckID, page, pageSize })
-
-export const getRiffCardByBlockID = (blockIDs: string[]) =>
-  fetchSyncPost('/api/riff/getRiffCardsByBlockIDs', { blockIDs })
-
-export const resetRiffCard = (deckID: string, blockIDs?: string[]) =>
-  fetchSyncPost('/api/riff/resetRiffCards', { type: 'deck', id: deckID, deckID, blockIDs: blockIDs || [] })
-
 export const getRiffDeck = () =>
   fetchSyncPost('/api/riff/getRiffDecks', {})
 
 export const createRiffDeck = (name: string) =>
   fetchSyncPost('/api/riff/createRiffDeck', { name })
 
-// 笔记本管理
-export const getDeckNotebook = async (): Promise<string> => {
-  if (nbID) return nbID
-  
-  try {
-    const stored = localStorage.getItem(NB_KEY)
-    if (stored) {
-      const res = await fetchSyncPost('/api/notebook/lsNotebooks', {})
-      if (res?.data?.notebooks?.find((nb: any) => nb.id === stored)) {
-        nbID = stored
-        return nbID
-      }
-    }
-  } catch { }
-  
-  try {
-    const res = await fetchSyncPost('/api/notebook/lsNotebooks', {})
-    if (res?.data?.notebooks?.length) {
-      nbID = res.data.notebooks[0].id
-      localStorage.setItem(NB_KEY, nbID)
-      return nbID
-    }
-  } catch { }
-  
-  throw new Error('无法获取笔记本')
-}
-
-// ========== 同步功能（待实现） ==========
-const fmt = (c: DeckCard): string => {
-  const { word, data } = c as any
-  const parts = [`## ${word}`]
-  if (data.phonetic) parts.push(`**/${data.phonetic}/**`)
-  if (data.meanings?.length) {
-    parts.push('')
-    data.meanings.forEach((m: any) => parts.push(`- **${m.pos}** ${m.text}`))
-  }
-  if (data.examples?.length) {
-    parts.push('')
-    data.examples.forEach((e: any) => {
-      parts.push(`> ${e.en}`)
-      if (e.zh) parts.push(`> ${e.zh}`)
-    })
-  }
-  return parts.join('\n')
-}
-
-const createBlock = async (md: string, pid: string): Promise<string> => {
-  const res = await prependBlock('markdown', md, pid)
-  if (!res || !Array.isArray(res) || !res.length) throw new Error('创建块失败')
-  const bid = res[0]?.doOperations?.[0]?.id
-  if (!bid) throw new Error('未返回块ID')
-  return bid
-}
-
-export const syncCardToRiff = async (c: DeckCard, deckID = DECK_ID): Promise<string> => {
-  if ((c as any).riffBlockID) return (c as any).riffBlockID
-  const md = fmt(c)
-  const bid = await createBlock(md, deckID)
-  await addRiffCard(deckID, [bid])
-  // TODO: 保存 riffBlockID 到数据库
-  console.warn('[stat] syncCardToRiff riffBlockID save not implemented')
-  return bid
-}
-
-export const unsyncCardFromRiff = async (c: DeckCard, deckID = DECK_ID): Promise<boolean> => {
-  if (!(c as any).riffBlockID) return false
-  await removeRiffCard(deckID, [(c as any).riffBlockID])
-  // TODO: 从数据库删除 riffBlockID
-  console.warn('[stat] unsyncCardFromRiff not implemented')
-  return true
-}
-
-export const isCardSynced = async (c: DeckCard): Promise<boolean> => {
-  if (!(c as any).riffBlockID) return false
-  try {
-    const res = await getRiffCardByBlockID([(c as any).riffBlockID])
-    return res?.data?.blocks?.length > 0
-  } catch {
-    return false
-  }
-}
-
-export const syncPackToSiyuan = async (deckId: string) => {
-  // TODO: 实现批量同步
-  throw new Error(`功能开发中: ${deckId}`)
-}
-
-export { DECK_ID as DEFAULT_DECK_ID }

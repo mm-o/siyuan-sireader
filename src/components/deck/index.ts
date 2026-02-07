@@ -80,26 +80,15 @@ export {
   DeckSettingsManager
 } from './settings'
 
-// 统计 + 思源同步
+// 统计
 export {
   getStat,
   recordReview,
   getDueCard,
   reviewRiffCard,
   skipRiffCard,
-  addRiffCard,
-  removeRiffCard,
-  getRiffCard,
-  getRiffCardByBlockID,
-  resetRiffCard,
   getRiffDeck,
   createRiffDeck,
-  syncCardToRiff,
-  unsyncCardFromRiff,
-  isCardSynced,
-  syncPackToSiyuan,
-  getDeckNotebook,
-  DEFAULT_DECK_ID,
   type RiffCardState,
   type Rating
 } from './stat'

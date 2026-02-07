@@ -3,39 +3,45 @@ import type { DeckCard } from './types'
 import type { CardProgress } from './database'
 import { queryAnkiCards, insertAnkiCard, deleteAnkiCard, getAnkiCardCount, getAnkiDb, saveAnkiDb } from './anki'
 
+const notifyCards=()=>window.dispatchEvent(new Event('sireader:deck-updated'))
+const extractBlockId = (tags: string): string | null => tags?.match(/siyuan-block-([a-z0-9-]+)/)?.[1] || null
+
 const mergeCardData = (ankiCards: any[], progressList: CardProgress[], deckId: string, collectionId: string): DeckCard[] => {
   const progressMap = new Map(progressList.map(p => [p.ankiCardId, p]))
-  return ankiCards.map(c => ({
-    id: `card-${c.id}`,
-    type: 'qa',
-    deckId,
-    front: c.front,
-    back: c.back,
-    tags: c.tags || [],
-    metadata: {
-      source: progressMap.get(c.id)?.source || 'import',
-      collectionId,
-      createdAt: progressMap.get(c.id)?.createdAt || Date.now(),
-      updatedAt: progressMap.get(c.id)?.updatedAt || Date.now()
-    },
-    ankiNoteId: c.nid,
-    ankiCardId: c.id,
-    timestamp: progressMap.get(c.id)?.createdAt || Date.now(),
-    learning: progressMap.get(c.id) ? {
-      state: progressMap.get(c.id)!.state,
-      due: progressMap.get(c.id)!.due,
-      interval: progressMap.get(c.id)!.interval,
-      ease: progressMap.get(c.id)!.ease,
-      lapses: progressMap.get(c.id)!.lapses,
-      reps: progressMap.get(c.id)!.reps,
-      lastReview: progressMap.get(c.id)!.lastReview,
-      stability: progressMap.get(c.id)!.stability,
-      difficulty: progressMap.get(c.id)!.difficulty
-    } as any : undefined,
-    model: c.model,
-    modelCss: c.modelCss,
-    scripts: c.scripts || []
-  } as DeckCard))
+  return ankiCards.map(c => {
+    const p = progressMap.get(c.id)
+    return {
+      id: `card-${c.id}`,
+      type: 'qa',
+      deckId,
+      front: c.front,
+      back: c.back,
+      tags: c.tags || [],
+      metadata: {
+        source: p?.source || 'import',
+        collectionId,
+        createdAt: p?.createdAt || Date.now(),
+        updatedAt: p?.updatedAt || Date.now()
+      },
+      ankiNoteId: c.nid,
+      ankiCardId: c.id,
+      timestamp: p?.createdAt || Date.now(),
+      learning: p ? {
+        state: p.state,
+        due: p.due,
+        interval: p.interval,
+        ease: p.ease,
+        lapses: p.lapses,
+        reps: p.reps,
+        lastReview: p.lastReview,
+        stability: p.stability,
+        difficulty: p.difficulty
+      } as any : undefined,
+      model: c.model,
+      modelCss: c.modelCss,
+      scripts: c.scripts || []
+    } as DeckCard
+  })
 }
 
 export const getCards = async (deckId: string, limit = 20, offset = 0): Promise<DeckCard[]> => {
@@ -142,6 +148,7 @@ export const addCard = async (
     db.updateDeckStats(deckId)
   ])
   
+  notifyCards()
   return true
 }
 
@@ -157,13 +164,15 @@ export const updateCard = async (
   const ankiDb = await getAnkiDb(progress.collectionId)
   if (!ankiDb) return false
   
+  const noteQuery = ankiDb.exec(`SELECT flds, tags FROM notes WHERE id = ${progress.ankiNoteId}`)
+  if (!noteQuery?.[0]) return false
+  
+  const [flds, tags] = noteQuery[0].values[0] as [string, string]
+  const fields = flds.split('\x1f')
+  
+  if (updates.front !== undefined) fields[0] = updates.front
+  if (updates.back !== undefined) fields[1] = updates.back
   if (updates.front !== undefined || updates.back !== undefined) {
-    const result = ankiDb.exec(`SELECT flds FROM notes WHERE id = ${progress.ankiNoteId}`)
-    if (!result?.[0]) return false
-    
-    const fields = (result[0].values[0][0] as string).split('\x1f')
-    if (updates.front !== undefined) fields[0] = updates.front
-    if (updates.back !== undefined) fields[1] = updates.back
     ankiDb.run(`UPDATE notes SET flds = ?, mod = ? WHERE id = ?`, [fields.join('\x1f'), Date.now(), progress.ankiNoteId])
   }
   
@@ -177,6 +186,14 @@ export const updateCard = async (
     db.saveProgress(progress)
   ])
   
+  const blockId = extractBlockId(tags)
+  if (blockId && (updates.front !== undefined || updates.back !== undefined)) {
+    try {
+      await import('./siyuan-card').then(m => m.updateSiyuanCard(blockId, fields[0], fields[1]))
+    } catch {}
+  }
+  
+  notifyCards()
   return true
 }
 
@@ -186,14 +203,23 @@ export const removeCard = async (cardId: string): Promise<boolean> => {
   const progress = await db.getProgress(cardId)
   if (!progress) return false
   
+  let blockId: string | null = null
+  if (progress.collectionId && progress.ankiNoteId) {
+    const ankiDb = await getAnkiDb(progress.collectionId)
+    const result = ankiDb?.exec(`SELECT tags FROM notes WHERE id = ${progress.ankiNoteId}`)
+    blockId = extractBlockId(result?.[0]?.values[0]?.[0] as string)
+  }
+  
   await Promise.all([
     progress.collectionId && progress.ankiCardId 
       ? deleteAnkiCard(progress.collectionId, progress.ankiCardId, progress.ankiNoteId)
       : Promise.resolve(),
     db.deleteProgress(cardId),
-    db.updateDeckStats(progress.deckId)
+    db.updateDeckStats(progress.deckId),
+    blockId ? import('./siyuan-card').then(m => m.removeSiyuanCard(blockId!)).catch(() => {}) : Promise.resolve()
   ])
   
+  notifyCards()
   return true
 }
 

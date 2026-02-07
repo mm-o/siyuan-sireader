@@ -4,7 +4,7 @@
 <p style="color: rgba(255,255,255,0.9); margin: 0 0 1.5em; font-size: 1.1em;">Professional eBook Reader · Smart Annotation · Multi-format Support</p>
 <p style="color: rgba(255,255,255,0.85); margin: 0 0 1.5em; line-height: 1.6; font-size: 0.95em;">Transform SiYuan Notes into a professional eBook reader<br>Support EPUB/PDF/TXT/Online novels with smart annotation, multi-theme switching, dictionary lookup, AI translation, deck system, and more for an immersive reading experience</p>
 <p style="margin: 0 0 1em;">
-<img src="https://img.shields.io/badge/version-0.8.3-blue.svg" alt="Version" style="display: inline-block; margin: 0 4px;">
+<img src="https://img.shields.io/badge/version-0.8.4-blue.svg" alt="Version" style="display: inline-block; margin: 0 4px;">
 <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License" style="display: inline-block; margin: 0 4px;">
 <img src="https://img.shields.io/badge/SiYuan-3.0+-orange.svg" alt="SiYuan" style="display: inline-block; margin: 0 4px;">
 </p>
@@ -50,6 +50,7 @@
 
 ### 🎴 Flashcard Learning System
 - **Anki Import** - Full .apkg file import with deck structure and card content preserved (learning progress import not yet supported)
+- **SiYuan Flashcard Sync** - Import SiYuan flashcards with real-time bidirectional sync (auto-sync on add, delete, modify)
 - **Spaced Repetition** - Four-level rating system, smart queue, customizable learning steps
 - **FSRS Algorithm** - Advanced memory algorithm for optimized review intervals
 - **Data Statistics** - 11 visualization charts: ring charts, line charts, bubble charts, radar charts, heatmaps, etc.
@@ -72,6 +73,41 @@
 ---
 
 ## 📝 Latest Updates
+
+### v0.8.4 (2026.2.7)
+
+#### ✨ New Features
+
+**SiYuan Flashcard Bidirectional Sync**
+- Support importing SiYuan flashcards to plugin decks, click "Import SiYuan" button in deck management
+- Two-step selection process: select SiYuan deck first, then select target plugin deck
+- Auto-parse 7 flashcard types: mark cards, heading blocks, list blocks, super blocks, Q&A, multi-line, default
+- Support cloze formats: `{{c1::answer::hint}}` and `==mark==`, multiple clozes supported
+- Imported cards auto-add `siyuan` tag, preserve original block ID and deck ID
+
+**Real-time Bidirectional Sync**
+- WebSocket monitors SiYuan flashcard changes in real-time, auto-sync to plugin
+- SiYuan adds flashcard → Auto-import to plugin deck
+- SiYuan deletes flashcard → Auto-delete corresponding card in plugin
+- SiYuan modifies flashcard content → Auto-update card content in plugin
+- Plugin modifies card → Can sync back to SiYuan notes (support locate and delete)
+
+#### 🔧 Improvements
+
+- Created card list component to unify card loading and rendering logic
+- Optimized statistics page structure for clearer data display
+- Support deleting parent decks for batch deletion
+- Unified event trigger mechanism, all deck and card operations update UI in real-time
+- Simplified import and sync prompts, only show final results
+- Use SiYuan theme variables for CSS styles, more coordinated interface
+
+#### 🐛 Bug Fixes
+
+- Fixed issue where card page didn't update after deleting deck
+- Fixed wildcard selector style leak causing SiYuan code blocks to be force-locked in height and text size reduced
+- Improved Anki database and progress data cleanup logic
+
+---
 
 ### v0.8.3 (2026.2.6)
 
@@ -345,6 +381,17 @@ Complete spaced repetition learning functionality:
 - **Deck Structure** - Support multi-level decks (e.g., Language::English::Vocabulary)
 - **Media Files** - Auto-extract images and audio, load on-demand
 - **Custom Templates** - Preserve Anki card templates and CSS styles
+
+**SiYuan Flashcard Bidirectional Sync:**
+- **Import Function** - Click "Import SiYuan" in deck management, two-step selection to complete import
+- **7 Card Types** - Support mark cards, heading blocks, list blocks, super blocks, Q&A, multi-line, default
+- **Cloze Support** - Full support for `{{c1::answer::hint}}` and `==mark==` formats, multiple clozes supported
+- **Real-time Sync** - WebSocket monitors SiYuan flashcard changes, auto-sync to plugin
+  - SiYuan adds flashcard → Auto-import to plugin deck
+  - SiYuan deletes flashcard → Auto-delete corresponding card in plugin
+  - SiYuan modifies flashcard content → Auto-update card content in plugin
+  - Plugin modifies card → Can sync back to SiYuan notes (support locate and delete)
+- **Tag Management** - Imported cards auto-add `siyuan` tag, preserve original block ID and deck ID
 
 **Learning Features:**
 - **Four-level Rating** - Again, Hard, Good, Easy
