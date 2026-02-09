@@ -8,7 +8,6 @@ export class DeckSettingsManager {
     return {
       id: `settings-${deckId}`,
       name,
-      notebookId: '',
       newCardsPerDay: 20,
       reviewsPerDay: 200,
       learningSteps: [1, 10],
@@ -61,7 +60,6 @@ export class DeckSettingsManager {
     const dbSettings = {
       id: settings.id,
       deckId: settings.id.replace('settings-', ''),
-      notebookId: settings.notebookId,
       newCardsPerDay: settings.newCardsPerDay,
       reviewsPerDay: settings.reviewsPerDay,
       learningSteps: settings.learningSteps,

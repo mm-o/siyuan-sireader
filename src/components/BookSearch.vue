@@ -269,14 +269,11 @@ onUnmounted(() => window.removeEventListener('anna-toggle', handleAnnaToggle))
 </script>
 
 <style scoped lang="scss">
-// 统一按钮样式
-.sr-btn{border:none;cursor:pointer;transition:all .15s;display:flex;align-items:center;justify-content:center;gap:4px;
-  svg{width:14px;height:14px}
-  &:active{transform:scale(.95)}
-}
+@use './deck/deck.scss';
+
 .sr-btn-icon{width:28px;height:28px;padding:0;background:transparent;color:var(--b3-theme-on-surface);opacity:.5;border-radius:4px;
   &:hover{opacity:1;background:var(--b3-theme-surface)}
-  &.active{opacity:1;color:var(--b3-theme-primary);background:var(--b3-theme-primary-lightest)}
+  &:active{opacity:1;color:var(--b3-theme-primary);background:var(--b3-theme-primary-lightest)}
 }
 .sr-btn-primary{height:32px;padding:0 14px;background:var(--b3-theme-primary);color:var(--b3-theme-on-primary);border-radius:4px;font-size:12px;font-weight:500;
   &:hover{transform:translateY(-1px);box-shadow:0 2px 6px #0003}

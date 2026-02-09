@@ -19,9 +19,6 @@ export interface DeckSettings {
   id: string
   name: string
   
-  // 笔记本绑定
-  notebookId: string
-  
   // 每日上限
   newCardsPerDay: number
   reviewsPerDay: number

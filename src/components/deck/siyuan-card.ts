@@ -1,7 +1,6 @@
 // 思源闪卡双向同步
 import { fetchSyncPost, showMessage } from 'siyuan'
 
-// ==================== 常量定义 ====================
 const CSS = `.card{font-family:var(--b3-font-family);font-size:16px;line-height:1.6;color:var(--b3-theme-on-surface);padding:20px;background:var(--b3-theme-surface)}
 .card__block--hidemark span[data-type~=mark]{font-size:0!important}
 .card__block--hidemark span[data-type~=mark]::before{content:" [...] ";color:var(--b3-theme-primary-light);font-size:16px;font-weight:bold}
@@ -16,69 +15,77 @@ const notifyAll = () => {
   window.dispatchEvent(new Event('sireader:deck-updated'))
 }
 
-// ==================== WebSocket 状态 ====================
+// 状态
 let ws: WebSocket | null = null
 let timer: number | null = null
 let enabled = false
 
-// ==================== 核心工具函数 ====================
+// 缓存和防抖
+const cache = new Map<string, { html: string, time: number }>()
+const pending = new Map<string, NodeJS.Timeout>()
+const CACHE_TTL = 5 * 60 * 1000
+const DELAY = { add: 500, update: 1000 }
 
-/** 获取块的完整 HTML（包含子块），自动清理 IAL */
-const getBlockHTML = async (blockId: string) => {
-  const res = await fetchSyncPost('/api/filetree/getDoc', { id: blockId, mode: 0, size: 102400 })
-  return (res?.data?.content || '').replace(/\{:[^}]+\}/g, '')
+// 获取块 HTML
+const getHTML = async (id: string, useCache = true) => {
+  if (useCache) {
+    const c = cache.get(id)
+    if (c && Date.now() - c.time < CACHE_TTL) return c.html
+  }
+  const res = await fetchSyncPost('/api/filetree/getDoc', { id, mode: 0, size: 102400 })
+  const html = (res?.data?.content || '').replace(/\{:[^}]+\}/g, '')
+  if (html) {
+    cache.set(id, { html, time: Date.now() })
+    if (cache.size > 100) cache.delete(cache.keys().next().value)
+  }
+  return html
 }
 
-/** 检测闪卡类型并返回对应的 CSS 类 */
 export const detectCardType = (html: string) => {
-  if (html.includes('data-type~="mark"') || html.includes('data-type="mark"')) return 'card__block--hidemark'
+  if (/data-type="[^"]*\bmark\b[^"]*"/.test(html)) return 'card__block--hidemark'
   if (html.includes('data-type="NodeHeading"')) return 'card__block--hideh'
   if (html.includes('class="list"') || html.includes('class="li"')) return 'card__block--hideli'
   if (html.includes('class="sb"')) return 'card__block--hidesb'
   return ''
 }
 
-/** 生成闪卡的正反面 HTML */
+// 生成闪卡
 const makeCard = (html: string) => {
-  const cardType = detectCardType(html)
-  const cardClass = cardType ? `card__block ${cardType}` : 'card__block'
-  const wrap = (cls: string) => `<div class="${cls}"><div class="protyle-wysiwyg">${html}</div></div>`
-  return { front: wrap(cardClass), back: wrap('card__block') }
+  const type = detectCardType(html)
+  const cls = type ? `card__block ${type}` : 'card__block'
+  const wrap = (c: string) => `<div class="${c}"><div class="protyle-wysiwyg">${html}</div></div>`
+  return { front: wrap(cls), back: wrap('card__block') }
 }
 
-// ==================== 插件 → 思源 ====================
-
-export const updateSiyuanCard = async (blockId: string, front: string, back: string) => {
+// 插件 → 思源
+export const updateSiyuanCard = async (id: string, front: string, back: string) => {
   try {
-    await fetchSyncPost('/api/block/updateBlock', { 
-      id: blockId, dataType: 'markdown', data: `${front}\n\n${back}` 
-    })
+    await fetchSyncPost('/api/block/updateBlock', { id, dataType: 'markdown', data: `${front}\n\n${back}` })
   } catch {}
 }
 
-export const removeSiyuanCard = async (blockId: string) => {
+export const removeSiyuanCard = async (id: string) => {
   try {
     const res = await fetchSyncPost('/api/query/sql', {
-      stmt: `SELECT DISTINCT a.value FROM attributes a WHERE a.name='custom-riff-decks' AND a.block_id='${blockId}'`
+      stmt: `SELECT DISTINCT a.value FROM attributes a WHERE a.name='custom-riff-decks' AND a.block_id='${id}'`
     })
     if (!res?.data?.length) return
-    
     for (const row of res.data) {
       for (const deckId of row.value.split(',').filter(Boolean)) {
-        await fetchSyncPost('/api/riff/removeRiffCards', { deckID: deckId.trim(), blockIDs: [blockId] })
+        await fetchSyncPost('/api/riff/removeRiffCards', { deckID: deckId.trim(), blockIDs: [id] })
       }
     }
   } catch {}
 }
 
-export const locateSiyuanCard = (blockId: string) => window.open(`siyuan://blocks/${blockId}`)
+export const locateSiyuanCard = (id: string) => window.open(`siyuan://blocks/${id}`)
 
-// ==================== 手动同步 ====================
-
+// 手动同步
 export const syncAllSiyuanDecks = async (onComplete?: () => void) => {
   try {
+    showMessage('正在同步...', 0, 'info')
     const decks = await getDecks()
-    if (!decks.length) return showMessage('未找到思源卡组', 2000, 'info')
+    if (!decks.length) return showMessage('未找到卡组', 2000, 'info')
     
     const { getDatabase } = await import('./database')
     const { createPack } = await import('./pack')
@@ -87,58 +94,77 @@ export const syncAllSiyuanDecks = async (onComplete?: () => void) => {
     const deckMap = new Map(existing.map(d => [d.name, d]))
     
     let total = 0, success = 0
-    for (const deck of decks) {
-      let target = deckMap.get(deck.name)
-      if (!target) {
-        target = await createPack(deck.name, {
-          desc: `思源同步：${deck.type === 'quick' ? '快速制卡' : '卡包'}`,
-          tags: ['siyuan'], 
-          color: deck.type === 'quick' ? '#42a5f5' : '#667eea'
-        })
-        deckMap.set(deck.name, target)
-      }
-      const count = await importDeck(deck.id, target.id)
-      total += deck.size || 0
-      success += count
+    const start = Date.now()
+    
+    // 并发导入（限制3个）
+    for (let i = 0; i < decks.length; i += 3) {
+      const batch = decks.slice(i, i + 3)
+      const results = await Promise.all(batch.map(async deck => {
+        let target = deckMap.get(deck.name)
+        if (!target) {
+          target = await createPack(deck.name, {
+            desc: `思源同步：${deck.type === 'quick' ? '快速制卡' : '卡包'}`,
+            tags: ['siyuan'], 
+            color: deck.type === 'quick' ? '#42a5f5' : '#667eea'
+          })
+          deckMap.set(deck.name, target)
+        }
+        const count = await importDeck(deck.id, target.id)
+        return { size: deck.size || 0, count }
+      }))
+      results.forEach(r => { total += r.size; success += r.count })
+      if (decks.length > 3) showMessage(`进度：${Math.min(i + 3, decks.length)}/${decks.length}`, 0, 'info')
     }
-    showMessage(`已同步 ${decks.length} 个卡组，${success}/${total} 张`, 2000, 'info')
+    
+    const time = ((Date.now() - start) / 1000).toFixed(1)
+    showMessage(`✓ 已同步 ${decks.length} 个卡组，${success}/${total} 张 (${time}s)`, 3000, 'info')
     onComplete?.()
   } catch (e: any) {
-    showMessage(`同步失败：${e.message}`, 2000, 'error')
+    showMessage(`同步失败：${e.message}`, 3000, 'error')
   }
 }
 
-// ==================== WebSocket 实时同步 ====================
-
+// WebSocket 实时同步
 export const enableAutoSync = () => {
   if (ws?.readyState === WebSocket.OPEN) return
   if (timer) clearTimeout(timer), timer = null
   
   try {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    ws = new WebSocket(`${protocol}//${window.location.host}/ws?app=siyuan-sireader&type=main`)
+    const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
+    ws = new WebSocket(`${protocol}//${location.host}/ws?app=siyuan-sireader&type=main`)
     
-    ws.onopen = () => enabled = true
+    ws.onopen = () => { enabled = true; showMessage('✓ 自动同步已启用', 2000, 'info') }
+    
     ws.onmessage = async (e) => {
       try {
         const msg = JSON.parse(e.data)
         if (msg.cmd !== 'transactions' || !Array.isArray(msg.data)) return
         
+        const adds: Array<{ id: string, deckIds: string }> = []
+        const removes: string[] = []
+        const updates: Array<{ id: string, data: string }> = []
+        
         for (const tx of msg.data) {
           if (!tx.doOperations) continue
           for (const op of tx.doOperations) {
             if (op.action === 'updateAttrs' && op.data?.new?.['custom-riff-decks']) {
-              await handleAdd(op.id, op.data.new['custom-riff-decks'])
+              adds.push({ id: op.id, deckIds: op.data.new['custom-riff-decks'] })
             } else if (op.action === 'removeFlashcards') {
-              await handleRemove(op.blockIDs || op.ids || [])
+              removes.push(...(op.blockIDs || op.ids || []))
             } else if (op.action === 'update' && op.id && op.data) {
-              await handleUpdate(op.id, op.data)
+              updates.push({ id: op.id, data: op.data })
+              cache.delete(op.id)
             }
           }
         }
+        
+        if (adds.length) await Promise.all(adds.map(op => debounce('add', op.id, () => handleAdd(op.id, op.deckIds))))
+        if (removes.length) await handleRemove(removes)
+        if (updates.length) await Promise.all(updates.map(op => debounce('update', op.id, () => handleUpdate(op.id, op.data))))
       } catch {}
     }
-    ws.onerror = () => enabled = false
+    
+    ws.onerror = () => { enabled = false; showMessage('同步连接异常', 2000, 'error') }
     ws.onclose = (ev) => {
       enabled = false
       ws = null
@@ -153,11 +179,27 @@ export const disableAutoSync = () => {
   enabled = false
   if (timer) clearTimeout(timer), timer = null
   if (ws) ws.close(1000, 'close websocket'), ws = null
+  pending.forEach(t => clearTimeout(t))
+  pending.clear()
+  showMessage('自动同步已关闭', 2000, 'info')
 }
 
-// ==================== 思源 → 插件 ====================
+// 防抖处理
+const debounce = (type: 'add' | 'update', id: string, fn: () => Promise<void>) => {
+  const key = `${type}-${id}`
+  if (pending.has(key)) clearTimeout(pending.get(key)!)
+  return new Promise<void>(resolve => {
+    const timeout = setTimeout(async () => {
+      pending.delete(key)
+      await fn()
+      resolve()
+    }, DELAY[type])
+    pending.set(key, timeout)
+  })
+}
 
-const handleAdd = async (blockId: string, deckIds: string) => {
+// 思源 → 插件
+const handleAdd = async (id: string, deckIds: string) => {
   if (!enabled) return
   try {
     const { getDatabase } = await import('./database')
@@ -166,46 +208,51 @@ const handleAdd = async (blockId: string, deckIds: string) => {
     const allDecks = await db.getDecks()
     
     for (const deckId of deckIds.split(',').filter(Boolean)) {
-      const id = deckId.trim()
-      let deck = allDecks.find(d => d.tags?.includes(`siyuan-${id}`)) || 
-                 allDecks.find(d => d.name.includes(id.substring(0, 8)) && d.tags?.includes('siyuan'))
+      const did = deckId.trim()
+      let deck = allDecks.find(d => d.tags?.includes(`siyuan-${did}`)) || 
+                 allDecks.find(d => d.name.includes(did.substring(0, 8)) && d.tags?.includes('siyuan'))
       
       if (deck) {
-        const needUpdate = !deck.tags?.includes(`siyuan-${id}`) || !deck.enabled
+        const needUpdate = !deck.tags?.includes(`siyuan-${did}`) || !deck.enabled
         if (needUpdate) {
-          if (!deck.tags?.includes(`siyuan-${id}`)) deck.tags = [...(deck.tags || []), `siyuan-${id}`]
+          if (!deck.tags?.includes(`siyuan-${did}`)) deck.tags = [...(deck.tags || []), `siyuan-${did}`]
           deck.enabled = true
           await db.saveDeck(deck)
         }
       } else {
-        deck = await createPack(`快速制卡 ${id.substring(0, 8)}`, {
+        deck = await createPack(`快速制卡 ${did.substring(0, 8)}`, {
           desc: '思源同步：快速制卡', 
-          tags: ['siyuan', `siyuan-${id}`], 
+          tags: ['siyuan', `siyuan-${did}`], 
           color: '#42a5f5', 
           enabled: true
         })
       }
       
-      if (await importBlock(blockId, deck.id, id)) {
+      if (await importBlock(id, deck.id, did)) {
         await db.updateDeckStats(deck.id)
-        showMessage('已自动导入新卡片', 2000, 'info')
+        showMessage('✓ 已导入新卡片', 2000, 'info')
         notifyAll()
       }
     }
   } catch {}
 }
 
-const handleRemove = async (blockIDs: string[]) => {
-  if (!enabled || !blockIDs?.length) return
+const handleRemove = async (ids: string[]) => {
+  if (!enabled || !ids?.length) return
   try {
     const { getDatabase } = await import('./database')
     const { getAnkiDb, deleteAnkiCard } = await import('./anki')
     const db = await getDatabase()
     const allProgress = await db.getAllProgress()
     
+    const tasks: Promise<any>[] = []
+    const decks = new Set<string>()
     let count = 0
-    for (const blockId of blockIDs) {
-      const tag = `siyuan-block-${blockId}`
+    
+    for (const id of ids) {
+      const tag = `siyuan-block-${id}`
+      cache.delete(id)
+      
       for (const p of allProgress) {
         const deck = await db.getDeck(p.deckId)
         if (!deck?.collectionId) continue
@@ -214,40 +261,42 @@ const handleRemove = async (blockIDs: string[]) => {
         const exists = ankiDb?.exec(`SELECT COUNT(*) FROM notes WHERE tags LIKE '%${tag}%'`)?.[0]?.values[0]?.[0]
         if (!exists) continue
         
-        await Promise.all([
+        tasks.push(Promise.all([
           p.ankiCardId ? deleteAnkiCard(p.collectionId!, p.ankiCardId, p.ankiNoteId) : Promise.resolve(),
-          db.deleteProgress(p.id),
-          db.updateDeckStats(p.deckId)
-        ])
+          db.deleteProgress(p.id)
+        ]))
+        decks.add(p.deckId)
         count++
         break
       }
     }
     
-    if (count > 0) {
-      showMessage(`已删除 ${count} 张卡片`, 2000, 'info')
+    if (tasks.length) {
+      await Promise.all(tasks)
+      await Promise.all(Array.from(decks).map(d => db.updateDeckStats(d)))
+      showMessage(`✓ 已删除 ${count} 张`, 2000, 'info')
       notifyAll()
     }
   } catch {}
 }
 
-const handleUpdate = async (blockId: string, data: string) => {
-  if (!enabled || !blockId || !data) return
-  
+const handleUpdate = async (id: string, data: string) => {
+  if (!enabled || !id || !data) return
   try {
     const { getDatabase } = await import('./database')
     const { getAnkiDb, saveAnkiDb } = await import('./anki')
     
-    const html = await getBlockHTML(blockId)
+    const html = await getHTML(id, false)
     if (!html) return
     
     const { front, back } = makeCard(html)
-    const tag = `siyuan-block-${blockId}`
+    const tag = `siyuan-block-${id}`
     const db = await getDatabase()
     const allProgress = await db.getAllProgress()
     const updated = new Set<string>()
-    
+    const tasks: Promise<any>[] = []
     let count = 0
+    
     for (const p of allProgress.filter(p => p.collectionId && p.ankiNoteId)) {
       const ankiDb = await getAnkiDb(p.collectionId!)
       if (!ankiDb) continue
@@ -260,21 +309,21 @@ const handleUpdate = async (blockId: string, data: string) => {
       ])
       
       if (!updated.has(p.collectionId!)) {
-        await saveAnkiDb(p.collectionId!, ankiDb)
+        tasks.push(saveAnkiDb(p.collectionId!, ankiDb))
         updated.add(p.collectionId!)
       }
       count++
     }
     
-    if (count > 0) {
-      showMessage(`已同步更新 ${count} 张卡片`, 2000, 'info')
+    if (tasks.length) {
+      await Promise.all(tasks)
+      showMessage(`✓ 已更新 ${count} 张`, 2000, 'info')
       notifyAll()
     }
   } catch {}
 }
 
-// ==================== 卡组和卡片导入 ====================
-
+// 卡组和卡片导入
 const getDecks = async () => {
   const [deckRes, attrRes] = await Promise.all([
     fetchSyncPost('/api/riff/getRiffDecks', {}),
@@ -284,33 +333,33 @@ const getDecks = async () => {
   ])
   
   const traditional = (deckRes?.data || []).map((d: any) => ({ ...d, type: 'traditional' }))
-  
   const quickIds = new Set<string>()
   attrRes?.data?.forEach((row: any) => {
     row.value.split(',').filter(Boolean).forEach((id: string) => quickIds.add(id.trim()))
   })
   
-  const quick = await Promise.all(Array.from(quickIds).map(async id => {
-    const res = await fetchSyncPost('/api/query/sql', {
-      stmt: `SELECT COUNT(DISTINCT b.id) as c FROM blocks b 
-             JOIN attributes a ON b.id=a.block_id 
-             WHERE a.name='custom-riff-decks' 
-             AND (a.value='${id}' OR a.value LIKE '%,${id},%' OR a.value LIKE '${id},%' OR a.value LIKE '%,${id}')`
+  const quick = Array.from(quickIds).length ? await Promise.all(
+    Array.from(quickIds).map(async id => {
+      const res = await fetchSyncPost('/api/query/sql', {
+        stmt: `SELECT COUNT(DISTINCT b.id) as c FROM blocks b 
+               JOIN attributes a ON b.id=a.block_id 
+               WHERE a.name='custom-riff-decks' 
+               AND (a.value='${id}' OR a.value LIKE '${id},%' OR a.value LIKE '%,${id},%' OR a.value LIKE '%,${id}')`
+      })
+      const existing = traditional.find((d: any) => d.id === id)
+      return { 
+        id, 
+        name: existing?.name || `快速制卡 ${id.substring(0, 8)}`, 
+        size: res?.data?.[0]?.c || 0, 
+        type: 'quick' 
+      }
     })
-    const existing = traditional.find((d: any) => d.id === id)
-    return { 
-      id, 
-      name: existing?.name || `快速制卡 ${id.substring(0, 8)}`, 
-      size: res?.data?.[0]?.c || 0, 
-      type: 'quick' 
-    }
-  }))
+  ) : []
   
   const map = new Map()
   ;[...traditional, ...quick].forEach(d => {
     if (!map.has(d.id) || d.type === 'traditional') map.set(d.id, d)
   })
-  
   return Array.from(map.values())
 }
 
@@ -319,7 +368,7 @@ const importDeck = async (deckId: string, targetId: string) => {
     stmt: `SELECT DISTINCT b.id FROM blocks b 
            JOIN attributes a ON b.id=a.block_id 
            WHERE a.name='custom-riff-decks' 
-           AND (a.value='${deckId}' OR a.value LIKE '%,${deckId},%' OR a.value LIKE '${deckId},%' OR a.value LIKE '%,${deckId}')
+           AND (a.value='${deckId}' OR a.value LIKE '${deckId},%' OR a.value LIKE '%,${deckId},%' OR a.value LIKE '%,${deckId}')
            ORDER BY b.updated DESC`
   }).then(res => res?.data || [])
   
@@ -330,13 +379,15 @@ const importDeck = async (deckId: string, targetId: string) => {
   }
   
   let count = 0
-  for (const block of blocks) {
-    if (await importBlock(block.id, targetId, deckId)) count++
+  for (let i = 0; i < blocks.length; i += 5) {
+    const batch = blocks.slice(i, i + 5)
+    const results = await Promise.all(batch.map((b: any) => importBlock(b.id, targetId, deckId)))
+    count += results.filter(Boolean).length
   }
   return count
 }
 
-const importBlock = async (blockId: string, deckId: string, siyuanDeckId: string) => {
+const importBlock = async (id: string, deckId: string, siyuanDeckId: string) => {
   try {
     const { addCard } = await import('./card')
     const { getDatabase } = await import('./database')
@@ -348,18 +399,17 @@ const importBlock = async (blockId: string, deckId: string, siyuanDeckId: string
     
     const ankiDb = await getAnkiDb(deck.collectionId)
     if (ankiDb) {
-      const tag = `siyuan-block-${blockId}`
+      const tag = `siyuan-block-${id}`
       const exists = ankiDb.exec(`SELECT COUNT(*) FROM notes WHERE tags LIKE '%${tag}%'`)?.[0]?.values[0]?.[0]
       if (exists) return false
     }
     
-    const html = await getBlockHTML(blockId)
+    const html = await getHTML(id)
     if (!html) return false
     
     const { front, back } = makeCard(html)
-    
     return await addCard(deckId, front, back, {
-      tags: ['siyuan', siyuanDeckId, `siyuan-block-${blockId}`], 
+      tags: ['siyuan', siyuanDeckId, `siyuan-block-${id}`], 
       source: 'import' as const, 
       modelCss: CSS
     })

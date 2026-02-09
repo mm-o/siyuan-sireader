@@ -4,7 +4,7 @@
 <p style="color: rgba(255,255,255,0.9); margin: 0 0 1.5em; font-size: 1.1em;">Professional eBook Reader · Smart Annotation · Multi-format Support</p>
 <p style="color: rgba(255,255,255,0.85); margin: 0 0 1.5em; line-height: 1.6; font-size: 0.95em;">Transform SiYuan Notes into a professional eBook reader<br>Support EPUB/PDF/TXT/Online novels with smart annotation, multi-theme switching, dictionary lookup, AI translation, deck system, and more for an immersive reading experience</p>
 <p style="margin: 0 0 1em;">
-<img src="https://img.shields.io/badge/version-0.8.4-blue.svg" alt="Version" style="display: inline-block; margin: 0 4px;">
+<img src="https://img.shields.io/badge/version-0.8.5-blue.svg" alt="Version" style="display: inline-block; margin: 0 4px;">
 <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License" style="display: inline-block; margin: 0 4px;">
 <img src="https://img.shields.io/badge/SiYuan-3.0+-orange.svg" alt="SiYuan" style="display: inline-block; margin: 0 4px;">
 </p>
@@ -73,6 +73,36 @@
 ---
 
 ## 📝 Latest Updates
+
+### v0.8.5 (2026.2.9)
+
+#### ✨ New Features
+
+**Card Editing**
+- Support flashcard editing, modify card front, back, and tags
+- SiYuan flashcard editing temporarily has issues, please wait for future optimization
+
+**Navigation Customization**
+- Support enabling/disabling function modules
+- Support navigation item sorting, customize button order
+
+#### 🔧 Improvements
+
+**Settings Interface Redesign**
+- Accordion-style collapsible panels, main accordions mutually exclusive
+- Reorganized groups: Interface Layout, Reading Theme, Text Styles, Dictionary Tools, Other Settings
+- Dictionary moved to settings panel for unified management, using sub-accordions
+- Custom font lazy loading, improved settings panel opening speed
+
+**Interaction Optimization**
+- Unified all delete, reset confirmation interaction logic and styles
+- Dictionary deletion uses inline confirmation buttons, consistent with other delete operations
+
+#### 🐛 Bug Fixes
+
+- Fixed settings page content being squeezed and not fully displayed
+
+---
 
 ### v0.8.4 (2026.2.7)
 

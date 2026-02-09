@@ -352,6 +352,7 @@ const handleOverlayClick = (e: MouseEvent) => {
 </script>
 
 <style scoped lang="scss">
+@import './deck/deck.scss';
 .mark-overlay{position:fixed;inset:0;z-index:900;background:transparent}
 .mark-selection-menu{position:fixed;z-index:950;display:flex;gap:4px;padding:6px;background:var(--b3-theme-surface);border:1px solid var(--b3-border-color);border-radius:8px;box-shadow:0 4px 16px #0002}
 .mark-menu-btn{width:32px;height:32px;display:flex;align-items:center;justify-content:center;border:none;background:transparent;border-radius:8px;cursor:pointer;transition:all .15s;color:var(--b3-theme-on-surface);svg{width:16px;height:16px}&:hover{background:var(--b3-list-hover);color:var(--b3-theme-primary)}}
@@ -366,7 +367,5 @@ const handleOverlayClick = (e: MouseEvent) => {
 .sr-color-btn{width:28px;height:28px;border:2px solid transparent;border-radius:50%;cursor:pointer;transition:all .15s;padding:0;&.active{border-color:var(--b3-theme-on-surface);transform:scale(1.1);box-shadow:0 2px 8px rgba(0,0,0,.2)}&:hover{transform:scale(1.05)}}
 .sr-styles{display:flex;gap:4px;.toolbar-divider{width:1px;height:24px;background:var(--b3-border-color);margin:0 4px}}
 .sr-style-btn{width:36px;height:32px;display:flex;align-items:center;justify-content:center;border:1px solid var(--b3-border-color);background:transparent;border-radius:4px;cursor:pointer;transition:all .15s;color:var(--b3-theme-on-surface);.sr-style-icon{display:inline-block;font-size:14px;font-weight:500;line-height:1.4;padding:4px 0;min-width:16px;text-align:center;&[data-type="highlight"]{background:#ffeb3b;padding:2px 4px}&[data-type="underline"]{border-bottom:2px solid currentColor;padding-bottom:2px}&[data-type="outline"]{border:2px solid currentColor;padding:2px 4px}&[data-type="dotted"]{border-bottom:2px dotted currentColor;padding-bottom:2px}&[data-type="dashed"]{border-bottom:2px dashed currentColor;padding-bottom:2px}&[data-type="double"]{border-bottom:4px double currentColor;padding-bottom:1px}&[data-type="squiggly"]{text-decoration:underline wavy;text-decoration-thickness:2px;text-underline-offset:2px}}&.active{background:var(--b3-theme-primary-lightest);border-color:var(--b3-theme-primary);color:var(--b3-theme-primary)}&:hover{background:var(--b3-list-hover)}}
-.sr-actions{display:flex;gap:8px;button{flex:1;padding:8px 16px;border:none;border-radius:4px;cursor:pointer;transition:all .15s;font-size:13px;font-weight:500;&:hover{transform:translateY(-1px)}}}
-.sr-btn-primary{background:var(--b3-theme-primary);color:white;&:hover{background:var(--b3-theme-primary-light)}&:active{background:var(--b3-theme-primary-dark)}}
-.sr-btn-secondary{background:var(--b3-theme-background);color:var(--b3-theme-on-surface);border:1px solid var(--b3-border-color);&:hover{background:var(--b3-list-hover)}}
+
 </style>

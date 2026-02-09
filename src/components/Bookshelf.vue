@@ -218,10 +218,11 @@ onUnmounted(() => ['sireader:bookshelf-updated', 'sireaderSettingsUpdated'].forE
 </script>
 
 <style scoped lang="scss">
+@use './deck/deck.scss';
+
 .sr-bookshelf{display:flex;flex-direction:column;height:100%;overflow:hidden}
 .sr-books{flex:1;overflow-y:auto;padding:12px 8px;min-height:0}
 
-.sr-grid{display:grid;gap:8px}
 .sr-card{position:relative;display:flex;flex-direction:column;background:var(--b3-theme-surface);border-radius:6px;overflow:visible;transition:transform .15s;&:hover{transform:translateY(-2px)}}
 .sr-btn-remove{position:absolute;top:4px;right:4px;width:24px;height:24px;border:none;background:color-mix(in srgb, var(--b3-theme-on-surface) 50%, transparent);color:var(--b3-theme-surface);border-radius:50%;cursor:pointer;opacity:0;transition:all .15s;display:flex;align-items:center;justify-content:center;z-index:10;svg{width:14px;height:14px}.sr-card:hover &{opacity:1}&:hover{background:var(--b3-theme-error);transform:scale(1.1)}}
 .sr-remove-confirm{position:absolute;inset:0;background:rgba(0,0,0,.9);display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;z-index:20;border-radius:6px;button{padding:6px 12px;border:none;border-radius:4px;font-size:12px;cursor:pointer;transition:transform .15s;&:hover{transform:scale(1.05)}&:active{transform:scale(.95)}}.sr-btn-cancel{background:var(--b3-theme-surface);color:var(--b3-theme-on-surface)}.sr-btn-confirm{background:var(--b3-theme-error);color:var(--b3-theme-on-error)}}

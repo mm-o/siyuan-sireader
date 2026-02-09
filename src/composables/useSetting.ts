@@ -9,6 +9,7 @@ export type PdfToolbarStyle = 'float' | 'fixed'
 export type PageAnimation = 'slide' | 'none'
 export type ViewMode = 'single' | 'double' | 'scroll'
 export type NavPosition = 'left' | 'right' | 'top' | 'bottom'
+export type NavItem = { id: string; icon: string; tip: string; enabled: boolean; order: number }
 export type DocInfo = { id: string; name: string; path: string; notebook: string }
 export interface ReadTheme { name: string; color: string; bg: string; bgImg?: string }
 export interface FontFileInfo { name: string; displayName: string }
@@ -16,7 +17,7 @@ export interface TextSettings { fontFamily: string; fontSize: number; letterSpac
 export interface ParagraphSettings { lineHeight: number; paragraphSpacing: number; textIndent: number }
 export interface LayoutSettings { marginHorizontal: number; marginVertical: number; gap: number; headerFooterMargin: number }
 export interface VisualSettings { brightness: number; contrast: number; sepia: number; saturate: number; invert: boolean }
-export interface ReaderSettings { enabled: boolean; openMode: 'newTab' | 'rightTab' | 'bottomTab' | 'newWindow'; navPosition: NavPosition; pageAnimation: PageAnimation; viewMode: ViewMode; theme: string; customTheme: ReadTheme; annotationMode: 'notebook' | 'document'; notebookId?: string; parentDoc?: DocInfo; linkFormat: string; pdfToolbarStyle: PdfToolbarStyle; bookshelfCoverSize: number; openDocAssets: boolean; textSettings: TextSettings; paragraphSettings: ParagraphSettings; layoutSettings: LayoutSettings; visualSettings: VisualSettings }
+export interface ReaderSettings { enabled: boolean; openMode: 'newTab' | 'rightTab' | 'bottomTab' | 'newWindow'; navPosition: NavPosition; pageAnimation: PageAnimation; viewMode: ViewMode; theme: string; customTheme: ReadTheme; annotationMode: 'notebook' | 'document'; notebookId?: string; parentDoc?: DocInfo; linkFormat: string; pdfToolbarStyle: PdfToolbarStyle; bookshelfCoverSize: number; openDocAssets: boolean; navItems?: NavItem[]; textSettings: TextSettings; paragraphSettings: ParagraphSettings; layoutSettings: LayoutSettings; visualSettings: VisualSettings }
 
 // ===== 预设主题 =====
 export const PRESET_THEMES: Record<string, ReadTheme> = { default: { name: 'themeDefault', color: '#202124', bg: '#ffffff' }, auto: { name: 'themeAuto', color: 'var(--b3-theme-on-background)', bg: 'var(--b3-theme-background)' }, almond: { name: 'themeAlmond', color: '#414441', bg: '#FAF9DE' }, autumn: { name: 'themeAutumn', color: '#414441', bg: '#FFF2E2' }, green: { name: 'themeGreen', color: '#414441', bg: '#E3EDCD' }, blue: { name: 'themeBlue', color: '#414441', bg: '#DCE2F1' }, night: { name: 'themeNight', color: '#fff6e6', bg: '#415062' }, dark: { name: 'themeDark', color: '#d5cecd', bg: '#414441' }, gold: { name: 'themeGold', color: '#b58931', bg: '#081010' } }
@@ -58,6 +59,12 @@ export const useDocSearch = () => { const state = ref({ input: '', results: [] a
 
 // ===== 笔记本加载管理 =====
 export const useNotebooks = () => { const notebooks = ref<{ id: string; name: string; icon: string }[]>([]), load = async () => !notebooks.value.length && (notebooks.value = await loadNotebooks()); return { notebooks, load } }
+
+export const useConfirm = (onConfirm: () => void) => {
+  const confirming = ref(false)
+  const handleClick = () => confirming.value ? (onConfirm(), confirming.value = false) : (confirming.value = true)
+  return { confirming, handleClick }
+}
 
 // ===== 对话框创建辅助 =====
 export const createDialog = (title: string, id: string, component: any, props: any, plugin: any) => { const d = new Dialog({ title, content: `<div id="${id}"></div>`, width: '800px', height: '600px' }); const close = () => (app.unmount(), d.destroy()); d.element.querySelector('.b3-dialog__scrim')?.addEventListener('click', close); const app = createApp(component, props); app.use(plugin); app.mount(d.element.querySelector(`#${id}`)!); d.element.querySelector('.b3-dialog__close')?.addEventListener('click', close); return { dialog: d, app } }

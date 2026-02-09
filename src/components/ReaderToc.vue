@@ -48,9 +48,9 @@
         <div v-if="showBindMenu" class="sr-menu sr-bind-menu" @click.stop>
           <template v-if="bindDocId">
             <Transition name="fade">
-              <div v-if="confirmUnbind" class="sr-confirm b3-chip b3-chip--middle" @click.stop>
+              <div v-if="confirmUnbind" class="sr-confirm" @click.stop>
                 <span>{{ props.i18n?.confirmUnbind }}</span>
-                <button @click="confirmUnbind=false" class="b3-button b3-button--text">{{ props.i18n?.cancel }}</button>
+                <button @click="confirmUnbind=false">{{ props.i18n?.cancel }}</button>
                 <button @click="unbindDoc" class="b3-button b3-button--text" style="color:var(--b3-theme-error)">{{ props.i18n?.unbind }}</button>
               </div>
             </Transition>
@@ -494,6 +494,7 @@ onUnmounted(()=>{cleanupToc();thumbObs?.disconnect();window.removeEventListener(
 </script>
 
 <style scoped lang="scss">
+@import './deck/deck.scss';
 .sr-toc{display:flex;flex-direction:column;height:100%;overflow:hidden}
 .dot{width:12px;height:12px;border-radius:50%;flex-shrink:0}
 .sr-menu-section{padding:6px 12px;font-size:11px;font-weight:600;color:var(--b3-theme-on-surface-variant);text-transform:uppercase;letter-spacing:.5px}
@@ -554,9 +555,6 @@ onUnmounted(()=>{cleanupToc();thumbObs?.disconnect();window.removeEventListener(
 .sr-note{font-size:12px;color:var(--b3-theme-on-surface-variant);line-height:1.5;margin-top:4px;font-style:italic;opacity:.8;cursor:text}
 .sr-note-input{width:100%;min-height:60px;padding:8px;margin-top:8px;border:1px solid var(--b3-border-color);border-radius:4px;background:var(--b3-theme-background);resize:vertical;font-size:12px;line-height:1.5;outline:none;&:focus{border-color:var(--b3-theme-primary)}}
 .sr-options{margin-top:8px;.sr-colors{display:flex;gap:6px;margin-bottom:8px}.sr-color-btn{width:28px;height:28px;border:2px solid transparent;border-radius:50%;cursor:pointer;transition:all .15s;padding:0;&.active{border-color:var(--b3-theme-on-surface);transform:scale(1.1);box-shadow:0 2px 8px rgba(0,0,0,.2)}&:hover{transform:scale(1.05)}}.sr-styles{display:flex;gap:4px}.sr-style-btn{width:36px;height:32px;display:flex;align-items:center;justify-content:center;border:1px solid var(--b3-border-color);background:transparent;border-radius:4px;cursor:pointer;transition:all .15s;color:var(--b3-theme-on-surface);&.active{background:var(--b3-theme-primary-lightest);border-color:var(--b3-theme-primary);color:var(--b3-theme-primary)}&:hover{background:var(--b3-list-hover)}}}
-.sr-actions{display:flex;gap:8px;margin-top:8px;button{flex:1;padding:8px 16px;border:none;border-radius:4px;cursor:pointer;transition:all .15s;font-size:13px;font-weight:500}}
-.sr-btn-primary{background:var(--b3-theme-primary);color:white;&:hover{background:var(--b3-theme-primary-light)}&:active{background:var(--b3-theme-primary-dark)}}
-.sr-btn-secondary{background:var(--b3-theme-background);color:var(--b3-theme-on-surface);border:1px solid var(--b3-border-color);&:hover{background:var(--b3-list-hover)}}
 // 统一按钮样式
 .sr-btns{position:absolute;right:4px;bottom:-2px;display:flex;gap:4px;opacity:0;transition:opacity .2s;z-index:10;
   button{width:20px;height:20px;padding:0;border:none;background:transparent;cursor:pointer;transition:all .2s;border-radius:50%;pointer-events:auto;
@@ -578,9 +576,7 @@ onUnmounted(()=>{cleanupToc();thumbObs?.disconnect();window.removeEventListener(
 .sr-bind-menu,.sr-deck-notebook-menu{min-width:260px;right:0;top:calc(100% + 8px)}
 .sr-menu{position:absolute;background:var(--b3-theme-surface);border:1px solid var(--b3-border-color);border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,.15);max-height:300px;overflow-y:auto;z-index:1000}
 .sr-menu-item{padding:8px 12px;cursor:pointer;font-size:13px;transition:background .15s;&:hover{background:var(--b3-list-hover)}&.active{background:var(--b3-theme-primary-lightest);color:var(--b3-theme-primary)}}
-.sr-confirm{position:absolute;top:8px;left:8px;right:8px;z-index:100;display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--b3-theme-surface);border:1px solid var(--b3-border-color);border-radius:4px;box-shadow:0 4px 12px rgba(0,0,0,.15);
-  span{flex:1;font-size:13px;font-weight:500}
-  button{padding:4px 12px;font-size:12px}}
+.sr-confirm{position:absolute;top:8px;left:8px;right:8px;z-index:100}
 .sr-sync-btn{width:24px;height:24px;padding:0;border:none;background:transparent;color:var(--b3-theme-primary);border-radius:4px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .2s;svg{width:14px;height:14px;transition:transform .6s}&:hover{background:var(--b3-theme-primary-lighter)}&.syncing{pointer-events:none;svg{animation:spin .6s linear infinite}}@keyframes spin{to{transform:rotate(360deg)}}}
 
 

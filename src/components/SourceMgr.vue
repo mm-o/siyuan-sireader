@@ -42,10 +42,10 @@
     </div>
 
     <Transition name="slide">
-      <div v-if="confirmAction" class="sr-confirm-bar b3-chip b3-chip--middle" @click.stop>
+      <div v-if="confirmAction" class="sr-confirm-bar" @click.stop>
         <span>{{ confirmAction==='batch'?`删除 ${selected.size} 个书源`:`删除 ${invalidCount} 个失效书源` }}？</span>
-        <button @click="confirmAction=null" class="b3-button b3-button--text">取消</button>
-        <button @click="execDelete" class="b3-button b3-button--text" style="color:var(--b3-theme-error)">删除</button>
+        <button @click="confirmAction=null">取消</button>
+        <button @click="execDelete" class="btn-delete">删除</button>
       </div>
     </Transition>
 
@@ -62,9 +62,9 @@
           <div class="sr-url">{{ s.bookSourceUrl }}</div>
         </div>
         <Transition name="fade">
-          <div v-if="removingSource===s.bookSourceUrl" class="sr-confirm b3-chip b3-chip--middle" @click.stop>
-            <button @click="removingSource=null" class="b3-button b3-button--text">取消</button>
-            <button @click="execRemove(s)" class="b3-button b3-button--text" style="color:var(--b3-theme-error)">删除</button>
+          <div v-if="removingSource===s.bookSourceUrl" class="sr-confirm" @click.stop>
+            <button @click="removingSource=null">取消</button>
+            <button @click="execRemove(s)" class="btn-delete">删除</button>
           </div>
         </Transition>
         <template v-if="removingSource!==s.bookSourceUrl">
@@ -166,32 +166,19 @@ onBeforeUnmount(() => (stopCheck.value = true, checking.value = false))
 </script>
 
 <style scoped lang="scss">
+@import './deck/deck.scss';
 .sr-source-mgr{position:absolute;inset:0;display:flex;flex-direction:column;background:var(--b3-theme-background);z-index:10}
-.sr-confirm-bar{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--b3-theme-border);span{flex:1;font-size:13px}}
+.sr-confirm-bar{display:flex;align-items:center;gap:6px;padding:8px 12px;border-bottom:1px solid var(--b3-theme-border);background:var(--b3-theme-surface);font-size:13px;span{flex:1;font-weight:500}button{padding:6px 12px;font-size:13px;line-height:1.4;border:1px solid var(--b3-border-color);background:var(--b3-theme-surface);color:var(--b3-theme-on-surface);border-radius:4px;cursor:pointer;transition:all .15s;white-space:nowrap;display:inline-flex;align-items:center;justify-content:center;&:hover{background:var(--b3-list-hover)}&.btn-delete{background:var(--b3-theme-error)!important;color:white!important;border-color:var(--b3-theme-error)!important;&:hover{opacity:.9!important;background:var(--b3-theme-error)!important}}}}
 .slide-enter-active,.slide-leave-active,.fade-enter-active,.fade-leave-active{transition:all .2s}
 .slide-enter-from,.slide-leave-to{opacity:0;transform:translateY(-100%)}
 .fade-enter-from,.fade-leave-to{opacity:0;transform:scale(.9)}
 .sr-list{flex:1;overflow-y:auto;padding:8px;display:flex;flex-direction:column;gap:4px}
-.sr-card{position:relative;display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--b3-theme-surface);border-radius:4px;cursor:pointer;transition:transform .15s;
-  &:hover{transform:translateY(-1px)}
-  &.off{opacity:.5}
-  &.bad{border:1px solid var(--b3-theme-error);background:color-mix(in srgb,var(--b3-theme-error) 5%,transparent)}
-  &.sel{border:1px solid var(--b3-theme-primary);box-shadow:0 0 0 2px color-mix(in srgb,var(--b3-theme-primary) 20%,transparent)}
-}
-.sr-icon{width:16px;height:16px;flex-shrink:0;
-  &.spin{animation:spin 1.2s linear infinite}
-  &.ok{color:var(--b3-theme-primary)}
-  &.no{color:var(--b3-theme-error)}
-}
+.sr-card{position:relative;display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--b3-theme-surface);border-radius:4px;cursor:pointer;transition:transform .15s;&:hover{transform:translateY(-1px)}&.off{opacity:.5}&.bad{border:1px solid var(--b3-theme-error);background:color-mix(in srgb,var(--b3-theme-error) 5%,transparent)}&.sel{border:1px solid var(--b3-theme-primary);box-shadow:0 0 0 2px color-mix(in srgb,var(--b3-theme-primary) 20%,transparent)}}
+.sr-icon{width:16px;height:16px;flex-shrink:0;&.spin{animation:spin 1.2s linear infinite}&.ok{color:var(--b3-theme-primary)}&.no{color:var(--b3-theme-error)}}
 @keyframes spin{to{transform:rotate(360deg)}}
 .sr-info{flex:1;min-width:0}
 .sr-name{font-size:13px;font-weight:600;margin-bottom:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sr-url{font-size:11px;opacity:.6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sr-menu{position:absolute;background:var(--b3-theme-surface);border-radius:6px;box-shadow:0 4px 12px #0003;z-index:20}
-.sr-confirm{position:absolute;right:8px;display:flex;gap:4px;padding:4px;box-shadow:0 2px 8px rgba(0,0,0,.15);z-index:10}
-.sr-btn{width:28px;height:28px;padding:0;border:none;background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;border-radius:4px;transition:background .15s;flex-shrink:0;
-  svg{width:16px;height:16px}
-  &:hover{background:var(--b3-theme-background)}
-}
-.sr-empty{padding:40px 20px;text-align:center;opacity:.5;font-size:13px}
+.sr-btn{width:28px;height:28px;padding:0;border:none;background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;border-radius:4px;transition:background .15s;flex-shrink:0;svg{width:16px;height:16px}&:hover{background:var(--b3-theme-background)}}
 </style>

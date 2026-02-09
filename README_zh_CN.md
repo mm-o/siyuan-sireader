@@ -4,7 +4,7 @@
 <p style="color: rgba(255,255,255,0.9); margin: 0 0 1.5em; font-size: 1.1em;">专业电子书阅读 · 智能标注 · 多格式支持</p>
 <p style="color: rgba(255,255,255,0.85); margin: 0 0 1.5em; line-height: 1.6; font-size: 0.95em;">让思源笔记变身专业电子书阅读器，支持 EPUB/PDF/TXT/在线小说多格式阅读<br>提供智能标注、多主题切换、词典查询、AI 翻译、卡包系统等功能，打造沉浸式阅读体验</p>
 <p style="margin: 0 0 1em;">
-<img src="https://img.shields.io/badge/version-0.8.4-blue.svg" alt="Version" style="display: inline-block; margin: 0 4px;">
+<img src="https://img.shields.io/badge/version-0.8.5-blue.svg" alt="Version" style="display: inline-block; margin: 0 4px;">
 <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License" style="display: inline-block; margin: 0 4px;">
 <img src="https://img.shields.io/badge/SiYuan-3.0+-orange.svg" alt="SiYuan" style="display: inline-block; margin: 0 4px;">
 </p>
@@ -73,6 +73,36 @@
 ---
 
 ## 📝 最新更新
+
+### v0.8.5 (2026.2.9)
+
+#### ✨ 新增功能
+
+**卡片编辑功能**
+- 支持闪卡卡片编辑，可修改卡片正面、背面和标签
+- 思源闪卡编辑暂时有问题，请等待后续优化
+
+**导航栏自定义**
+- 支持自由启用/禁用各功能模块
+- 支持导航项排序，自定义功能按钮顺序
+
+#### 🔧 优化改进
+
+**设置界面重构**
+- 采用手风琴式折叠面板，主手风琴互斥展开
+- 重新规划分组：界面布局、阅读主题、文本样式、词典工具、其他设置
+- 词典功能移至设置面板统一管理，使用二级手风琴分组
+- 自定义字体延迟加载，提升设置面板打开速度
+
+**交互优化**
+- 统一所有删除、重置等二次确认的交互逻辑和样式
+- 词典删除改用内联确认按钮，与其他删除操作保持一致
+
+#### 🐛 问题修复
+
+- 修复设置页面内容挤压显示不全的问题
+
+---
 
 ### v0.8.4 (2026.2.7)
 

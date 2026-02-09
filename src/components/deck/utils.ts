@@ -2,17 +2,20 @@
 import { getMediaFromApkg } from './pack'
 import { detectCardType } from './siyuan-card'
 
-// ========== 文本清理 ==========
+// 文本清理：移除 HTML 标签和特殊标记
 const cleanHtml = (html: string) => html
   .replace(/<(style|script)[^>]*>[\s\S]*?<\/\1>/gi, '')
   .replace(/<[^>]+>|(\[sound:[^\]]+\]|{{[^}]+}})/g, ' ')
   .replace(/\s+/g, ' ')
   .trim()
 
+// 思源闪卡清理：根据类型处理挖空
 const cleanSiyuanCard = (html: string, type: string) => {
   const doc = new DOMParser().parseFromString(html, 'text/html')
   const actions: Record<string, () => void> = {
-    'card__block--hidemark': () => doc.querySelectorAll('span[data-type~="mark"], span[data-type="mark"]').forEach(el => el.textContent = '[...]'),
+    'card__block--hidemark': () => doc.querySelectorAll('span[data-type]').forEach(el => {
+      if (/\bmark\b/.test(el.getAttribute('data-type') || '')) el.innerHTML = '[...]'
+    }),
     'card__block--hideli': () => {
       doc.querySelectorAll('.list[custom-riff-decks]').forEach(list => {
         const items = Array.from(list.children).filter(el => el.classList.contains('li'))
@@ -21,7 +24,9 @@ const cleanSiyuanCard = (html: string, type: string) => {
       })
       doc.querySelectorAll('.li[custom-riff-decks]>.list').forEach(el => el.remove())
     },
-    'card__block--hidesb': () => doc.querySelectorAll('.sb[custom-riff-decks]').forEach(sb => Array.from(sb.children).slice(1).forEach(el => el.remove())),
+    'card__block--hidesb': () => doc.querySelectorAll('.sb[custom-riff-decks]').forEach(sb => 
+      Array.from(sb.children).slice(1).forEach(el => el.remove())
+    ),
     'card__block--hideh': () => doc.querySelectorAll('[data-type="NodeHeading"][custom-riff-decks]').forEach(h => {
       let n = h.nextElementSibling
       while (n) { const t = n; n = n.nextElementSibling; t.remove() }
@@ -31,7 +36,20 @@ const cleanSiyuanCard = (html: string, type: string) => {
   return doc.body.innerHTML
 }
 
-// ========== 标题/释义提取 ==========
+// 提取思源标记内容（用于提示）
+const extractSiyuanMarks = (html: string): string[] => {
+  const doc = new DOMParser().parseFromString(html, 'text/html')
+  const marks = new Set<string>()
+  doc.querySelectorAll('span[data-type]').forEach(el => {
+    if (/\bmark\b/.test(el.getAttribute('data-type') || '')) {
+      const text = el.textContent?.trim()
+      if (text) marks.add(text)
+    }
+  })
+  return Array.from(marks)
+}
+
+// 标题提取：显示在卡片列表中
 export const extractAnkiTitle = (card: any): string => 
   card._titleCache || (card._titleCache = (() => {
     let front = card.front || card.fields?.[0] || ''
@@ -39,19 +57,33 @@ export const extractAnkiTitle = (card: any): string =>
       const type = detectCardType(front)
       if (type) front = cleanSiyuanCard(front, type)
     }
-    const phonetic = front.match(/\[[^\]]+\]/)?.[0] || ''
-    const text = cleanHtml(front.replace(/[（(][^)）]*[)）]|\[[^\]]+\]/g, ''))
-    return (text + (phonetic ? ' ' + phonetic : '')).trim() || '(无标题)'
+    const text = cleanHtml(front)
+    const phonetic = text.match(/\[[a-zA-Z:ˈˌəɪʊɛæɑɔʌθðŋʃʒ]+\]/)?.[0] || ''
+    const cleaned = text.replace(/[（(][^)）]*[)）]/g, '').replace(/\[[a-zA-Z:ˈˌəɪʊɛæɑɔʌθðŋʃʒ]+\]/g, '')
+    return (cleaned + (phonetic ? ' ' + phonetic : '')).trim() || '(无标题)'
   })())
 
+// 提示提取：鼠标悬停显示的内容
 export const extractAnkiHint = (card: any): string => 
   card._hintCache || (card._hintCache = (() => {
-    const text = cleanHtml((card.back || card.fields?.[1] || '').replace(/<br\s*\/?>/gi, ' ').replace(/([高研四六托推]+\s*\d+\/\d+\s*-?\d*|[（(][^)）]*\d+[^)）]*[)）])/g, ''))
+    let back = card.back || card.fields?.[1] || ''
+    
+    // 思源闪卡：提取标记内容
+    if (back.includes('card__block')) {
+      const type = detectCardType(back)
+      if (type === 'card__block--hidemark') {
+        const marks = extractSiyuanMarks(back)
+        if (marks.length) return marks.join('，')
+      }
+    }
+    
+    // 普通卡片：提取中文句子
+    const text = cleanHtml(back.replace(/<br\s*\/?>/gi, ' ').replace(/([高研四六托推]+\s*\d+\/\d+\s*-?\d*|[（(][^)）]*\d+[^)）]*[)）])/g, ''))
     const matches = text.match(/[\u4e00-\u9fa5]+(?:[，。；：、的地得了着过吗呢啊][\u4e00-\u9fa5]*)*[，。；：！？]?/g)
     return matches?.filter((m: string) => m.length > 1).slice(0, 3).join('，').slice(0, 60) || text.slice(0, 60)
   })())
 
-// ========== CSS 作用域 ==========
+// CSS 作用域
 const scopeCss = (css: string, scope: string): string => {
   const globals = [':root', 'html', 'body']
   return css.split('}').map(rule => {
@@ -87,7 +119,7 @@ export const renderAnki = (card: any, scope = '.deck-card-back') => {
   return html
 }
 
-// ========== 交互处理 ==========
+// 交互处理
 export const setupInteractive = (selector: string) => {
   const stop = (e: Event) => e.stopPropagation()
   document.querySelectorAll(selector).forEach(c => {
@@ -96,7 +128,7 @@ export const setupInteractive = (selector: string) => {
   })
 }
 
-// ========== 音频播放 ==========
+// 音频播放
 const audioCache = new Map<string, HTMLAudioElement>()
 
 export const playAudio = async (e: Event) => {
@@ -130,7 +162,7 @@ export const playAudio = async (e: Event) => {
   }
 }
 
-// ========== 图片懒加载 ==========
+// 图片懒加载
 const imgCache = new Map<string, string>()
 
 const loadImg = async (cid: string, file: string) => {
@@ -171,7 +203,7 @@ export const setupImageLazyLoad = () => new IntersectionObserver(
   { rootMargin: '200px', threshold: 0.01 }
 )
 
-// ========== 卡片熟练度 ==========
+// 卡片熟练度
 const MASTERY = { colors: ['#ef4444', '#f59e0b', '#10b981', '#3b82f6'], icons: ['😐', '🙂', '😊', '🤩'] }
 
 const getMasteryLevel = (card: any) => {
@@ -188,14 +220,14 @@ export const refreshCards = (selector: string, obs: IntersectionObserver | null)
     document.querySelectorAll(`${selector} img[data-cid]`).forEach(img => {
       if (!(img as HTMLImageElement).src?.startsWith('blob:')) obs?.observe(img)
     })
-    window.MathJax?.typesetPromise?.()
+    ;(window as any).MathJax?.typesetPromise?.()
     setTimeout(() => setupInteractive(selector), 100)
   }, 100)
 }
 
-// ========== MathJax ==========
+// MathJax
 export const initMathJax = () => {
-  if (!window.MathJax) {
+  if (!(window as any).MathJax) {
     const script = document.createElement('script')
     script.src = 'https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js'
     script.async = true
@@ -204,9 +236,9 @@ export const initMathJax = () => {
 }
 
 export const renderMath = (selector: string) => 
-  window.MathJax?.typesetPromise?.([document.querySelector(selector)]).catch(() => {})
+  (window as any).MathJax?.typesetPromise?.([document.querySelector(selector)]).catch(() => {})
 
-// ========== 格式化 ==========
+// 格式化
 export const formatTime = (seconds: number) => {
   const m = Math.floor(seconds / 60)
   const s = seconds % 60
@@ -224,7 +256,7 @@ export const stopIfAudio = (e: Event) => {
   if ((e.target as HTMLElement).closest('.anki-audio')) e.stopPropagation()
 }
 
-// ========== 统计图表 ==========
+// 统计图表
 export const calcRings = (dist: any[]) => 
   dist.map((d, i) => {
     const r = 100 - i * 20
@@ -243,4 +275,3 @@ export const calcRadar = (dist: any[]) => {
   const labels = dist.map((d, i) => ({ x: pts[i].x * 116, y: pts[i].y * 116 + 4, label: d.label }))
   return { points: pts, data, labels, polygon: data.map(p => `${p.x},${p.y}`).join(' ') }
 }
-

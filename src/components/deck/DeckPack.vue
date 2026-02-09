@@ -85,8 +85,8 @@
       <!-- 统一按钮区 -->
       <Transition name="fade">
         <div v-if="removing===pack.id" class="sr-confirm" @click.stop>
-          <button @click="removing=null" class="b3-button b3-button--text">取消</button>
-          <button @click="confirmDelete(pack.id)" class="b3-button b3-button--text btn-delete">删除{{ pack.isParent?'分组':'' }}</button>
+          <button @click="removing=null">取消</button>
+          <button @click="confirmDelete(pack.id)" class="btn-delete">删除{{ pack.isParent?'分组':'' }}</button>
         </div>
       </Transition>
       <div v-if="removing!==pack.id&&!isEditing(pack)" class="sr-btns">

@@ -582,7 +582,7 @@ export class DeckDatabase {
     
     const params = [
       settings.deckId,
-      settings.notebookId || '',
+      '', // notebook_id 已废弃，保留空值以兼容旧数据库
       settings.newCardsPerDay,
       settings.reviewsPerDay,
       Array.isArray(settings.learningSteps) ? settings.learningSteps.join(',') : settings.learningSteps,
@@ -769,7 +769,7 @@ export class DeckDatabase {
     return {
       id: get('id'),
       deckId: get('deck_id'),
-      notebookId: get('notebook_id'),
+      // notebookId 已废弃，不再返回
       newCardsPerDay: get('new_cards_per_day'),
       reviewsPerDay: get('reviews_per_day'),
       learningSteps: parseArray(get('learning_steps')),
