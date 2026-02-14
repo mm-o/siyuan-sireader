@@ -144,7 +144,7 @@ class BookSourceManager {
     // 如果启用 Z-Library，先搜索 Z-Library
     if (includeZLib && !sourceUrl) {
       try {
-        const { annaArchive } = await import('./anna')
+        const { annaArchive } = await import('./utils/anna')
         const annaBooks = await annaArchive.search(keyword, page)
         if (annaBooks.length > 0) {
           const sourceName = annaArchive.getCurrentSource().name
@@ -152,7 +152,7 @@ class BookSourceManager {
             name: book.name,
             author: book.author,
             bookUrl: book.bookUrl,
-            coverUrl: book.coverUrl,
+            cover: book.cover,
             intro: book.intro,
             extension: book.extension,
             fileSize: book.fileSize,
@@ -234,7 +234,7 @@ class BookSourceManager {
             name: parse('name'),
             author: this.cleanField(parse('author'), 'text'),
             bookUrl: this.resolveUrl(parse('bookUrl'), source.bookSourceUrl),
-            coverUrl: this.cleanField(parse('coverUrl'), 'url'),
+            cover: this.cleanField(parse('coverUrl'), 'url'),
             intro: this.cleanField(parse('intro'), 'intro'),
             lastChapter: parse('lastChapter') || undefined,
             kind: parse('kind') || undefined,
@@ -255,7 +255,7 @@ class BookSourceManager {
     
     if (!s.ruleBookInfo || !Object.keys(s.ruleBookInfo).length || !s.ruleBookInfo.tocUrl) {
       return {
-        name: '', author: '', intro: '', coverUrl: '', tocUrl: bookUrl,
+        name: '', author: '', intro: '', cover: '', tocUrl: bookUrl,
         bookUrl, sourceName: s.bookSourceName, sourceUrl: s.bookSourceUrl
       }
     }
@@ -278,7 +278,7 @@ class BookSourceManager {
       name: parse(s.ruleBookInfo.name),
       author: this.cleanField(parse(s.ruleBookInfo.author), 'text'),
       intro: this.cleanField(parse(s.ruleBookInfo.intro), 'intro'),
-      coverUrl: this.cleanField(parse(s.ruleBookInfo.coverUrl), 'url'),
+      cover: this.cleanField(parse(s.ruleBookInfo.coverUrl), 'url'),
       tocUrl: this.resolveUrl(parse(s.ruleBookInfo.tocUrl), bookUrl),
       lastChapter: parse(s.ruleBookInfo.lastChapter) || undefined,
       kind: parse(s.ruleBookInfo.kind) || undefined,

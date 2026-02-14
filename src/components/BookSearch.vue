@@ -31,7 +31,7 @@
              :enter="{ opacity: 1, y: 0, transition: { delay: results.indexOf(book) * 20 } }"
              class="sr-card" @click="showDetail(book)">
           <div class="sr-cover-wrap">
-            <img v-if="shouldShowCover(book)" :src="book.coverUrl" @error="handleCoverError(book)" class="sr-cover">
+            <img v-if="shouldShowCover(book)" :src="book.cover" @error="handleCoverError(book)" class="sr-cover">
             <div v-else class="sr-text-cover">{{ book.name }}</div>
           </div>
           <div class="sr-info">
@@ -78,7 +78,7 @@
         </div>
 
         <div class="sr-detail-content">
-          <img class="sr-cover-large" :src="detailBook.coverUrl || '/icons/book-placeholder.svg'" @error="e => e.target.src='/icons/book-placeholder.svg'">
+          <img class="sr-cover-large" :src="detailBook.cover || '/icons/book-placeholder.svg'" @error="e => e.target.src='/icons/book-placeholder.svg'">
           
           <h2>{{ detailBook.name }}</h2>
           <p class="sr-meta">{{ detailBook.author }}</p>
@@ -141,7 +141,7 @@ import SourceMgr from './SourceMgr.vue'
 const props = defineProps<{ i18n: any }>()
 const emit = defineEmits(['read'])
 
-const isInShelf = (book: any) => bookshelfManager.hasBook(book.bookUrl)
+const isInShelf = (book: any) => bookshelfManager.getBook(book.bookUrl).then(b => !!b)
 const isAnnaBook = (book: any) => book.bookUrl?.includes('annas-archive')
 const detailBook = ref<any>(null)
 const chapters = ref<any[]>([])
@@ -176,8 +176,8 @@ const selectedSourceName = computed(() => {
   const src = enabledSources.value.find(s => s.bookSourceUrl === selectedSource.value)
   return src?.bookSourceName || ''
 })
-const shouldShowCover = (book: any) => book.coverUrl && !failedCovers.has(book.coverUrl)
-const handleCoverError = (book: any) => failedCovers.add(book.coverUrl)
+const shouldShowCover = (book: any) => book.cover && !failedCovers.has(book.cover)
+const handleCoverError = (book: any) => failedCovers.add(book.cover)
 
 const search = async () => {
   if (!keyword.value.trim()) return
@@ -246,7 +246,7 @@ const addToShelf = async (book: any) => {
       name: book.name,
       author: book.author,
       kind: book.kind,
-      coverUrl: book.coverUrl,
+      cover: book.cover,
       intro: book.intro,
       wordCount: book.wordCount,
     })

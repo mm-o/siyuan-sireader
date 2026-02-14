@@ -35,6 +35,9 @@ export default class PluginSample extends Plugin {
     init(this)
     this.addHotkeys()
     
+    // 导入迁移工具（开发时可在控制台运行 window.migrateOldData()）
+    import('@/utils/migrate-to-db').catch(() => {})
+    
     // 启用思源闪卡实时同步
     const { enableAutoSync } = await import('@/components/deck/siyuan-card')
     enableAutoSync()

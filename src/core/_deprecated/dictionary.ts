@@ -1,3 +1,15 @@
+/**
+ * 词典管理 - 旧版本
+ * 
+ * @deprecated 此文件已被 dict.ts 替代，但仍被多个 UI 组件使用
+ * @see src/core/dict.ts - 新的词典管理系统
+ * 
+ * 当前状态: 保留用于向后兼容
+ * 使用位置: Settings.vue, Reader.vue, main.ts
+ * 
+ * TODO: 逐步迁移 UI 组件到 dict.ts
+ */
+
 import type { Plugin } from 'siyuan'
 import { getFile, putFile } from '@/api'
 
@@ -210,7 +222,8 @@ class OnlineDictManager{
 export const onlineDictManager=new OnlineDictManager()
 export function initDictModule(p:Plugin){
   plugin=p
-  Promise.all([offlineDictManager.init(p),onlineDictManager.init(p)]).catch(e=>console.error('[Dict] Init error:',e))
+  // 只初始化离线词典管理器，在线词典不需要初始化
+  offlineDictManager.init(p).catch(e=>console.error('[Dict] Offline init error:',e))
 }
 
 // ===== 查询函数 =====

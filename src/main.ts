@@ -1,9 +1,9 @@
 import { Plugin } from 'siyuan'
 import { createApp } from 'vue'
 import App from './App.vue'
-import { initBookDataPlugin } from '@/core/bookshelf'
-import { initDictModule } from '@/core/dictionary'
-import { initMobile, isMobile } from '@/core/mobile'
+import { bookshelfManager } from '@/core/bookshelf'
+import { initDictModule } from '@/core/dict'
+import { initMobile, isMobile } from '@/core/utils/mobile'
 import { setPlugin } from '@/utils/copy'
 
 let plugin: Plugin | null = null
@@ -20,7 +20,7 @@ export const setOpenSettingHandler = (handler: () => void) => {
 export function init(p: Plugin) {
   usePlugin(p)
   setPlugin(p)
-  initBookDataPlugin(p)
+  bookshelfManager.init()
   initDictModule(p)
   initMobile(p)
 
@@ -78,17 +78,12 @@ async function addMobileSidebar(p: Plugin) {
 
   const { default: Settings } = await import('./components/Settings.vue')
   const { useSetting } = await import('./composables/useSetting')
-  const { settings } = useSetting(p)
+  const { settings, save } = useSetting(p)
 
   createApp(Settings, {
     modelValue: settings.value,
     i18n: p.i18n,
-    onSave: async () => {
-      const cfg = await p.loadData('config.json') || {}
-      cfg.settings = JSON.parse(JSON.stringify(settings.value))
-      await p.saveData('config.json', cfg)
-      window.dispatchEvent(new CustomEvent('sireaderSettingsUpdated', { detail: cfg.settings }))
-    },
+    onSave: async () => { await new Promise(resolve => setTimeout(resolve, 0)); await save(); },
     'onUpdate:modelValue': (v: any) => { settings.value = v }
   }).mount(content)
 

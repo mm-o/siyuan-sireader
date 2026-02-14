@@ -66,7 +66,7 @@ jobs:
         run: |
           # 提取当前版本的更新内容
           VERSION="${{ steps.version.outputs.version }}"
-          CHANGELOG=$(awk "/### v${VERSION}/,/^### v[0-9]|^---$/" CHANGELOG.md | sed '1d;$d')
+          CHANGELOG=$(awk "/## 🚀 v${VERSION}/,/^## 🚀 v[0-9]|^---$/" CHANGELOG.md | sed '1d;$d')
           echo "changelog<<EOF" >> $GITHUB_OUTPUT
           echo "$CHANGELOG" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
@@ -82,7 +82,7 @@ jobs:
           generateReleaseNotes: true
           makeLatest: true
           body: |
-            ## 📦 v${{ steps.version.outputs.version }}
+            ## 📦 完整更新日志
             
             ${{ steps.changelog.outputs.changelog }}
             

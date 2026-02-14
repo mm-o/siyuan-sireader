@@ -1,459 +1,286 @@
-import { getFile, putFile, removeFile } from '@/api'
-import { bookSourceManager } from '@/core/book'
-import JSZip from 'jszip'
+/**
+ * 书架管理 - 极简架构
+ */
+import { reactive } from 'vue';
+import { getDatabase } from './database';
 
-// ===== 类型定义 =====
-export interface Chapter {
-  index: number
-  title: string
-  url: string
-  content?: string
-}
+export type BookFormat = 'pdf' | 'epub' | 'txt' | 'mobi' | 'azw3';
+export type BookStatus = 'unread' | 'reading' | 'finished';
+export interface GroupConfig { id: string; name: string; icon?: string; color?: string; parentId?: string; order: number; type: 'folder' | 'smart'; rules?: { tags?: string[]; format?: BookFormat[]; status?: BookStatus[]; rating?: number } }
+export type SortType = 'time' | 'name' | 'author' | 'update' | 'progress' | 'rating' | 'readTime' | 'added';
+export interface FilterOptions { query?: string; status?: BookStatus[]; rating?: number; formats?: BookFormat[]; tags?: string[]; groups?: string[]; hasUpdate?: boolean; sortBy?: SortType; reverse?: boolean }
+export interface BookStats { total: number; byStatus: Record<BookStatus, number>; byFormat: Record<BookFormat, number>; withUpdate: number }
 
-export type BookFormat = 'epub' | 'pdf' | 'mobi' | 'azw3' | 'fb2' | 'cbz' | 'txt' | 'online'
+// ===== 常量 =====
+export const SORTS = [['time','最近阅读'],['added','最近添加'],['progress','阅读进度'],['rating','评分'],['readTime','阅读时长'],['name','书名'],['author','作者'],['update','最近更新']] as const;
+export const STATUS_OPTIONS = [['unread','未读'],['reading','在读'],['finished','已读']] as const;
+export const STATUS_MAP: Record<BookStatus,string> = {unread:'未读',reading:'在读',finished:'已读'};
+export const RATING_OPTIONS = [[0,'☆☆☆☆☆ 全部'],[5,'★★★★★ 仅5星'],[4,'★★★★☆ 4星及以上'],[3,'★★★☆☆ 3星及以上']] as const;
+export const FORMAT_OPTIONS: BookFormat[] = ['epub','pdf','mobi','azw3','txt'];
 
-export interface Book {
-  bookUrl: string
-  tocUrl: string
-  origin: string
-  originName: string
-  name: string
-  author: string
-  kind?: string
-  coverUrl?: string
-  intro?: string
-  wordCount?: string
-  chapters: Chapter[]
-  totalChapterNum: number
-  latestChapterTitle?: string
-  latestChapterTime: number
-  durChapterIndex: number
-  durChapterTitle?: string
-  durChapterPos: number
-  durChapterTime: number
-  addTime: number
-  lastCheckTime: number
-  lastCheckCount: number
-  canUpdate: boolean
-  format: BookFormat
-  filePath?: string
-  epubCfi?: string
-  epubProgress?: number
-  epubBookmarks?: Array<{ cfi: string; title: string; progress: number; time: number }>
-  txtBookmarks?: Array<{ section: number; page?: number; title: string; progress: number; time: number }>
-  durChapterPage?: number
-  // 元数据
-  subtitle?: string
-  publisher?: string
-  published?: string
-  language?: string
-  identifier?: string
-  subjects?: string[]
-  series?: any
-  // 绑定文档
-  bindDocId?: string
-  bindDocName?: string
-  autoSync?: boolean
-  syncDelete?: boolean
-  // 界面状态
-  filterColor?: string
-  filterSort?: string
-  isReverse?: boolean
-}
-
-export interface BookIndex {
-  bookUrl: string
-  name: string
-  author: string
-  coverUrl?: string
-  durChapterIndex: number
-  totalChapterNum: number
-  durChapterTime: number
-  addTime: number
-  lastCheckCount: number
-  format: BookFormat
-  epubProgress?: number
-}
-
-export interface UpdateResult {
-  bookUrl: string
-  hasUpdate: boolean
-  newChapters: number
-  latestChapterTitle: string
-}
-
-export type SortType = 'time' | 'name' | 'author' | 'update'
-
-export const STORAGE_PATH = {
-  BOOKS: '/data/storage/petal/siyuan-sireader/books',
-  INDEX: '/data/storage/petal/siyuan-sireader/index.json',
-}
-
-// ===== 书架管理器 =====
 class BookshelfManager {
-  private index: BookIndex[] = []
-  private initialized = false
-
-  async init(force = false) {
-    if (this.initialized && !force) return
-    await putFile(`${STORAGE_PATH.BOOKS}/`, true, new File([], '')).catch(() => {})
-    try {
-      const data = await getFile(STORAGE_PATH.INDEX)
-      this.index = Array.isArray(data) ? data : []
-    } catch { this.index = [] }
-    this.initialized = true
+  private ready = false;
+  private coverCache = reactive<Record<string, string | null>>({});
+  
+  async init() { if (this.ready) return; await (await getDatabase()).init(); this.ready = true; }
+  async getBooks() { await this.init(); return (await getDatabase()).getBooks(); }
+  async getBook(url: string) { await this.init(); return (await getDatabase()).getBook(url); }
+  
+  async addBook(info: any) {
+    await this.init();
+    if (!info.url) throw new Error('URL required');
+    const db = await getDatabase();
+    if (await db.getBook(info.url)) throw new Error('已存在');
+    const now = Date.now(), toc = info.toc || [], total = toc.length;
+    await db.saveBook({ url: info.url, title: info.title || '未知', author: info.author || '未知', cover: info.cover || '', format: info.format || 'epub', path: info.path || '', size: info.size || 0, added: now, read: now, finished: 0, status: info.status || 'unread', progress: info.progress || 0, time: 0, chapter: 0, total, pos: info.location || {}, source: info.source || {}, rating: info.rating || 5, meta: info.metadata || {}, tags: info.tags || [], groups: info.groups || [], toc, bindDocId: '', bindDocName: '', autoSync: false, syncDelete: false });
+    this.notify();
   }
 
-  private getHash(bookUrl: string) {
-    let h = 0
-    for (let i = 0; i < bookUrl.length; i++) h = (((h << 5) - h) + bookUrl.charCodeAt(i)) | 0
-    return Math.abs(h).toString(36)
+  async updateBook(url: string, updates: any) { 
+    await this.init(); 
+    const book = await (await getDatabase()).getBook(url); 
+    if (!book) return false; 
+    await (await getDatabase()).saveBook({ ...book, ...updates }); 
+    this.notify(); 
+    return true; 
   }
-
-  private sanitizeName(name: string) {
-    return name
-      .replace(/[<>:"/\\|?*\x00-\x1f《》【】「」『』（）()[\]{}]/g, '')
-      .replace(/\s+/g, '_')
-      .replace(/[._-]+/g, '_')
-      .replace(/^[._-]+|[._-]+$/g, '')
-      .slice(0, 50) || 'book'
+  async removeBook(url: string) { 
+    await this.init(); 
+    const book = await this.getBook(url); 
+    if (!book) return false; 
+    await (await getDatabase()).deleteBook(url); 
+    if (book.path?.startsWith('/data/')) { 
+      const { removeFile } = await import('@/api'); 
+      await Promise.all([removeFile(book.path).catch(() => {}), book.cover?.startsWith('/data/') ? removeFile(book.cover).catch(() => {}) : Promise.resolve()]); 
+    } 
+    this.notify(); 
+    return true; 
   }
-
-  private getFileName(name: string, hash: string, ext: string) {
-    return `${this.sanitizeName(name)}_${hash}.${ext}`
+  
+  removeBooks = async (urls: string[]) => this.batch(urls, url => this.removeBook(url));
+  
+  async filterBooks(opt: FilterOptions = {}) {
+    await this.init();
+    const { query, groups, ...dbOpt } = opt;
+    let books = await (await getDatabase()).filterBooks(dbOpt);
+    if (query) { const q = query.toLowerCase(); books = books.filter(b => b.title.toLowerCase().includes(q) || b.author.toLowerCase().includes(q)); }
+    if (groups?.length) books = books.filter(b => groups.some((g: string) => b.groups?.includes(g)));
+    return books;
   }
-
-  private async saveCoverFile(name: string, hash: string, blob: Blob) {
-    const fileName = this.getFileName(name, hash, 'jpg')
-    const path = `${STORAGE_PATH.BOOKS}/${fileName}`
-    await putFile(path, false, new File([blob], fileName, { type: 'image/jpeg' }))
-    return path
+  
+  async getStats(): Promise<BookStats> { 
+    await this.init();
+    const dbStats = await (await getDatabase()).getStats();
+    return { total: (await this.getBooks()).length, ...dbStats };
   }
-
-  private async processCover(hash: string, url: string, name: string) {
-    if (!url) return
-    try {
-      if (url.startsWith('data:image/')) {
-        const bytes = Uint8Array.from(atob(url.split(',')[1]), c => c.charCodeAt(0))
-        return await this.saveCoverFile(name, hash, new Blob([bytes]))
-      }
-      if (url.startsWith('http')) {
-        return await this.saveCoverFile(name, hash, await (await fetch(url)).blob())
-      }
-      return url
-    } catch {}
+  
+  // 进度管理
+  async updateProgress(url: string, progress: number, chapter?: number, cfi?: string) { 
+    const book = await this.getBook(url); 
+    if (!book) return false; 
+    const p = Math.max(0, Math.min(100, progress)), now = Date.now(), status = p === 0 ? 'unread' : p === 100 ? 'finished' : 'reading'; 
+    return this.updateBook(url, { progress: p, status, read: now, pos: { ...book.pos, chapter: chapter ?? book.pos.chapter, timestamp: now, cfi }, ...(chapter !== undefined && { chapter }), ...(p === 100 && { finished: now }) }); 
   }
-
-  private async saveIndex() {
-    await putFile(STORAGE_PATH.INDEX, false, new File([JSON.stringify(this.index, null, 2)], 'index.json', { type: 'application/json' }))
+  
+  updateRating = async (url: string, rating: number) => this.updateBook(url, { rating: rating ? Math.max(1, Math.min(5, rating)) : undefined })
+  updateStatus = async (url: string, status: BookStatus) => this.updateBook(url, { status, ...(status === 'finished' && { finished: Date.now(), progress: 100 }) })
+  updateReadTime = async (url: string, seconds: number) => { const book = await this.getBook(url); return book ? this.updateBook(url, { time: (book.time || 0) + seconds }) : false; }
+  
+  // ===== 标签管理 =====
+  manageTags = async (url: string, action: 'add' | 'remove' | 'set', data: string | string[]) => {
+    const tags = (await this.getBook(url))?.tags || [];
+    if (action === 'set') return this.updateBook(url, { tags: data as string[] });
+    if (action === 'add') return tags.includes(data as string) ? false : this.updateBook(url, { tags: [...tags, data as string] });
+    return this.updateBook(url, { tags: tags.filter(t => t !== data) });
   }
-
-  async getBook(bookUrl: string) {
-    try {
-      const idx = this.index.find(b => b.bookUrl === bookUrl)
-      if (!idx) return null
-      const hash = this.getHash(bookUrl)
-      const fileName = this.getFileName(idx.name, hash, 'json')
-      const book = await getFile(`${STORAGE_PATH.BOOKS}/${fileName}`) as Book
-      return book || null
-    } catch { return null }
+  
+  getAllTags = async () => (await getDatabase()).getAllTags()
+  
+  // ===== 分组管理 =====
+  getGroups = async () => { await this.init(); return (await getDatabase()).getGroups() }
+  saveGroups = async (groups: GroupConfig[]) => { await this.init(); await (await getDatabase()).saveGroups(groups); this.notify() }
+  createGroup = async (name: string, type: 'folder' | 'smart' = 'folder', icon?: string) => { 
+    const groups = await this.getGroups(); 
+    const newGroup: GroupConfig = { id: `group_${Date.now()}`, name, icon: icon || (type === 'folder' ? '📁' : '⚡'), order: groups.length, type }; 
+    await this.saveGroups([...groups, newGroup]); 
+    return newGroup; 
   }
-
-  async saveBook(book: Book) {
-    const hash = this.getHash(book.bookUrl)
-    const hasFile = ['epub', 'mobi', 'azw3', 'fb2', 'pdf', 'cbz'].includes(book.format)
-    const fileName = this.getFileName(book.name, hash, 'json')
-    const data = { ...book, chapters: hasFile ? [] : book.chapters, coverUrl: undefined }
-    await putFile(`${STORAGE_PATH.BOOKS}/${fileName}`, false, new File([JSON.stringify(data, null, 2)], fileName, { type: 'application/json' }))
-    this.updateIndex(book, await this.processCover(hash, book.coverUrl || '', book.name))
-    await this.saveIndex()
+  async deleteGroup(gid: string) { 
+    await this.init();
+    await (await getDatabase()).deleteGroup(gid);
+    this.notify();
+    return true;
   }
-
-  async updateBook(bookUrl: string, updates: Partial<Book>) {
-    const book = await this.getBook(bookUrl)
-    if (!book) throw new Error('书籍不存在')
-    await this.saveBook({ ...book, ...updates })
+  
+  manageGroup = async (url: string, gid: string, action: 'add' | 'remove') => {
+    const groups = (await this.getBook(url))?.groups || [];
+    if (action === 'add') return groups.includes(gid) ? false : this.updateBook(url, { groups: [...groups, gid] });
+    return this.updateBook(url, { groups: groups.filter(g => g !== gid) });
   }
-
-  async addBook(partial: Partial<Book>) {
-    if (!partial.bookUrl) throw new Error('URL不能为空')
-    if (this.index.some(b => b.bookUrl === partial.bookUrl)) throw new Error('书籍已存在')
-    
-    const format = partial.format || 'online'
-    const hasFile = ['epub', 'mobi', 'azw3', 'fb2', 'pdf', 'cbz', 'txt'].includes(format)
-    const now = Date.now()
-    
-    await this.saveBook({
-      ...partial,
-      bookUrl: partial.bookUrl,
-      tocUrl: partial.tocUrl || '',
-      origin: partial.origin || '',
-      originName: partial.originName || '',
-      name: partial.name || '未知书名',
-      author: partial.author || '未知作者',
-      chapters: hasFile ? [] : (partial.chapters || []),
-      totalChapterNum: partial.totalChapterNum || 0,
-      latestChapterTitle: '',
-      latestChapterTime: now,
-      durChapterIndex: 0,
-      durChapterTitle: '',
-      durChapterPos: 0,
-      durChapterTime: now,
-      addTime: now,
-      lastCheckTime: now,
-      lastCheckCount: 0,
-      canUpdate: format === 'online',
-      format,
-      epubProgress: 0,
-      epubBookmarks: [],
-      txtBookmarks: []
-    } as Book)
+  
+  addBooksToGroup = async (urls: string[], gid: string) => this.batch(urls, url => this.manageGroup(url, gid, 'add'))
+  getGroupCount = async (gid: string) => {
+    await this.init();
+    const group = (await this.getGroups()).find(g => g.id === gid);
+    if (!group) return 0;
+    if (group.type === 'smart') return (await this.getGroupBooks(gid)).length;
+    return (await getDatabase()).getGroupCount(gid);
   }
-
-  private async extractMetadata(file: File, format: string, defaultName: string) {
-    if (!['epub', 'mobi', 'azw3', 'fb2', 'cbz'].includes(format)) {
-      return { title: defaultName, author: '未知作者', chapters: [] }
+  getGroupPreviewBooks = async (gid: string, limit = 4) => {
+    await this.init();
+    const group = (await this.getGroups()).find(g => g.id === gid);
+    if (!group) return [];
+    if (group.type === 'smart') return (await this.getGroupBooks(gid)).slice(0, limit);
+    return (await getDatabase()).getGroupPreviewBooks(gid, limit);
+  }
+  async getGroupBooks(gid: string) { 
+    const group = (await this.getGroups()).find(g => g.id === gid); 
+    if (!group) return []; 
+    const books = await this.getBooks(); 
+    if (group.type === 'folder') return books.filter(b => b.groups?.includes(gid)); 
+    if (group.type === 'smart' && group.rules) { 
+      const { tags = [], format = [], status = [], rating = 0 } = group.rules; 
+      return books.filter(b => 
+        (!tags.length || tags.some(t => b.tags?.includes(t))) && 
+        (!format.length || format.includes(b.format)) && 
+        (!status.length || status.includes(b.status)) && 
+        (!rating || (b.rating || 0) >= rating)
+      ); 
+    } 
+    return []; 
+  }
+  
+  // 批量操作
+  private batch = async <T>(items: T[], op: (item: T) => Promise<boolean>) => { 
+    const results = await Promise.allSettled(items.map(op)), success = results.filter(r => r.status === 'fulfilled' && r.value).length; 
+    return { success, failed: items.length - success }; 
+  }
+  
+  batchUpdateRating = async (urls: string[], rating: number) => this.batch(urls, url => this.updateRating(url, rating))
+  batchUpdateStatus = async (urls: string[], status: BookStatus) => this.batch(urls, url => this.updateStatus(url, status))
+  
+  private notify = () => typeof window !== 'undefined' && window.dispatchEvent(new Event('sireader:bookshelf-updated'));
+  
+  // ===== UI辅助 =====
+  getBookColor(title: string) {
+    const colors = ['#fef3c7', '#dbeafe', '#fce7f3', '#e0e7ff', '#d1fae5', '#fed7aa', '#fae8ff', '#f3e8ff', '#fecaca', '#fbcfe8'];
+    let hash = 0;
+    for (let i = 0; i < title.length; i++) hash = title.charCodeAt(i) + ((hash << 5) - hash);
+    return colors[Math.abs(hash) % colors.length];
+  }
+  
+  getCoverUrl(book: any) {
+    if (!book.cover) return '';
+    if (book.cover.startsWith('/data/')) {
+      if (!this.coverCache[book.cover]) this.loadCover(book.cover);
+      return this.coverCache[book.cover] || '';
     }
-    
+    return book.cover;
+  }
+  
+  private async loadCover(path: string) {
     try {
-      const view = document.createElement('foliate-view') as any
-      await view.open(file)
-      
-      const { metadata = {}, toc = [] } = view.book || {}
-      const norm = (v: any) => typeof v === 'string' ? v : (v?.['zh-CN'] || v?.['zh'] || v?.['en'] || Object.values(v || {})[0] || '')
-      const arr = (v: any) => v ? (Array.isArray(v) ? v : [v]) : []
-      const contrib = (v: any) => arr(v).map(c => typeof c === 'string' ? c : norm(c?.name)).filter(Boolean).join(', ') || undefined
-      
-      const chapters = toc.map((t: any, i: number) => ({ 
-        index: i, 
-        title: norm(t.label) || `第${i + 1}章`, 
-        url: t.href || '' 
-      })).filter((c: any) => c.url)
-      
-      const coverBlob = format === 'epub' ? await this.extractEpubCover(file) : undefined
-      
-      view.remove()
-      
-      return {
-        title: norm(metadata.title) || defaultName,
-        subtitle: norm(metadata.subtitle),
-        author: contrib(metadata.author) || '未知作者',
-        publisher: contrib(metadata.publisher),
-        published: metadata.published instanceof Date ? metadata.published.toISOString().split('T')[0] : metadata.published ? String(metadata.published) : undefined,
-        language: arr(metadata.language)[0],
-        identifier: arr(metadata.identifier)[0],
-        intro: metadata.description,
-        subjects: arr(metadata.subject).map((s: any) => typeof s === 'string' ? s : norm(s?.name)).filter(Boolean),
-        series: Array.isArray(metadata.belongsTo) ? metadata.belongsTo[0] : metadata.belongsTo,
-        coverBlob,
-        chapters
-      }
-    } catch (e) {
-      console.error('[元数据提取]', e)
-      return { title: defaultName, author: '未知作者', chapters: [] }
+      const res = await fetch('/api/file/getFile', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path }) });
+      if (!res.ok) throw new Error();
+      this.coverCache[path] = URL.createObjectURL(await res.blob());
+    } catch {
+      this.coverCache[path] = null;
     }
   }
   
-  private async extractEpubCover(file: File): Promise<Blob | undefined> {
-    try {
-      const zip = await JSZip.loadAsync(file)
-      const container = await zip.file('META-INF/container.xml')?.async('text')
-      const opfPath = container?.match(/full-path="([^"]+)"/)?.[1]
-      if (!opfPath) return
-      const opf = await zip.file(opfPath)?.async('text')
-      if (!opf) return
-      const base = opfPath.replace(/[^/]+$/, '')
-      const path = (h: string) => (base + h).replace(/\/+/g, '/')
-      const blob = async (h: string) => await zip.file(path(h))?.async('blob')
-      
-      // EPUB3: properties="cover-image"
-      let href = opf.match(/<item[^>]+properties="cover-image"[^>]+href="([^"]+)"/)?.[1] ||
-                 opf.match(/<item[^>]+href="([^"]+)"[^>]+properties="cover-image"/)?.[1]
-      
-      // id="cover"
-      if (!href) {
-        const item = opf.match(/<item[^>]+id="cover(-image)?"[^>]+href="([^"]+)"/i)?.[2]
-        if (item && /\.(xhtml|html)$/i.test(item)) {
-          const html = await zip.file(path(item))?.async('text')
-          const img = html?.match(/<(?:img|image)[^>]+(?:src|(?:xlink:)?href)="([^"]+)"/i)?.[1]
-          href = img ? (item.replace(/[^/]+$/, '') + img).replace(/^\.\//, '').replace(/^\//, '') : undefined
-        } else {
-          href = item
-        }
-      }
-      
-      // EPUB2: <meta name="cover">
-      if (!href) {
-        const id = opf.match(/<meta\s+name="cover"\s+content="([^"]+)"/i)?.[1]
-        href = id ? opf.match(new RegExp(`<item[^>]+id="${id}"[^>]+href="([^"]+)"`, 'i'))?.[1] : undefined
-      }
-      
-      // 降级: 第一个图片或常见文件名
-      if (!href) {
-        href = opf.match(/<item[^>]+href="([^"]+\.(?:jpg|jpeg|png|gif))"/i)?.[1] ||
-               ['cover.jpg', 'cover.jpeg', 'cover.png'].find(n => 
-                 [n, 'Images/' + n, 'images/' + n].some(p => zip.file(path(p)))
-               )
-      }
-      return href ? await blob(href) : undefined
-    } catch {}
+  // ===== 书籍操作 =====
+  async moveBookToGroup(url: string, targetGroupId: string | null) {
+    const book = await this.getBook(url);
+    if (!book) return false;
+    const newGroups = targetGroupId ? [targetGroupId] : [];
+    return this.updateBook(url, { groups: newGroups });
   }
   
-  private getFormatFromPath(path: string): BookFormat {
-    const ext = path.split('.').pop()?.toLowerCase() || ''
-    const map: Record<string, BookFormat> = { epub: 'epub', pdf: 'pdf', mobi: 'mobi', azw3: 'azw3', azw: 'azw3', fb2: 'fb2', cbz: 'cbz', txt: 'txt' }
-    return map[ext] || 'epub'
+  async uploadBooks(files: File[]) {
+    const results = await Promise.allSettled(files.map(f => this.addLocalBook(f)));
+    const success = results.filter(r => r.status === 'fulfilled').length;
+    const failed = results.length - success;
+    return { success, failed };
   }
-
+  
+  async updateBookInfo(url: string, formData: { title: string; author: string; tags: string; rating: number; status: BookStatus; cover: string; groups: string[]; bindDocId?: string; bindDocName?: string; autoSync?: boolean; syncDelete?: boolean }) {
+    const book = await this.getBook(url);
+    if (!book || !formData.title.trim()) return { success: false, error: '书名不能为空' };
+    const tags = formData.tags.split(/[,，]/).map(t => t.trim()).filter(t => t);
+    await this.updateBook(url, {
+      title: formData.title.trim(),
+      author: formData.author.trim(),
+      tags,
+      rating: formData.rating || undefined,
+      status: formData.status,
+      cover: formData.cover.trim() || '',
+      groups: formData.groups,
+      bindDocId: formData.bindDocId || '',
+      bindDocName: formData.bindDocName || '',
+      autoSync: formData.autoSync || false,
+      syncDelete: formData.syncDelete || false
+    });
+    return { success: true };
+  }
+  
+  // 导入
   async addLocalBook(file: File) {
-    const format = this.getFormatFromPath(file.name)
-    const name = file.name.replace(/\.[^.]+$/, '')
-    const meta = await this.extractMetadata(file, format, name)
-    
-    const bookUrl = `${format}://${file.name}_${file.size}`
-    const hash = this.getHash(bookUrl)
-    const fileName = this.getFileName(meta.title || name, hash, format)
-    const filePath = `${STORAGE_PATH.BOOKS}/${fileName}`
-    
-    await putFile(filePath, false, file)
-    await this._addBookFromMeta(bookUrl, filePath, format, format.toUpperCase(), meta)
+    await this.init();
+    const format = this.getFormat(file.name), name = file.name.replace(/\.[^.]+$/, ''), url = `${format}://${file.name}_${file.size}`;
+    const meta = await this.extractMeta(file, format, name);
+    const [path, cover] = await Promise.all([this.saveFile(file, meta.title || name, url), meta.coverBlob ? this.saveCover(meta.coverBlob, meta.title || name, url) : Promise.resolve(undefined)]);
+    await this.addBook({ url, title: meta.title || name, author: meta.author || '未知作者', cover, format, path, size: file.size, metadata: { publisher: meta.publisher, publishDate: meta.published, language: meta.language, isbn: meta.identifier, description: meta.intro, series: meta.series }, toc: meta.chapters || [] });
   }
   
   async addAssetBook(assetPath: string, file: File) {
-    const format = this.getFormatFromPath(file.name)
-    const name = file.name.replace(/\.[^.]+$/, '')
-    const meta = await this.extractMetadata(file, format, name)
-    
-    await this._addBookFromMeta(`asset://${assetPath}`, assetPath, format, '文档资源', meta)
+    await this.init();
+    const format = this.getFormat(file.name), name = file.name.replace(/\.[^.]+$/, ''), url = `asset://${assetPath}`;
+    const meta = await this.extractMeta(file, format, name);
+    await this.addBook({ url, title: meta.title || name, author: meta.author || '未知作者', cover: meta.coverBlob ? await this.saveCover(meta.coverBlob, meta.title || name, url) : undefined, format, path: assetPath, metadata: { publisher: meta.publisher, publishDate: meta.published, language: meta.language, isbn: meta.identifier, description: meta.intro, series: meta.series }, toc: meta.chapters || [] });
   }
   
-  private async _addBookFromMeta(bookUrl: string, filePath: string, format: BookFormat, originName: string, meta: any) {
-    const hash = this.getHash(bookUrl)
-    await this.addBook({
-      bookUrl,
-      name: meta.title,
-      author: meta.author,
-      intro: meta.intro,
-      coverUrl: meta.coverBlob ? await this.saveCoverFile(meta.title, hash, meta.coverBlob) : undefined,
-      origin: format,
-      originName,
-      format,
-      filePath,
-      totalChapterNum: meta.chapters?.length || 0,
-      subtitle: meta.subtitle,
-      publisher: meta.publisher,
-      published: meta.published,
-      language: meta.language,
-      identifier: meta.identifier,
-      subjects: meta.subjects,
-      series: meta.series
-    })
-  }
-  async removeBook(bookUrl: string) {
-    const idx = this.index.find(b => b.bookUrl === bookUrl)
-    if (idx) {
-      const hash = this.getHash(bookUrl)
-      const base = `${STORAGE_PATH.BOOKS}/${this.sanitizeName(idx.name)}_${hash}`
-      await Promise.all([`${base}.json`, `${base}.jpg`, `${base}.${idx.format}`].map(p => removeFile(p).catch(() => {})))
-    }
-    this.index = this.index.filter(b => b.bookUrl !== bookUrl)
-    await this.saveIndex()
-  }
-
-  async cacheChapterContent(bookUrl: string, chapterIndex: number, content: string) {
-    const book = await this.getBook(bookUrl)
-    if (book?.chapters[chapterIndex]) {
-      book.chapters[chapterIndex].content = content
-      await this.saveBook(book)
-    }
-  }
-
-  getBooks() { return [...this.index] }
+  private getFormat = (path: string): BookFormat => { const ext = path.split('.').pop()?.toLowerCase() || ''; return ({ epub: 'epub', pdf: 'pdf', mobi: 'mobi', azw3: 'azw3', azw: 'azw3', txt: 'txt' } as Record<string, BookFormat>)[ext] || 'epub'; };
   
-  hasBook(bookUrl: string) { return this.index.some(b => b.bookUrl === bookUrl) }
-
-  async sortBooks(sortType: SortType) {
-    const sorters = {
-      time: (a: BookIndex, b: BookIndex) => b.durChapterTime - a.durChapterTime,
-      name: (a: BookIndex, b: BookIndex) => a.name.localeCompare(b.name, 'zh-CN'),
-      author: (a: BookIndex, b: BookIndex) => a.author.localeCompare(b.author, 'zh-CN'),
-      update: (a: BookIndex, b: BookIndex) => b.addTime - a.addTime
-    }
-    this.index.sort(sorters[sortType])
-    await this.saveIndex()
-  }
-
-  searchBooks(keyword: string) {
-    const kw = keyword.toLowerCase()
-    return keyword ? this.index.filter(b => b.name.toLowerCase().includes(kw) || b.author.toLowerCase().includes(kw)) : this.getBooks()
-  }
-
-  async checkUpdate(bookUrl: string): Promise<UpdateResult> {
-    const book = await this.getBook(bookUrl)
-    if (!book?.canUpdate) return { bookUrl, hasUpdate: false, newChapters: 0, latestChapterTitle: '' }
-
+  private async extractMeta(file: File, format: BookFormat, defaultName: string) {
+    const def = { title: defaultName, author: '未知作者', chapters: [], publisher: undefined, published: undefined, language: undefined, identifier: undefined, intro: undefined, subjects: [], series: undefined, coverBlob: undefined, subtitle: undefined };
+    if (!['epub', 'mobi', 'azw3'].includes(format)) return def;
     try {
-      const newChaps = await bookSourceManager.getChapters(book.origin, book.tocUrl || book.bookUrl)
-      const newCount = newChaps.length - book.totalChapterNum
-      const now = Date.now()
-      
-      if (newCount > 0) {
-        book.chapters.push(...newChaps.slice(book.totalChapterNum).map((ch, i) => ({ 
-          index: book.totalChapterNum + i, 
-          title: ch.name || `第${book.totalChapterNum + i + 1}章`, 
-          url: ch.url || '' 
-        })))
-        Object.assign(book, {
-          totalChapterNum: newChaps.length,
-          latestChapterTitle: newChaps[newChaps.length - 1].name,
-          latestChapterTime: now,
-          lastCheckCount: newCount,
-          lastCheckTime: now
-        })
-      } else {
-        Object.assign(book, { lastCheckCount: 0, lastCheckTime: now })
-      }
-      
-      await this.saveBook(book)
-      return { bookUrl, hasUpdate: newCount > 0, newChapters: newCount, latestChapterTitle: book.latestChapterTitle || '' }
-    } catch {
-      return { bookUrl, hasUpdate: false, newChapters: 0, latestChapterTitle: '' }
-    }
+      const view = document.createElement('foliate-view') as any;
+      await Promise.race([view.open(file), new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 10000))]);
+      const { metadata = {}, toc = [] } = view.book || {};
+      const norm = (v: any) => typeof v === 'string' ? v : (v?.['zh-CN'] || v?.['zh'] || v?.['en'] || Object.values(v || {})[0] || '');
+      const arr = (v: any) => v ? (Array.isArray(v) ? v : [v]) : [];
+      const contrib = (v: any) => arr(v).map((c: any) => typeof c === 'string' ? c : norm(c?.name)).filter(Boolean).join(', ') || undefined;
+      const convertToc = (items: any[]): any[] => Array.isArray(items) ? items.map((t: any) => ({ label: norm(t.label) || '', href: t.href || '', subitems: t.subitems ? convertToc(t.subitems) : [] })).filter((c: any) => c.label || c.href) : [];
+      const [chapters, coverBlob] = await Promise.all([Promise.resolve(convertToc(toc)), format === 'epub' ? this.extractCover(file).catch(() => undefined) : undefined]);
+      view.remove();
+      return { title: norm(metadata.title) || defaultName, subtitle: norm(metadata.subtitle), author: contrib(metadata.author) || '未知作者', publisher: contrib(metadata.publisher), published: metadata.published instanceof Date ? metadata.published.toISOString().split('T')[0] : metadata.published ? String(metadata.published) : undefined, language: arr(metadata.language)[0], identifier: arr(metadata.identifier)[0], intro: metadata.description, subjects: arr(metadata.subject).map((s: any) => typeof s === 'string' ? s : norm(s?.name)).filter(Boolean), series: Array.isArray(metadata.belongsTo) ? metadata.belongsTo[0] : metadata.belongsTo, coverBlob, chapters };
+    } catch { return def; }
   }
-
-  async checkAllUpdates() { 
-    return Promise.all(this.index.map(idx => this.checkUpdate(idx.bookUrl))) 
+  
+  private async extractCover(file: File): Promise<Blob | undefined> {
+    try {
+      const JSZip = (await import('jszip')).default, zip = await JSZip.loadAsync(file), container = await zip.file('META-INF/container.xml')?.async('text'), opfPath = container?.match(/full-path="([^"]+)"/)?.[1];
+      if (!opfPath) return;
+      const opf = await zip.file(opfPath)?.async('text');
+      if (!opf) return;
+      const base = opfPath.replace(/[^/]+$/, ''), norm = (h: string) => (base + h).replace(/\/+/g, '/'), getBlob = async (h: string) => await zip.file(norm(h))?.async('blob');
+      let href = opf.match(/<item[^>]+properties="cover-image"[^>]+href="([^"]+)"/)?.[1] || opf.match(/<item[^>]+href="([^"]+)"[^>]+properties="cover-image"/)?.[1];
+      if (href) return await getBlob(href);
+      const item = opf.match(/<item[^>]+id="cover(-image)?"[^>]+href="([^"]+)"/i)?.[2];
+      if (item) { if (/\.(xhtml|html)$/i.test(item)) { const html = await zip.file(norm(item))?.async('text'), img = html?.match(/<(?:img|image)[^>]+(?:src|(?:xlink:)?href)="([^"]+)"/i)?.[1]; if (img) return await getBlob((item.replace(/[^/]+$/, '') + img).replace(/^\.?\//, '')); } return await getBlob(item); }
+      const id = opf.match(/<meta\s+name="cover"\s+content="([^"]+)"/i)?.[1];
+      if (id && (href = opf.match(new RegExp(`<item[^>]+id="${id}"[^>]+href="([^"]+)"`, 'i'))?.[1])) return await getBlob(href);
+      if (href = opf.match(/<item[^>]+href="([^"]+\.(?:jpg|jpeg|png|gif))"/i)?.[1]) return await getBlob(href);
+      for (const n of ['cover.jpg', 'cover.jpeg', 'cover.png']) for (const p of [n, 'Images/' + n, 'images/' + n]) if (zip.file(norm(p))) return await getBlob(p);
+    } catch {}
   }
-
-  private updateIndex(book: Book, cover?: string) {
-    const i = this.index.findIndex(b => b.bookUrl === book.bookUrl)
-    const idx: BookIndex = {
-      bookUrl: book.bookUrl,
-      name: book.name,
-      author: book.author,
-      coverUrl: cover || this.index[i]?.coverUrl,
-      durChapterIndex: book.durChapterIndex,
-      totalChapterNum: book.totalChapterNum,
-      durChapterTime: book.durChapterTime,
-      addTime: book.addTime,
-      lastCheckCount: book.lastCheckCount,
-      format: book.format,
-      epubProgress: book.epubProgress
-    }
-    i >= 0 ? (this.index[i] = idx) : this.index.push(idx)
-  }
+  
+  private async saveFile(file: File, title: string, url: string) { const { putFile } = await import('@/api'), hash = this.hash(url), name = this.sanitize(title), ext = file.name.split('.').pop(); const path = `/data/storage/petal/siyuan-sireader/books/${name}_${hash}.${ext}`; try { await putFile(path, false, file); return path; } catch (err) { throw new Error(`文件保存失败: ${err instanceof Error ? err.message : '未知错误'}`); } }
+  private async saveCover(blob: Blob, title: string, url: string) { const { putFile } = await import('@/api'), hash = this.hash(url), name = this.sanitize(title), fileName = `${name}_${hash}.jpg`; const path = `/data/storage/petal/siyuan-sireader/books/${fileName}`; try { await putFile(path, false, new File([blob], fileName, { type: 'image/jpeg' })); return path; } catch (err) { return ''; } }
+  private hash = (str: string): string => { let h = 0; for (let i = 0; i < str.length; i++) h = (((h << 5) - h) + str.charCodeAt(i)) | 0; return Math.abs(h).toString(36); };
+  private sanitize = (name: string): string => name.replace(/[<>:"/\\|?*\x00-\x1f《》【】「」『』（）()[\]{}]/g, '').replace(/\s+/g, '_').replace(/[._-]+/g, '_').replace(/^[._-]+|[._-]+$/g, '').slice(0, 50) || 'book';
 }
 
-export const bookshelfManager = new BookshelfManager()
-
-let plugin: any
-export const initBookDataPlugin = (p: any) => plugin = p
-
-export const loadBookData = async (bookUrl: string) => await bookshelfManager.getBook(bookUrl) || {}
-
-export const saveBookData = async (bookUrl: string, data: any) => {
-  const book = await bookshelfManager.getBook(bookUrl)
-  if (!book) return
-  Object.entries(data).forEach(([k, v]) => v !== undefined && ((book as any)[k] = v))
-  await bookshelfManager.saveBook(book)
-}
+export const bookshelfManager = new BookshelfManager();
+export type { Book } from './database';

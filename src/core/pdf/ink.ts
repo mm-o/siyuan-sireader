@@ -1,8 +1,8 @@
 /**
  * PDF 墨迹标注核心模块
- * 支持鼠标/触摸绘制、平滑曲线、撤销/清除等功能
+ * 支持鼠标/触摸绘制、平滑曲线、撤销/清除等功�?
  */
-import{loadBookData,saveBookData}from'../bookshelf'
+import{loadBookData,saveBookData}from'../_deprecated/bookshelf'
 
 // 类型定义
 export interface InkPoint{x:number;y:number;pressure?:number}
@@ -10,12 +10,12 @@ export interface InkPath{points:InkPoint[];color:string;width:number;opacity:num
 export interface InkAnnotation{id:string;type:'ink';page:number;paths:InkPath[];timestamp:number;rect?:[number,number,number,number]}
 export interface InkConfig{color:string;width:number;opacity:number;smoothing:boolean}
 
-// 工具函数：获取鼠标/触摸坐标
+// 工具函数：获取鼠�?触摸坐标
 const getCoord=(e:MouseEvent|TouchEvent,r:DOMRect)=>({x:(e instanceof MouseEvent?e.clientX:e.touches[0].clientX)-r.left,y:(e instanceof MouseEvent?e.clientY:e.touches[0].clientY)-r.top})
 
 // ===== 渲染工具函数 =====
 
-/** 绘制墨迹标注到 Canvas（用于预览/缩略图） */
+/** 绘制墨迹标注�?Canvas（用于预�?缩略图） */
 export const drawInk=(canvas:HTMLCanvasElement,paths:InkPath[],rect:[number,number,number,number])=>{
   const ctx=canvas.getContext('2d')
   if(!ctx)return
@@ -63,7 +63,7 @@ export const renderInkCanvas=(list:any[],inkCache:Map<string,number>)=>{
   })
 }
 
-/** 墨迹绘制器 - 负责单个 Canvas 的绘制操作 */
+/** 墨迹绘制�?- 负责单个 Canvas 的绘制操�?*/
 export class InkDrawer{
   private ctx:CanvasRenderingContext2D
   private isDrawing=false
@@ -79,7 +79,7 @@ export class InkDrawer{
   /** 更新配置 */
   setConfig(c:Partial<InkConfig>){this.config={...this.config,...c}}
 
-  /** 开始绘制 */
+  /** 开始绘�?*/
   startDrawing(x:number,y:number,pressure=1){
     this.isDrawing=true
     this.currentPath=[{x,y,pressure}]
@@ -87,7 +87,7 @@ export class InkDrawer{
     this.ctx.moveTo(x,y)
   }
 
-  /** 绘制路径点 */
+  /** 绘制路径�?*/
   draw(x:number,y:number,pressure=1){
     if(!this.isDrawing)return
     const rx=Math.round(x),ry=Math.round(y)
@@ -112,7 +112,7 @@ export class InkDrawer{
     this.ctx.stroke()
   }
 
-  /** 结束绘制，返回路径 */
+  /** 结束绘制，返回路�?*/
   endDrawing():InkPath|null{
     if(!this.isDrawing||this.currentPath.length<2){this.isDrawing=false;return null}
     this.isDrawing=false
@@ -145,7 +145,7 @@ export class InkDrawer{
     this.ctx.stroke()
   }
 
-  /** 计算路径边界框 */
+  /** 计算路径边界�?*/
   static calculateRect(paths:InkPath[]):[number,number,number,number]{
     let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity
     paths.forEach(p=>p.points.forEach(pt=>{minX=Math.min(minX,pt.x);minY=Math.min(minY,pt.y);maxX=Math.max(maxX,pt.x);maxY=Math.max(maxY,pt.y)}))
@@ -153,7 +153,7 @@ export class InkDrawer{
   }
 }
 
-/** 墨迹管理器 - 管理单个页面的墨迹标注 */
+/** 墨迹管理�?- 管理单个页面的墨迹标�?*/
 export class InkManager{
   private annotations=new Map<string,InkAnnotation>()
   private history:string[]=[]
@@ -180,7 +180,7 @@ export class InkManager{
   fromJSON(data:InkAnnotation[]){data.forEach(a=>{if(a.page===this.page)this.annotations.set(a.id,a)})}
 }
 
-/** 墨迹控制器 - 统一管理所有页面的墨迹标注 */
+/** 墨迹控制�?- 统一管理所有页面的墨迹标注 */
 export class InkController{
   private managers=new Map<number,InkManager>()
   private drawers=new Map<number,InkDrawer>()
@@ -191,7 +191,7 @@ export class InkController{
 
   constructor(private onSave?:()=>Promise<void>){}
 
-  /** 初始化容器 */
+  /** 初始化容�?*/
   init(container:HTMLElement){this.container=container}
 
   /** 更新配置 */
@@ -210,14 +210,14 @@ export class InkController{
     return m
   }
 
-  /** 开始绘制 */
+  /** 开始绘�?*/
   async startDrawing(e:MouseEvent|TouchEvent,canvas:HTMLCanvasElement,page:number){
     this.currentPage=page
     const{x,y}=getCoord(e,canvas.getBoundingClientRect())
     this.getDrawer(page,canvas).startDrawing(x,y)
   }
 
-  /** 绘制中 */
+  /** 绘制�?*/
   draw(e:MouseEvent|TouchEvent){
     if(!this.currentPage)return
     const d=this.drawers.get(this.currentPage)
@@ -268,7 +268,7 @@ export class InkController{
     this.drawers.get(page)?.clear()
   }
 
-  /** 导出所有标注 */
+  /** 导出所有标�?*/
   toJSON():InkAnnotation[]{const all:InkAnnotation[]=[];this.managers.forEach(m=>all.push(...m.toJSON()));return all}
   /** 导入标注 */
   fromJSON(data:InkAnnotation[]){data.forEach(ink=>this.getManager(ink.page).fromJSON([ink]))}
@@ -297,11 +297,11 @@ export class InkController{
   /** 解绑事件 */
   private unbindEvents(){this.listeners.forEach(({el,type,handler})=>el.removeEventListener(type,handler));this.listeners=[]}
 
-  /** 销毁 */
+  /** 销�?*/
   destroy(){this.unbindEvents();this.managers.clear();this.drawers.clear()}
 }
 
-/** 墨迹工具管理器 - 对外统一接口 */
+/** 墨迹工具管理�?- 对外统一接口 */
 export class InkToolManager{
   private controller?:InkController
   private plugin:any
@@ -316,13 +316,59 @@ export class InkToolManager{
   }
 
   private async loadData(){
-    const data=await loadBookData(this.bookUrl,this.bookName)
-    return data?.inkAnnotations||[]
+    try{
+      // 尝试从数据库加载
+      const{getDatabase}=await import('../database')
+      const db=await getDatabase()
+      await db.init()
+      
+      const annotations=await db.getAnnotations(this.bookUrl)
+      const inks=annotations
+        .filter(a=>a.type==='ink')
+        .map(a=>({
+          id:a.id,
+          type:'ink'as const,
+          page:a.page||0,
+          paths:a.paths||[],
+          timestamp:a.timestamp,
+          rect:a.rects?.[0] as [number,number,number,number]|undefined
+        }))
+      
+      return inks
+    }catch(e){
+      console.warn('[Ink] Load from DB failed, fallback to JSON:',e)
+      // 降级：从 JSON 加载
+      const data=await loadBookData(this.bookUrl,this.bookName)
+      return data?.inkAnnotations||[]
+    }
   }
 
   private async saveData(inkAnnotations:any[]){
     if(!this.initialized)return
-    await saveBookData(this.bookUrl,{inkAnnotations})
+    try{
+      // 尝试保存到数据库
+      const{getDatabase}=await import('../database')
+      const db=await getDatabase()
+      
+      for(const ink of inkAnnotations){
+        await db.addAnnotation({
+          id:ink.id,
+          type:'ink',
+          book:this.bookUrl,
+          format:'pdf',
+          page:ink.page,
+          paths:ink.paths,
+          rects:ink.rect?[ink.rect]:undefined,
+          color:ink.paths?.[0]?.color||'#000000',
+          timestamp:ink.timestamp
+        })
+      }
+      
+    }catch(e){
+      console.warn('[Ink] Save to DB failed, fallback to JSON:',e)
+      // 降级：保存到 JSON
+      await saveBookData(this.bookUrl,{inkAnnotations})
+    }
   }
 
   /** 初始化控制器 */
@@ -348,7 +394,7 @@ export class InkToolManager{
   async setConfig(config:any){(await this.init()).setConfig(config)}
   /** 保存 */
   async save(){if(this.controller)await this.saveData(this.controller.toJSON())}
-  /** 获取所有标注 */
+  /** 获取所有标�?*/
   toJSON(){return this.controller?.toJSON()||[]}
   /** 删除墨迹标注 */
   async deleteInk(id:string):Promise<boolean>{
@@ -371,7 +417,7 @@ export class InkToolManager{
     if(success)await this.saveData(this.controller.toJSON())
     return success
   }
-  /** 清空当前页 */
+  /** 清空当前�?*/
   async clear(){
     if(!this.controller)return
     const page=this.viewer?.getCurrentPage()
@@ -379,10 +425,11 @@ export class InkToolManager{
     this.controller.clear(page)
     await this.saveData(this.controller.toJSON())
   }
-  /** 销毁 */
+  /** 销�?*/
   destroy(){this.controller?.destroy()}
 }
 
-/** 创建墨迹工具管理器 */
+/** 创建墨迹工具管理�?*/
 export const createInkToolManager=(container:HTMLElement,plugin:any,bookUrl:string,bookName:string,viewer:any):InkToolManager=>new InkToolManager(container,plugin,bookUrl,bookName,viewer)
+
 

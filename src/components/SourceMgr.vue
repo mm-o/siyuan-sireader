@@ -85,7 +85,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { bookSourceManager } from '@/core/book'
-import { annaArchive } from '@/core/anna'
+import { annaArchive } from '@/core/utils/anna'
 import { showMessage } from 'siyuan'
 
 const props = defineProps<{ i18n?: any }>()

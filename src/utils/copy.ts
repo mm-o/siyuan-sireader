@@ -16,7 +16,7 @@ export const copyMark=async(item:any,ctx:{bookUrl:string;bookInfo?:any;settings?
   if(!bookUrl||bookUrl.startsWith('file://'))return copy(item.text||item.note||'','本地文件仅复制文本')
   const page=item.page||(isPdf?pdfViewer?.getCurrentPage():null),cfi=item.cfi||(isPdf&&page?`#page-${page}`:item.section!==undefined?`#txt-${item.section}-${item.textOffset||0}`:'')
   if(!cfi)return copy(item.text||item.note||'','仅复制文本')
-  const{formatBookLink}=await import('@/composables/useSetting'),{formatAuthor}=await import('@/core/MarkManager'),book=reader?.getBook?.()
+  const{formatBookLink}=await import('@/composables/useSetting'),{formatAuthor}=await import('@/core/annotation'),book=reader?.getBook?.()
   let img=''
   if(item.shapeType&&isPdf&&pdfViewer){
     const hdKey=`${item.id}_${item.shapeType}_hd`
@@ -38,7 +38,7 @@ const updateMarkBlockId=async(item:any,blockId:string,ctx:any)=>{
 // 导入标注
 export const importMark=async(item:any,ctx:any)=>{
   try{
-    const book=await(await import('@/core/bookshelf')).bookshelfManager.getBook(ctx.bookUrl)
+    const book=await(await import('@/core/_deprecated/bookshelf')).bookshelfManager.getBook(ctx.bookUrl)
     if(!book?.bindDocId)return ctx.showMsg?.(ctx.i18n?.noBindDoc||'未绑定文档','error')
     const md=await genMarkdown(item,ctx)
     if(!md)return ctx.showMsg?.('生成失败','error')
@@ -51,7 +51,7 @@ export const importMark=async(item:any,ctx:any)=>{
 // 更新文档块
 export const updateMarkInDoc=async(item:any,ctx:any)=>{
   try{
-    const book=await(await import('@/core/bookshelf')).bookshelfManager.getBook(ctx.bookUrl)
+    const book=await(await import('@/core/_deprecated/bookshelf')).bookshelfManager.getBook(ctx.bookUrl)
     if(!book?.bindDocId)return
     const md=await genMarkdown(item,ctx)
     if(!md)return
@@ -69,7 +69,7 @@ export const isMarkImported=async(item:any,docId:string):Promise<boolean>=>{
 // 自动同步
 export const autoSyncMark=async(item:any,ctx:any)=>{
   try{
-    const book=await(await import('@/core/bookshelf')).bookshelfManager.getBook(ctx.bookUrl)
+    const book=await(await import('@/core/_deprecated/bookshelf')).bookshelfManager.getBook(ctx.bookUrl)
     if(book?.bindDocId&&book?.autoSync&&!await isMarkImported(item,book.bindDocId))await importMark(item,{...ctx,showMsg:()=>{}})
   }catch{}
 }
@@ -79,7 +79,7 @@ export const saveMarkEdit=async(mark:any,updates:any,ctx:any)=>{
   if(!ctx.marks)throw new Error('标记系统未初始化')
   if(mark.type==='shape-group'||mark.type==='ink-group')throw new Error('请编辑具体的标注项')
   await ctx.marks.updateMark(mark,updates)
-  try{if((await(await import('@/core/bookshelf')).bookshelfManager.getBook(ctx.bookUrl))?.bindDocId)await updateMarkInDoc({...mark,...updates},ctx)}catch{}
+  try{if((await(await import('@/core/_deprecated/bookshelf')).bookshelfManager.getBook(ctx.bookUrl))?.bindDocId)await updateMarkInDoc({...mark,...updates},ctx)}catch{}
 }
 
 // ===== 块操作 =====

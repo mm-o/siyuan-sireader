@@ -51,12 +51,13 @@ import { showMessage } from 'siyuan'
 import type { Plugin } from 'siyuan'
 import type { ReaderSettings } from '@/composables/useSetting'
 import { PRESET_THEMES } from '@/composables/useSetting'
-import { openDict as openDictDialog } from '@/core/dictionary'
-import { createReader, type FoliateReader, setActiveReader, clearActiveReader } from '@/core/foliate'
-import { createMarkManager, type MarkManager, getColorMap } from '@/core/MarkManager'
+import { openDict as openDictDialog } from '@/core/dict'
+import { createReader, type FoliateReader, setActiveReader, clearActiveReader } from '@/core/epub'
+import { AnnotationManager, getColorMap, COLORS, STYLES } from '@/core/annotation'
+import type { Annotation } from '@/core/database'
 import { createInkToolManager, type InkToolManager } from '@/core/pdf/ink'
 import { createShapeToolManager, type ShapeToolManager } from '@/core/pdf/shape'
-import { saveMobilePosition, getMobilePosition, isMobile } from '@/core/mobile'
+import { saveMobilePosition, getMobilePosition, isMobile } from '@/core/utils/mobile'
 import PdfToolbar from './PdfToolbar.vue'
 import MarkPanel from './MarkPanel.vue'
 import ReaderToc from './ReaderToc.vue'
@@ -71,7 +72,7 @@ const pdfToolbarFixed = computed(() => currentSettings.value?.pdfToolbarStyle ==
 
 // 标注面板引用
 const markPanelRef = ref()
-const markManager = ref<MarkManager | null>(null)
+const markManager = ref<AnnotationManager | null>(null)
 const colors = getColorMap()
 
 // 监听设置更新
@@ -155,7 +156,8 @@ const init=async()=>{
   try{
     loading.value=true
     error.value=''
-    const bookUrl=props.bookInfo?.bookUrl||props.url||(props.file?`file://${props.file.name}`:`book-${Date.now()}`)
+    if (!props.bookInfo?.path && !props.file && !props.url) throw new Error('缺少文件路径或文件对象');
+    const bookUrl=props.bookInfo?.url||props.url||(props.file?`file://${props.file.name}`:`book-${Date.now()}`)
     ;(window as any).__currentBookUrl=bookUrl
     const format=props.bookInfo?.format||(props.bookInfo?.isEpub?'epub':props.file?.name.endsWith('.txt')?'txt':props.file?.name.endsWith('.pdf')?'pdf':'online')
     const isTxt=format==='txt'||format==='online',isPdf=format==='pdf'
@@ -165,10 +167,8 @@ const init=async()=>{
     // 统一文件加载
     const loadFile=async()=>{
       if(props.file)return props.file
-      const path=props.bookInfo?.filePath
+      const path=props.bookInfo?.path
       if(!path)return null
-      
-      // assets 文件 HTTP 访问，books 文件 API 访问
       const url=path.startsWith('assets/')?`/${path}`:'/api/file/getFile'
       const opts=path.startsWith('assets/')?{}:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path})}
       const res=await fetch(url,opts)
@@ -193,7 +193,7 @@ const init=async()=>{
       
       const view=await viewer.createView()
       
-      markManager.value=createMarkManager({format:'pdf',plugin:props.plugin,bookUrl,bookName:props.bookInfo?.name||props.file?.name||'book',onAnnotationClick:showAnn,pdfViewer:viewer})
+      markManager.value=new AnnotationManager({format:'pdf',book:bookUrl,onAnnotationClick:showAnn,pdfViewer:viewer})
       await markManager.value.init()
       await markManager.value.restoreProgress(props.bookInfo)
       
@@ -256,7 +256,7 @@ const init=async()=>{
         window.removeEventListener('pdf:layer-ready',handleLayerReady as any)
       }
     }else if(isTxt){
-      const{createFoliateView,loadTxtBook}=await import('@/core/foliate/reader')
+      const{createFoliateView,loadTxtBook}=await import('@/core/epub/reader')
       const view=createFoliateView(viewerContainerRef.value!)
       currentView.value=view
       
@@ -268,7 +268,7 @@ const init=async()=>{
         await loadTxtBook(view,await file.arrayBuffer(),[],null,props.settings)
       }
       
-      markManager.value=createMarkManager({format:'txt',view,plugin:props.plugin,bookUrl,bookName:props.bookInfo?.name||props.file?.name||'book',reader:null})
+      markManager.value=new AnnotationManager({format:'txt',view,book:bookUrl,reader:null})
       await markManager.value.init()
       ;(view as any).marks=markManager.value
       await markManager.value.restoreProgress(props.bookInfo)
@@ -288,7 +288,7 @@ const init=async()=>{
         await reader.open(file)
       }
       
-      markManager.value=createMarkManager({format:'epub',view:reader.getView(),plugin:props.plugin,bookUrl,bookName:props.bookInfo?.name||props.file?.name||'book',reader})
+      markManager.value=new AnnotationManager({format:'epub',view:reader.getView(),book:bookUrl,reader})
       await markManager.value.init()
       ;(reader.getView() as any).marks=markManager.value
       await markManager.value.restoreProgress(props.bookInfo)
@@ -337,12 +337,12 @@ const checkSelection=(txtDoc?:Document,e?:MouseEvent)=>{
 // 复制文本处理
 const handleCopyText=async(text:string)=>{
   const copy=(t:string,msg='已复制')=>navigator.clipboard.writeText(t).then(()=>showMessage(msg,1000))
-  const bookUrl=(window as any).__currentBookUrl||props.bookInfo?.bookUrl||props.url||''
+  const bookUrl=(window as any).__currentBookUrl||props.bookInfo?.url||props.bookInfo?.bookUrl||props.url||''
   if(!bookUrl||bookUrl.startsWith('file://'))return copy(text,'本地文件无法生成跳转链接，仅复制文本')
   if(!currentSelection)return copy(text)
   
   const{formatBookLink}=await import('@/composables/useSetting')
-  const{formatAuthor,getChapterName}=await import('@/core/MarkManager')
+  const{formatAuthor,getChapterName}=await import('@/core/annotation')
   const isPdf=isPdfMode.value
   const book=isPdf?null:reader?.getBook()
   const loc=isPdf?null:reader?.getLocation()
@@ -433,8 +433,7 @@ const toggleBookmark=()=>{try{hasBookmark.value=marks.value?.toggleBookmark?.()}
 
 // 位置管理
 const getBookUrl=()=>(window as any).__currentBookUrl||props.bookInfo?.bookUrl||props.url||''
-const getCurrentPosition=()=>isPdfMode.value?{page:pdfViewer.value?.getCurrentPage()}:{cfi:reader?.getLocation()?.cfi}
-const savePosition=()=>{if(!isMobile())return;const url=getBookUrl();if(url)saveMobilePosition(url,getCurrentPosition())}
+const savePosition=()=>{try{const url=getBookUrl();if(url&&isMobile())saveMobilePosition(url,isPdfMode.value?{page:pdfViewer.value?.getCurrentPage()}:{cfi:reader?.getLocation()?.cfi})}catch{}}
 
 // 打开目录
 const openToc = () => { showToc.value = !showToc.value }
@@ -487,9 +486,14 @@ const handleShapeCreated=(e:CustomEvent)=>{
   }
 }
 
-onMounted(()=>{init();containerRef.value?.focus();events.forEach(([e,h])=>window.addEventListener(e,h as any));window.addEventListener('unhandledrejection',suppressError);window.addEventListener('shape-created',handleShapeCreated as any);setupTabObserver();if(isMobile()&&containerRef.value){containerRef.value.addEventListener('touchstart',handleTouchStart);containerRef.value.addEventListener('touchend',handleTouchEnd)}})
+onMounted(()=>{init();containerRef.value?.focus();events.forEach(([e,h])=>window.addEventListener(e,h as any));window.addEventListener('unhandledrejection',suppressError);window.addEventListener('shape-created',handleShapeCreated as any);setupTabObserver();if(isMobile()&&containerRef.value){containerRef.value.addEventListener('touchstart',handleTouchStart);containerRef.value.addEventListener('touchend',handleTouchEnd)};startReadTimer()})
 
-onUnmounted(async()=>{savePosition();clearActiveReader();await markManager.value?.destroy();try{reader?.destroy();currentView.value?.cleanup?.();currentView.value?.viewer?.destroy?.()}catch{};inkToolManager?.destroy?.();shapeToolManager?.destroy?.();setTimeout(()=>viewerContainerRef.value&&(viewerContainerRef.value.innerHTML=''),50);events.forEach(([e,h])=>window.removeEventListener(e,h as any));window.removeEventListener('unhandledrejection',suppressError);window.removeEventListener('shape-created',handleShapeCreated as any);containerRef.value&&(containerRef.value as any).__observer?.disconnect();if(isMobile()&&containerRef.value){containerRef.value.removeEventListener('touchstart',handleTouchStart);containerRef.value.removeEventListener('touchend',handleTouchEnd)}})
+onUnmounted(async()=>{try{await markManager.value?.updateProgress?.()}catch{};savePosition();clearActiveReader();await markManager.value?.destroy();try{reader?.destroy();currentView.value?.cleanup?.();currentView.value?.viewer?.destroy?.()}catch{};inkToolManager?.destroy?.();shapeToolManager?.destroy?.();setTimeout(()=>viewerContainerRef.value&&(viewerContainerRef.value.innerHTML=''),50);events.forEach(([e,h])=>window.removeEventListener(e,h as any));window.removeEventListener('unhandledrejection',suppressError);window.removeEventListener('shape-created',handleShapeCreated as any);containerRef.value&&(containerRef.value as any).__observer?.disconnect();if(isMobile()&&containerRef.value){containerRef.value.removeEventListener('touchstart',handleTouchStart);containerRef.value.removeEventListener('touchend',handleTouchEnd)};stopReadTimer()})
+
+// 阅读时长计时
+let readTimer:any=null
+const startReadTimer=()=>{stopReadTimer();readTimer=setInterval(async()=>{if(document.hidden)return;const url=getBookUrl();if(url&&!url.startsWith('file://')){const{bookshelfManager}=await import('@/core/bookshelf');await bookshelfManager.updateReadTime(url,60)}},60000)}
+const stopReadTimer=()=>{if(readTimer){clearInterval(readTimer);readTimer=null}}
 </script>
 
 <style scoped lang="scss">

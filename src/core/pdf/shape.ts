@@ -1,8 +1,8 @@
 /**
  * PDF 形状标注模块
- * 支持矩形、圆形、三角形等形状标注，可添加文字笔记
+ * 支持矩形、圆形、三角形等形状标注，可添加文字笔�?
  */
-import{loadBookData,saveBookData}from'../bookshelf'
+import{loadBookData,saveBookData}from'../_deprecated/bookshelf'
 
 // 类型定义
 export type ShapeType='rect'|'circle'|'triangle'
@@ -13,7 +13,7 @@ const getCoord=(e:MouseEvent|TouchEvent,r:DOMRect)=>({x:(e instanceof MouseEvent
 
 // ===== 渲染工具函数 =====
 
-/** 绘制形状标注到 Canvas（用于预览/缩略图） */
+/** 绘制形状标注�?Canvas（用于预�?缩略图） */
 export const drawShape=(
   canvas:HTMLCanvasElement,
   shape:ShapeAnnotation,
@@ -81,7 +81,7 @@ export const renderShapeCanvas=(
   })
 }
 
-/** 形状绘制器 */
+/** 形状绘制�?*/
 export class ShapeDrawer{
   private ctx:CanvasRenderingContext2D
   private config:ShapeConfig
@@ -119,7 +119,7 @@ export class ShapeDrawer{
         break
     }
     
-    // 填充或描边
+    // 填充或描�?
     if(shape.filled){
       this.ctx.fillStyle=shape.color
       this.ctx.fill()
@@ -130,7 +130,7 @@ export class ShapeDrawer{
     }
     this.ctx.setLineDash([])
     
-    // 添加点击区域（不可见）
+    // 添加点击区域（不可见�?
     if(!preview&&!shape.filled){
       this.ctx.fillStyle='rgba(0,0,0,0.01)'
       this.ctx.fill()
@@ -140,7 +140,7 @@ export class ShapeDrawer{
   clear(){this.ctx.clearRect(0,0,this.canvas.width,this.canvas.height)}
 }
 
-/** 形状管理器 */
+/** 形状管理�?*/
 export class ShapeManager{
   private shapes=new Map<string,ShapeAnnotation>()
   private history:string[]=[]
@@ -157,7 +157,7 @@ export class ShapeManager{
   fromJSON(data:ShapeAnnotation[]){data.forEach(s=>{if(s.page===this.page)this.shapes.set(s.id,s)})}
 }
 
-/** 形状控制器 */
+/** 形状控制�?*/
 export class ShapeController{
   private managers=new Map<number,ShapeManager>()
   private drawers=new Map<number,ShapeDrawer>()
@@ -175,7 +175,7 @@ export class ShapeController{
 
   private getDrawer(page:number,canvas:HTMLCanvasElement):ShapeDrawer{
     let d=this.drawers.get(page)
-    // 检查canvas是否改变（缩放后会重新创建canvas）
+    // 检查canvas是否改变（缩放后会重新创建canvas�?
     if(!d||d.canvas!==canvas){
       d=new ShapeDrawer(canvas,this.config)
       this.drawers.set(page,d)
@@ -189,14 +189,14 @@ export class ShapeController{
     return m
   }
 
-  /** 开始绘制 */
+  /** 开始绘�?*/
   startDrawing(e:MouseEvent|TouchEvent,canvas:HTMLCanvasElement,page:number){
     this.currentPage=page
     const{x,y}=getCoord(e,canvas.getBoundingClientRect())
     this.startPos={x,y}
   }
 
-  /** 转换PDF坐标到屏幕坐标 */
+  /** 转换PDF坐标到屏幕坐�?*/
   private toScreenRect(rect:[number,number,number,number],viewport:any):[number,number,number,number]{
     const[x1,y1,x2,y2]=rect
     const b1=viewport.convertToViewportRectangle([x1,y1,x1,y1])
@@ -204,7 +204,7 @@ export class ShapeController{
     return[b1[0],b1[1],b2[0],b2[1]]
   }
 
-  /** 绘制中（预览） */
+  /** 绘制中（预览�?*/
   draw(e:MouseEvent|TouchEvent){
     if(!this.currentPage||!this.startPos)return
     const cv=document.querySelector(`.pdf-shape-layer[data-page="${this.currentPage}"]`)as HTMLCanvasElement
@@ -241,8 +241,8 @@ export class ShapeController{
     }
     
     // 获取章节
-    const{getChapterName}=await import('@/core/MarkManager'),view=pdfViewer?.getPDF?.()
-    const chapter=getChapterName({page:this.currentPage,isPdf:true,toc:view?.flatToc||view?.toc})||`第${this.currentPage}页`
+    const{getChapterName}=await import('@/core/annotation'),view=pdfViewer?.getPDF?.()
+    const chapter=getChapterName({page:this.currentPage,isPdf:true,toc:view?.flatToc||view?.toc})||`�?{this.currentPage}页`
     
     const shape:ShapeAnnotation={...this.previewShape,id:`shape_${Date.now()}_${Math.random().toString(36).slice(2,9)}`,rect,filled:this.config.filled,chapter}
     this.getManager(this.currentPage).add(shape)
@@ -358,7 +358,7 @@ export class ShapeController{
   
 
   
-  /** 判断点是否在形状内 */
+  /** 判断点是否在形状�?*/
   private isPointInShape(x:number,y:number,shape:ShapeAnnotation):boolean{
     const[x1,y1,x2,y2]=shape.rect,minX=Math.min(x1,x2),maxX=Math.max(x1,x2),minY=Math.min(y1,y2),maxY=Math.max(y1,y2)
     if(x<minX||x>maxX||y<minY||y>maxY)return false
@@ -393,7 +393,7 @@ export class ShapeController{
       }
     }
     container.addEventListener('click',this.containerClickHandler)
-    // 非绘制模式下，canvas不拦截事件
+    // 非绘制模式下，canvas不拦截事�?
     document.querySelectorAll('.pdf-shape-layer').forEach(el=>(el as HTMLCanvasElement).style.pointerEvents='none')
   }
   
@@ -406,7 +406,7 @@ export class ShapeController{
   destroy(){this.unbindEvents();this.unbindContainerClick();this.managers.clear();this.drawers.clear()}
 }
 
-/** 形状工具管理器 */
+/** 形状工具管理�?*/
 export class ShapeToolManager{
   private controller?:ShapeController
   private bookUrl:string
@@ -426,13 +426,70 @@ export class ShapeToolManager{
   }
 
   private async loadData(){
-    const data=await loadBookData(this.bookUrl,this.bookName)
-    return data?.shapeAnnotations||[]
+    try{
+      // 尝试从数据库加载
+      const{getDatabase}=await import('../database')
+      const db=await getDatabase()
+      await db.init()
+      
+      const annotations=await db.getAnnotations(this.bookUrl)
+      const shapes=annotations
+        .filter(a=>a.type==='shape')
+        .map(a=>({
+          id:a.id,
+          type:'shape'as const,
+          shapeType:a.shapeType||'rect',
+          page:a.page||0,
+          rect:a.rects?.[0]||[0,0,0,0]as[number,number,number,number],
+          color:a.color,
+          width:2,
+          opacity:0.8,
+          filled:a.filled,
+          note:a.note,
+          timestamp:a.timestamp,
+          chapter:a.chapter,
+          blockId:a.blockId
+        }))
+      
+      return shapes
+    }catch(e){
+      console.warn('[Shape] Load from DB failed, fallback to JSON:',e)
+      // 降级：从 JSON 加载
+      const data=await loadBookData(this.bookUrl,this.bookName)
+      return data?.shapeAnnotations||[]
+    }
   }
 
   private async saveData(shapeAnnotations:any[]){
     if(!this.initialized)return
-    await saveBookData(this.bookUrl,{shapeAnnotations})
+    try{
+      // 尝试保存到数据库
+      const{getDatabase}=await import('../database')
+      const db=await getDatabase()
+      
+      for(const shape of shapeAnnotations){
+        await db.addAnnotation({
+          id:shape.id,
+          type:'shape',
+          book:this.bookUrl,
+          format:'pdf',
+          page:shape.page,
+          rects:[shape.rect],
+          note:shape.note||shape.text,
+          chapter:shape.chapter,
+          color:shape.color,
+          shapeType:shape.shapeType||shape.type,
+          filled:shape.filled,
+          timestamp:shape.timestamp,
+          blockId:shape.blockId
+        })
+      }
+      
+    }catch(e){
+      console.warn('[Shape] Save to DB failed, fallback to JSON:',e)
+      // 降级：保存到 JSON
+      await saveBookData(this.bookUrl,{shapeAnnotations})
+    }
   }
 
   async init(){
@@ -494,3 +551,4 @@ export class ShapeToolManager{
 }
 
 export const createShapeToolManager=(container:HTMLElement,plugin:any,bookUrl:string,bookName:string,onShapeClick?:(shape:ShapeAnnotation)=>void,pdfViewer?:any):ShapeToolManager=>new ShapeToolManager(container,plugin,bookUrl,bookName,onShapeClick,pdfViewer)
+

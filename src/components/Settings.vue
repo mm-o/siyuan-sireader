@@ -8,9 +8,9 @@ import BookSearch from './BookSearch.vue'
 import Bookshelf from './Bookshelf.vue'
 import ReaderToc from './ReaderToc.vue'
 import { bookshelfManager } from '@/core/bookshelf'
-import { offlineDictManager, onlineDictManager } from '@/core/dictionary'
+import { offlineDictManager, onlineDictManager } from '@/core/dict'
 import { usePlugin } from '@/main'
-import { useReaderState } from '@/core/foliate'
+import { useReaderState } from '@/core/epub'
 
 const props = defineProps<{ modelValue: ReaderSettings; i18n: any; onSave: () => Promise<void> }>()
 const emit = defineEmits<{ 'update:modelValue': [value: ReaderSettings] }>()
@@ -26,6 +26,9 @@ const { canShowToc } = useReaderState()
 const { customFonts, isLoadingFonts, loadCustomFonts, resetStyles: resetStylesRaw } = useSetting(plugin)
 const { interfaceItems, customThemeItems, appearanceGroups } = UI_CONFIG
 const { confirming: resetConfirm, handleClick: handleReset } = useConfirm(() => { resetStylesRaw(); save() })
+
+// 同步 props 变化
+watch(() => props.modelValue, v => settings.value = v, { immediate: true });
 
 // 词典状态
 const offlineDicts = ref<any[]>([])
@@ -110,23 +113,23 @@ const previewStyle = computed(() => {
   return { color: theme.color, backgroundColor: theme.bgImg ? 'transparent' : theme.bg, backgroundImage: theme.bgImg ? `url("${theme.bgImg}")` : 'none', backgroundSize: 'cover', backgroundPosition: 'center', fontFamily, fontSize: `${t.fontSize}px`, letterSpacing: `${t.letterSpacing}em`, lineHeight: p.lineHeight, filter: filters || 'none', '--paragraph-spacing': p.paragraphSpacing, '--text-indent': p.textIndent, '--margin-h': `${l.marginHorizontal}px`, '--margin-v': `${l.marginVertical}px`, '--gap': `${l.gap}%`, '--header-footer': `${l.headerFooterMargin}px`, '--max-block': l.maxBlockSize > 0 ? `${l.maxBlockSize}px` : 'none', '--column-count': viewMode === 'double' ? 2 : 1 }
 })
 
-// 保存和工具函数
-const save = async () => (emit('update:modelValue', settings.value), await props.onSave())
-const debouncedSave = (() => { let t: any; return () => (clearTimeout(t), t = setTimeout(save, 300)) })()
-const setFont = (f?: FontFileInfo) => (settings.value.textSettings.fontFamily = f ? 'custom' : 'inherit', settings.value.textSettings.customFont = f ? { fontFamily: f.displayName, fontFile: f.name } : { fontFamily: '', fontFile: '' }, f ? debouncedSave() : save())
-const handleReadOnline = async (book: any) => { const { openOrActivateBook } = await import('@/utils/bookOpen'); openOrActivateBook(plugin, book, settings.value) }
-const togglePreview = () => (previewExpanded.value = !previewExpanded.value, localStorage.setItem('sr-preview-expanded', previewExpanded.value ? '1' : '0'))
+// 保存
+const save = async () => (emit('update:modelValue', settings.value), await props.onSave());
+const debouncedSave = (() => { let t: any; return () => (clearTimeout(t), t = setTimeout(save, 300)); })();
+const setFont = (f?: FontFileInfo) => (settings.value.textSettings.fontFamily = f ? 'custom' : 'inherit', settings.value.textSettings.customFont = f ? { fontFamily: f.displayName, fontFile: f.name } : { fontFamily: '', fontFile: '' }, f ? debouncedSave() : save());
+const handleReadOnline = async (book: any) => { const { openOrActivateBook } = await import('@/utils/bookOpen'); openOrActivateBook(plugin, book, settings.value); };
+const togglePreview = () => (previewExpanded.value = !previewExpanded.value, localStorage.setItem('sr-preview-expanded', previewExpanded.value ? '1' : '0'));
 
 // 生命周期
 onMounted(() => {
   bookshelfManager.init()
   loadingDict.value = true
-  Promise.all([offlineDictManager.init(plugin), onlineDictManager.init(plugin)]).then(() => {
+  // 只初始化离线词典管理器，在线词典不需要初始化
+  offlineDictManager.init(plugin).then(() => {
     offlineDicts.value = offlineDictManager.getDicts()
     onlineDicts.value = onlineDictManager.getDicts()
   }).finally(() => loadingDict.value = false)
 })
-watch(() => props.modelValue, (val) => settings.value = val, { deep: true })
 watch(canShowToc, (show) => !show && ['toc', 'bookmark', 'mark', 'note'].includes(activeTab.value) && (activeTab.value = 'bookshelf'))
 </script>
 

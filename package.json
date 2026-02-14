@@ -14,13 +14,18 @@
     "release:patch": "node ./release.js --mode=patch",
     "release:minor": "node ./release.js --mode=minor",
     "release:major": "node ./release.js --mode=major",
-    "build": "vite build"
+    "build": "vite build",
+    "test": "vitest",
+    "test:ui": "vitest --ui",
+    "test:run": "vitest run",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@vueuse/motion": "^3.0.3",
     "fflate": "^0.8.2",
     "foliate-js": "^1.0.1",
     "fzstd": "^0.1.1",
+    "idb": "^8.0.2",
     "jszip": "^3.10.1",
     "sql.js": "^1.13.0",
     "ts-fsrs": "^5.2.3",
@@ -31,11 +36,15 @@
     "@types/node": "^20.2.0",
     "@types/sql.js": "^1.4.9",
     "@vitejs/plugin-vue": "^5.2.1",
+    "@vitest/coverage-v8": "^2.1.8",
+    "@vitest/ui": "^2.1.8",
     "@vue/tsconfig": "^0.7.0",
     "eslint": "^9.22.0",
     "eslint-plugin-format": "^1.0.1",
     "eslint-plugin-perfectionist": "^4.2.0",
+    "fake-indexeddb": "^6.0.0",
     "fast-glob": "^3.2.12",
+    "jsdom": "^25.0.1",
     "minimist": "^1.2.8",
     "rollup-plugin-livereload": "^2.0.5",
     "sass": "^1.62.1",
@@ -43,6 +52,7 @@
     "typescript": "^5.0.4",
     "vite": "^6.2.1",
     "vite-plugin-static-copy": "^3.1.4",
-    "vite-plugin-zip-pack": "^1.0.5"
+    "vite-plugin-zip-pack": "^1.0.5",
+    "vitest": "^2.1.8"
   }
 }

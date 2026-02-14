@@ -8,7 +8,7 @@ import type { FoliateView, Location } from './types'
 import type { ReaderSettings } from '@/composables/useSetting'
 import { PRESET_THEMES } from '@/composables/useSetting'
 import { bookSourceManager } from '@/core/book'
-import { createTooltip, showTooltip, hideTooltip } from '@/core/MarkManager'
+import { createTooltip, showTooltip, hideTooltip } from '@/core/annotation'
 import { EPUBSearch } from './search'
 import 'foliate-js/view.js'
 

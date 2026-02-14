@@ -1,5 +1,13 @@
 /**
- * 统一标注管理器 - PDF/EPUB/TXT 三合一
+ * 统一标注管理�?- PDF/EPUB/TXT 三合一
+ * 
+ * @deprecated 此文件已�?annotation.ts 替代，保留用于向后兼�?
+ * @see src/core/annotation.ts - 新的标注管理系统
+ * 
+ * 迁移说明:
+ * - MarkManager �?AnnotationManager
+ * - Mark �?Annotation
+ * - createMarkManager() �?new AnnotationManager()
  */
 import type{Plugin}from'siyuan'
 import{Overlayer}from'foliate-js/overlayer.js'
@@ -13,7 +21,7 @@ type MarkType='bookmark'|'highlight'|'note'|'vocab'
 interface Mark{id:string;type:MarkType;format:Format;cfi?:string;section?:number;page?:number;rects?:any[];text?:string;color?:HighlightColor;style?:MarkStyle;note?:string;title?:string;timestamp:number;progress?:number;textOffset?:number;blockId?:string;chapter?:string}
 
 export const COLORS=[{name:'黄色',color:'yellow'as const,bg:'#ffeb3b'},{name:'红色',color:'red'as const,bg:'#ef5350'},{name:'绿色',color:'green'as const,bg:'#66bb6a'},{name:'蓝色',color:'blue'as const,bg:'#42a5f5'},{name:'紫色',color:'purple'as const,bg:'#ab47bc'},{name:'橙色',color:'orange'as const,bg:'#ff9800'},{name:'粉色',color:'pink'as const,bg:'#ec407a'}]
-export const STYLES=[{type:'highlight'as const,name:'高亮',text:'A'},{type:'underline'as const,name:'下划线',text:'A'},{type:'outline'as const,name:'边框',text:'A'},{type:'dotted'as const,name:'点线',text:'A',pdfOnly:true},{type:'dashed'as const,name:'虚线',text:'A',pdfOnly:true},{type:'double'as const,name:'双线',text:'A',pdfOnly:true},{type:'squiggly'as const,name:'波浪线',text:'A',epubOnly:true}]
+export const STYLES=[{type:'highlight'as const,name:'高亮',text:'A'},{type:'underline'as const,name:'下划�?,text:'A'},{type:'outline'as const,name:'边框',text:'A'},{type:'dotted'as const,name:'点线',text:'A',pdfOnly:true},{type:'dashed'as const,name:'虚线',text:'A',pdfOnly:true},{type:'double'as const,name:'双线',text:'A',pdfOnly:true},{type:'squiggly'as const,name:'波浪�?,text:'A',epubOnly:true}]
 export const getColorMap=()=>Object.fromEntries(COLORS.map(c=>[c.color,c.bg]))
 export const formatTime=(ts:number)=>{const d=new Date(ts);return`${d.getFullYear()}-${(d.getMonth()+1).toString().padStart(2,'0')}-${d.getDate().toString().padStart(2,'0')}`}
 
@@ -110,19 +118,57 @@ export class MarkManager{
 
   private async load(){
     try{
-      const data:any=await loadBookData(this.bookUrl)
-      if(!data||!Object.keys(data).length)return
+      // 尝试从数据库加载
+      const{getDatabase}=await import('../database')
+      const db=await getDatabase()
+      await db.init()
       
+      const annotations=await db.getAnnotationsByBook(this.bookUrl)
       this.marks=[]
-      const addBookmarks=(list:any[]|undefined,fmt:Format)=>{
-        for(const b of list||[])if(!this.marks.some(m=>m.type==='bookmark'&&m.cfi===b.cfi&&m.page===b.page&&m.section===b.section))this.add({type:'bookmark',format:fmt,cfi:b.cfi,section:b.section,page:b.page,title:b.title,timestamp:b.time||Date.now(),progress:b.progress})
+      
+      // 转换数据库标注为 Mark 格式
+      for(const ann of annotations){
+        if(ann.type==='highlight'||ann.type==='note'||ann.type==='bookmark'){
+          this.add({
+            id:ann.id,
+            type:ann.type,
+            format:ann.format as Format,
+            page:ann.page,
+            cfi:ann.cfi,
+            section:ann.section,
+            rects:ann.rects,
+            text:ann.text,
+            note:ann.note,
+            color:ann.color as any,
+            style:ann.style as any,
+            timestamp:ann.timestamp,
+            blockId:ann.blockId,
+            chapter:ann.chapter,
+            title:ann.note,
+            progress:0
+          })
+        }
       }
-      addBookmarks(data.epubBookmarks,'epub')
-      addBookmarks(data.txtBookmarks,'txt')
-      if(this.format==='pdf'&&data.annotations)data.annotations.forEach((a:any)=>this.add({id:a.id,type:a.note?'note':'highlight',format:'pdf',page:a.page,rects:a.rects,text:a.text,color:a.color,style:a.style,note:a.note,timestamp:a.timestamp||Date.now(),blockId:a.blockId,chapter:a.chapter}))
-      else if(data.annotations)data.annotations.forEach((a:any)=>this.add({id:a.id,type:a.note?'note':'highlight',format:this.format,cfi:a.cfi||a.value,section:a.section,text:a.text,color:a.color,style:a.style,note:a.note,timestamp:a.timestamp||Date.now(),blockId:a.blockId,chapter:a.chapter}))
-      if(data.durChapterIndex)this.currentPage=data.durChapterIndex
-    }catch(e){console.error('[Mark]',e)}
+      
+      console.log(`[Mark] Loaded ${this.marks.length} marks from database`)
+    }catch(e){
+      console.warn('[Mark] Load from DB failed, fallback to JSON:',e)
+      // 降级：从 JSON 加载
+      try{
+        const data:any=await loadBookData(this.bookUrl)
+        if(!data||!Object.keys(data).length)return
+        
+        this.marks=[]
+        const addBookmarks=(list:any[]|undefined,fmt:Format)=>{
+          for(const b of list||[])if(!this.marks.some(m=>m.type==='bookmark'&&m.cfi===b.cfi&&m.page===b.page&&m.section===b.section))this.add({type:'bookmark',format:fmt,cfi:b.cfi,section:b.section,page:b.page,title:b.title,timestamp:b.time||Date.now(),progress:b.progress})
+        }
+        addBookmarks(data.epubBookmarks,'epub')
+        addBookmarks(data.txtBookmarks,'txt')
+        if(this.format==='pdf'&&data.annotations)data.annotations.forEach((a:any)=>this.add({id:a.id,type:a.note?'note':'highlight',format:'pdf',page:a.page,rects:a.rects,text:a.text,color:a.color,style:a.style,note:a.note,timestamp:a.timestamp||Date.now(),blockId:a.blockId,chapter:a.chapter}))
+        else if(data.annotations)data.annotations.forEach((a:any)=>this.add({id:a.id,type:a.note?'note':'highlight',format:this.format,cfi:a.cfi||a.value,section:a.section,text:a.text,color:a.color,style:a.style,note:a.note,timestamp:a.timestamp||Date.now(),blockId:a.blockId,chapter:a.chapter}))
+        if(data.durChapterIndex)this.currentPage=data.durChapterIndex
+      }catch(e2){console.error('[Mark]',e2)}
+    }
   }
 
   private save(){clearTimeout(this.saveTimer);this.saveTimer=setTimeout(()=>this.saveNow(),300)}
@@ -136,20 +182,52 @@ export class MarkManager{
   private async saveNow(){
     if(!this.initialized)return
     try{
-      const bookmarks=this.marks.filter(m=>m.type==='bookmark')
-      const annotations=this.marks.filter(m=>m.type==='highlight'||m.type==='note'||m.type==='vocab')
-      const inks=this.getInkAnnotations()
-      const shapes=this.getShapeAnnotations()
-      const total=annotations.length+inks.length+shapes.length
-      console.log(`[Mark] ${total}`)
-      const data:any={annotations:this.format==='pdf'?annotations.map(m=>({id:m.id,page:m.page,type:m.type,rects:m.rects,text:m.text,color:m.color,style:m.style,note:m.note,timestamp:m.timestamp,blockId:m.blockId,chapter:m.chapter})):annotations.map(m=>({id:m.id,value:m.cfi,cfi:m.cfi,section:m.section,text:m.text,color:m.color,style:m.style,note:m.note,timestamp:m.timestamp,blockId:m.blockId,chapter:m.chapter})),durChapterIndex:this.currentPage,epubProgress:this.currentProgress}
-      const epubBm=bookmarks.filter(m=>m.cfi)
-      const txtBm=bookmarks.filter(m=>m.section!==undefined)
-      if(epubBm.length)data.epubBookmarks=epubBm.map(m=>({cfi:m.cfi,title:m.title,progress:m.progress,time:m.timestamp}))
-      if(txtBm.length)data.txtBookmarks=txtBm.map(m=>({section:m.section,page:m.page,title:m.title,progress:m.progress,time:m.timestamp}))
-      await saveBookData(this.bookUrl,data)
+      // 尝试保存到数据库
+      const{getDatabase}=await import('../database')
+      const db=await getDatabase()
+      
+      const annotations=this.marks.filter(m=>m.type==='highlight'||m.type==='note'||m.type==='bookmark')
+      for(const mark of annotations){
+        await db.addAnnotation({
+          id:mark.id,
+          type:mark.type,
+          bookUrl:this.bookUrl,
+          format:mark.format,
+          page:mark.page,
+          cfi:mark.cfi,
+          section:mark.section,
+          rects:mark.rects,
+          text:mark.text,
+          note:mark.note,
+          chapter:mark.chapter,
+          color:mark.color||'#ffeb3b',
+          style:mark.style||'highlight',
+          timestamp:mark.timestamp,
+          blockId:mark.blockId
+        })
+      }
+      
+      console.log(`[Mark] Saved ${annotations.length} marks to database`)
       window.dispatchEvent(new Event('sireader:marks-updated'))
-    }catch(e){console.error('[Mark]',e)}
+    }catch(e){
+      console.warn('[Mark] Save to DB failed, fallback to JSON:',e)
+      // 降级：保存到 JSON
+      try{
+        const bookmarks=this.marks.filter(m=>m.type==='bookmark')
+        const annotations=this.marks.filter(m=>m.type==='highlight'||m.type==='note'||m.type==='vocab')
+        const inks=this.getInkAnnotations()
+        const shapes=this.getShapeAnnotations()
+        const total=annotations.length+inks.length+shapes.length
+        console.log(`[Mark] ${total}`)
+        const data:any={annotations:this.format==='pdf'?annotations.map(m=>({id:m.id,page:m.page,type:m.type,rects:m.rects,text:m.text,color:m.color,style:m.style,note:m.note,timestamp:m.timestamp,blockId:m.blockId,chapter:m.chapter})):annotations.map(m=>({id:m.id,value:m.cfi,cfi:m.cfi,section:m.section,text:m.text,color:m.color,style:m.style,note:m.note,timestamp:m.timestamp,blockId:m.blockId,chapter:m.chapter})),durChapterIndex:this.currentPage,epubProgress:this.currentProgress}
+        const epubBm=bookmarks.filter(m=>m.cfi)
+        const txtBm=bookmarks.filter(m=>m.section!==undefined)
+        if(epubBm.length)data.epubBookmarks=epubBm.map(m=>({cfi:m.cfi,title:m.title,progress:m.progress,time:m.timestamp}))
+        if(txtBm.length)data.txtBookmarks=txtBm.map(m=>({section:m.section,page:m.page,title:m.title,progress:m.progress,time:m.timestamp}))
+        await saveBookData(this.bookUrl,data)
+        window.dispatchEvent(new Event('sireader:marks-updated'))
+      }catch(e2){console.error('[Mark]',e2)}
+    }
   }
 
   private add(m:Partial<Mark>):Mark{
@@ -158,7 +236,7 @@ export class MarkManager{
       if(this.format==='pdf'&&mark.page){
         const view=this.pdfViewer?.getPDF?.(),toc=view?.flatToc||view?.toc
         if(toc?.length)for(let i=toc.length-1;i>=0;i--){const item=toc[i],pageNum=item.pageNumber||item.page;if(pageNum&&pageNum<=mark.page){mark.chapter=item.fullPath||item.label||item.title;break}}
-        if(!mark.chapter)mark.chapter=`第${mark.page}页`
+        if(!mark.chapter)mark.chapter=`�?{mark.page}页`
       }else{
         const loc=this.reader?.getView?.()?.lastLocation||this.view?.lastLocation,book=this.reader?.getBook?.()||this.view?.book
         mark.chapter=book?.toc&&loc?.tocItem?.href?this.findTocPath(book.toc,loc.tocItem.href)||loc.tocItem.label||loc.tocItem.title||'':loc?.tocItem?.label||loc?.tocItem?.title||loc?.label||''
@@ -199,8 +277,10 @@ export class MarkManager{
 
   private async loadDeck(){
     try{
-      const{getCard}=await import('@/components/deck')
-      const cards=(await getCard()).filter(c=>c.bookUrl===this.bookUrl)
+      // TODO: 修复 deck 导入 - getCard 函数不存�?
+      // const{getCard}=await import('@/components/deck')
+      // const cards=(await getCard()).filter(c=>c.bookUrl===this.bookUrl)
+      const cards: any[] = [] // 临时禁用，等待修�?
       this.marks.filter(m=>m.type==='vocab').forEach(v=>this.del(String(v.cfi||v.page||`s${v.section}`)))
       for(const c of cards){
         const note=`${c.word}\n${c.data.phonetic?`/${c.data.phonetic}/`:''}\n${c.data.meanings?.map((m:any)=>`${m.pos} ${m.text}`).join('\n')||''}`
@@ -435,10 +515,10 @@ export class MarkManager{
     const m=this.marksMap.get(idOrKey)
     if(!m||!this.del(m.id))return false
     
-    // 同步删除文档块
+    // 同步删除文档�?
     if(m.blockId){
       try{
-        const{bookshelfManager}=await import('@/core/bookshelf'),book=await bookshelfManager.getBook(this.bookUrl)
+        const{bookshelfManager}=await import('@/core/_deprecated/bookshelf'),book=await bookshelfManager.getBook(this.bookUrl)
         if(book?.syncDelete){const{deleteBlock}=await import('@/api');await deleteBlock(m.blockId)}
       }catch(e){console.error('[DeleteBlock]',e)}
     }
@@ -446,8 +526,9 @@ export class MarkManager{
     // 删除词典卡包
     if(m.type==='vocab'&&m.text){
       try{
-        const{getCardsSync,removeCard}=await import('@/components/deck'),card=getCardsSync().find(c=>c.word===m.text&&c.cfi===m.cfi&&c.section===m.section)
-        if(card)await removeCard(card.id)
+        // TODO: 修复 deck 导入 - getCardsSync 函数不存�?
+        // const{getCardsSync,removeCard}=await import('@/components/deck'),card=getCardsSync().find(c=>c.word===m.text&&c.cfi===m.cfi&&c.section===m.section)
+        // if(card)await removeCard(card.id)
       }catch(e){console.error('[Mark]',e)}
     }
     
@@ -469,7 +550,7 @@ export class MarkManager{
     const useLoc=loc||(this.format==='pdf'?this.currentPage:l?.cfi||l?.section)
     const existing=this.marks.find(m=>m.type==='bookmark'&&(m.cfi===useLoc||m.page===useLoc||m.section===useLoc))
     if(existing)throw new Error('已有书签')
-    const m=this.add({type:'bookmark',format:this.format,[typeof useLoc==='string'?'cfi':this.format==='pdf'?'page':'section']:useLoc,title:title||l?.tocItem?.label||`第${(useLoc||0)+1}章`,progress:Math.round((l?.fraction||0)*100)})
+    const m=this.add({type:'bookmark',format:this.format,[typeof useLoc==='string'?'cfi':this.format==='pdf'?'page':'section']:useLoc,title:title||l?.tocItem?.label||`�?{(useLoc||0)+1}章`,progress:Math.round((l?.fraction||0)*100)})
     this.save()
     window.dispatchEvent(new Event('sireader:marks-updated'))
     return m
@@ -545,13 +626,13 @@ export class MarkManager{
 
   private async syncToBookshelf(){
     try{
-      const{bookshelfManager}=await import('@/core/bookshelf')
+      const{bookshelfManager}=await import('@/core/_deprecated/bookshelf')
       const book=await bookshelfManager.getBook(this.bookUrl)
       if(book){
         book.durChapterIndex=this.currentPage
         book.durChapterTime=Date.now()
         book.epubProgress=this.currentProgress
-        await bookshelfManager.saveBook(book)
+        await bookshelfManager.updateBook(book.url, book)
         window.dispatchEvent(new Event('sireader:bookshelf-updated'))
       }
     }catch(e){console.error('[Mark] Sync:',e)}
@@ -560,3 +641,4 @@ export class MarkManager{
 
 export const createMarkManager=(cfg:MarkManagerConfig)=>new MarkManager(cfg)
 export type{Mark,HighlightColor,MarkStyle,MarkType}
+
