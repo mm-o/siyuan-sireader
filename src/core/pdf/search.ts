@@ -77,8 +77,10 @@ export class PDFSearch{
     this.clear()
     if(!q.trim()||!this.pdf)return[]
     this.query=q.toLowerCase()
+    console.log('[PDF搜索] 开始搜索:', this.query, '页数:', this.pdf.numPages)
     
     // 快速搜索所有页面
+    console.time('[PDF搜索] 搜索所有页面')
     const tasks=[]
     for(let i=1;i<=this.pdf.numPages;i++){
       tasks.push(this.searchPage(i))
@@ -93,12 +95,15 @@ export class PDFSearch{
       indices.forEach(idx=>this.matches.push({page:i,index:idx}))
     }
     
+    console.log('[PDF搜索] 找到匹配:', this.matches.length)
+    
     if(this.matches.length>0){
       this.current=0
       await this.highlightPage(this.matches[0].page)
       this.scrollToMatch(this.matches[0])
     }
     
+    console.timeEnd('[PDF搜索] 总耗时')
     return this.matches
   }
 

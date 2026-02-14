@@ -174,6 +174,7 @@
   "marginVertical": "上下边距",
   "gap": "列间距",
   "headerFooterMargin": "页眉页脚高度",
+  "maxInlineSize": "最大内容宽度",
   "maxBlockSize": "最大块高度",
   "continuousScroll": "连续滚动",
   "continuousScrollDesc": "启用后页面连续滚动，禁用后分页显示",

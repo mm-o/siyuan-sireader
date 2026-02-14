@@ -1,9 +1,7 @@
 // ===== 阅读器设置管理 =====
-import { createApp, ref, toRaw } from 'vue'
-import { MotionPlugin } from '@vueuse/motion'
-import { Dialog, showMessage, fetchSyncPost } from 'siyuan'
+import { ref, toRaw } from 'vue'
+import { showMessage, fetchSyncPost } from 'siyuan'
 import type { Plugin } from 'siyuan'
-import SettingsVue from '@/components/Settings.vue'
 
 export type PdfToolbarStyle = 'float' | 'fixed'
 export type PageAnimation = 'slide' | 'none'
@@ -15,7 +13,7 @@ export interface ReadTheme { name: string; color: string; bg: string; bgImg?: st
 export interface FontFileInfo { name: string; displayName: string }
 export interface TextSettings { fontFamily: string; fontSize: number; letterSpacing: number; customFont: { fontFamily: string; fontFile: string } }
 export interface ParagraphSettings { lineHeight: number; paragraphSpacing: number; textIndent: number }
-export interface LayoutSettings { marginHorizontal: number; marginVertical: number; gap: number; headerFooterMargin: number }
+export interface LayoutSettings { marginHorizontal: number; marginVertical: number; gap: number; headerFooterMargin: number; maxInlineSize?: number; maxBlockSize?: number }
 export interface VisualSettings { brightness: number; contrast: number; sepia: number; saturate: number; invert: boolean }
 export interface ReaderSettings { enabled: boolean; openMode: 'newTab' | 'rightTab' | 'bottomTab' | 'newWindow'; navPosition: NavPosition; pageAnimation: PageAnimation; viewMode: ViewMode; theme: string; customTheme: ReadTheme; annotationMode: 'notebook' | 'document'; notebookId?: string; parentDoc?: DocInfo; linkFormat: string; pdfToolbarStyle: PdfToolbarStyle; bookshelfCoverSize: number; openDocAssets: boolean; navItems?: NavItem[]; textSettings: TextSettings; paragraphSettings: ParagraphSettings; layoutSettings: LayoutSettings; visualSettings: VisualSettings }
 
@@ -37,7 +35,7 @@ const DEFAULT_SETTINGS: ReaderSettings = { enabled: true, openMode: 'newTab', na
 
 // ===== UI配置常量 =====
 const r = (k: string, min: number, max: number, step: number, unit = '') => ({ key: k, type: 'range' as const, min, max, step, unit })
-export const UI_CONFIG = { interfaceItems: [{ key: 'openMode', opts: ['newTab', 'rightTab', 'bottomTab', 'newWindow'] }, { key: 'navPosition', opts: ['left', 'right', 'top', 'bottom'] }, { key: 'viewMode', opts: ['single', 'double', 'scroll'] }, { key: 'pageAnimation', opts: ['slide', 'none'] }, { key: 'pdfToolbarStyle', opts: ['float', 'fixed'] }, r('bookshelfCoverSize', 80, 160, 10, 'px'), { key: 'openDocAssets', type: 'checkbox' as const }], customThemeItems: [{ key: 'color', label: 'textColor', type: 'color' }, { key: 'bg', label: 'bgColor', type: 'color' }, { key: 'bgImg', label: 'bgImage', type: 'text' }], appearanceGroups: [{ title: 'textSettings', items: [r('fontSize', 12, 32, 1, 'px'), r('letterSpacing', 0, 0.2, 0.01, 'em')] }, { title: 'paragraphSettings', items: [r('lineHeight', 1.0, 3.0, 0.1), r('paragraphSpacing', 0, 2, 0.1, 'em'), r('textIndent', 0, 4, 0.5, 'em')] }, { title: 'layoutSettings', items: [r('marginHorizontal', 0, 100, 5, 'px'), r('marginVertical', 0, 80, 5, 'px'), r('gap', 0, 20, 1, '%'), r('headerFooterMargin', 0, 60, 5, 'px')] }, { title: 'visualSettings', items: [r('brightness', 0.5, 1.5, 0.05), r('contrast', 0.5, 1.5, 0.05), r('sepia', 0, 1, 0.05), r('saturate', 0, 2, 0.1), { key: 'invert', type: 'checkbox' as const }] }] }
+export const UI_CONFIG = { interfaceItems: [{ key: 'openMode', opts: ['newTab', 'rightTab', 'bottomTab', 'newWindow'] }, { key: 'navPosition', opts: ['left', 'right', 'top', 'bottom'] }, { key: 'viewMode', opts: ['single', 'double', 'scroll'] }, { key: 'pageAnimation', opts: ['slide', 'none'] }, { key: 'pdfToolbarStyle', opts: ['float', 'fixed'] }, r('bookshelfCoverSize', 80, 160, 10, 'px'), { key: 'openDocAssets', type: 'checkbox' as const }], customThemeItems: [{ key: 'color', label: 'textColor', type: 'color' }, { key: 'bg', label: 'bgColor', type: 'color' }, { key: 'bgImg', label: 'bgImage', type: 'text' }], appearanceGroups: [{ title: 'textSettings', items: [r('fontSize', 12, 32, 1, 'px'), r('letterSpacing', 0, 0.2, 0.01, 'em')] }, { title: 'paragraphSettings', items: [r('lineHeight', 1.0, 3.0, 0.1), r('paragraphSpacing', 0, 2, 0.1, 'em'), r('textIndent', 0, 4, 0.5, 'em')] }, { title: 'layoutSettings', items: [r('marginHorizontal', 0, 100, 5, 'px'), r('marginVertical', 0, 80, 5, 'px'), r('gap', 0, 20, 1, '%'), r('headerFooterMargin', 0, 60, 5, 'px'), r('maxInlineSize', 0, 2000, 50, 'px'), r('maxBlockSize', 0, 3000, 50, 'px')] }, { title: 'visualSettings', items: [r('brightness', 0.5, 1.5, 0.05), r('contrast', 0.5, 1.5, 0.05), r('sepia', 0, 1, 0.05), r('saturate', 0, 2, 0.1), { key: 'invert', type: 'checkbox' as const }] }] }
 
 // ===== 字体 =====
 export const scanCustomFonts = async (): Promise<FontFileInfo[]> => { try { const r = await fetchSyncPost('/api/file/readDir', { path: '/data/plugins/custom-fonts' }); return r?.code === 0 && Array.isArray(r.data) ? r.data.filter((f: any) => !f.isDir && /\.(ttf|otf|woff2?)$/i.test(f.name)).map((f: any) => ({ name: f.name, displayName: f.name.replace(/\.(ttf|otf|woff2?)$/i, '') })) : []; } catch { return []; } };
@@ -56,35 +54,21 @@ export const createDocInfo = (d: any) => ({ id: d.id, name: d.hPath || d.content
 export const useDocSearch = () => { const s = ref({ input: '', results: [] as any[], show: false }); return { state: s, search: async () => { const k = s.value.input.trim(); if (k) (s.value.results = await searchDocs(k), s.value.show = true) }, select: (d: any, f: (doc: DocInfo) => void) => (f(createDocInfo(d)), s.value = { input: '', results: [], show: false }), reset: () => s.value = { input: '', results: [], show: false } } }
 export const useNotebooks = () => { const n = ref<{ id: string; name: string; icon: string }[]>([]); return { notebooks: n, load: async () => !n.value.length && (n.value = await loadNotebooks()) } }
 export const useConfirm = (f: () => void) => { const c = ref(false); return { confirming: c, handleClick: () => c.value ? (f(), c.value = false) : (c.value = true) } }
-export const createDialog = (t: string, id: string, c: any, p: any, pl: any) => { const d = new Dialog({ title: t, content: `<div id="${id}"></div>`, width: '800px', height: '600px' }), close = () => (a.unmount(), d.destroy()), a = createApp(c, p); d.element.querySelector('.b3-dialog__scrim')?.addEventListener('click', close); a.use(pl).mount(d.element.querySelector(`#${id}`)!); d.element.querySelector('.b3-dialog__close')?.addEventListener('click', close); return { dialog: d, app: a } }
 
-// ===== 设置管理（极简统一）=====
+// ===== 设置管理 =====
 const merge = (d: any, s: any): any => { const r = { ...d }; for (const k in s) if (s[k] !== undefined && s[k] !== null) r[k] = typeof s[k] === 'object' && !Array.isArray(s[k]) && d[k] ? merge(d[k], s[k]) : s[k]; return r; };
-class SettingsManager {
-  private ready = false;
-  async init() { if (this.ready) return; await (await import('@/core/database')).getDatabase(); this.ready = true; }
-  async get(): Promise<ReaderSettings> { await this.init(); const s = await (await import('@/core/database')).getDatabase().then(db => db.getSetting('reader_settings')); return s ? merge(DEFAULT_SETTINGS, s) : { ...DEFAULT_SETTINGS }; }
-  async save(settings: ReaderSettings) { await this.init(); const raw = JSON.parse(JSON.stringify(toRaw(settings))); await (await import('@/core/database')).getDatabase().then(db => db.saveSetting('reader_settings', raw)); window.dispatchEvent(new CustomEvent('sireaderSettingsUpdated', { detail: raw })); }
-}
-export const settingsManager = new SettingsManager();
+let db: any = null;
+const getDB = async () => db || (db = await (await import('@/core/database')).getDatabase());
+export const settingsManager = {
+  get: async (): Promise<ReaderSettings> => { const s = await (await getDB()).getSetting('reader_settings'); return s ? merge(DEFAULT_SETTINGS, s) : { ...DEFAULT_SETTINGS }; },
+  save: async (settings: ReaderSettings) => { await (await getDB()).saveSetting('reader_settings', JSON.parse(JSON.stringify(toRaw(settings)))); window.dispatchEvent(new CustomEvent('sireaderSettingsUpdated', { detail: settings })); }
+};
 
-// ===== useSetting Composable =====
+// ===== useSetting =====
 export function useSetting(plugin: Plugin) { 
-  const settings = ref<ReaderSettings>({ ...DEFAULT_SETTINGS }), i18n = plugin.i18n as any, customFonts = ref<FontFileInfo[]>([]), isLoadingFonts = ref(false), isLoaded = ref(false);
-  let dialog: Dialog | null = null, app: any = null;
-  
+  const settings = ref<ReaderSettings>({ ...DEFAULT_SETTINGS }), i18n = plugin.i18n as any, isLoaded = ref(false);
   const load = async () => { try { settings.value = await settingsManager.get(), isLoaded.value = true } catch { settings.value = { ...DEFAULT_SETTINGS }, isLoaded.value = true } };
   const save = async () => { try { await settingsManager.save(settings.value), msg.success(i18n?.saved || '设置已保存') } catch { msg.error(i18n?.saveError || '保存失败') } };
-  const loadCustomFonts = async () => (isLoadingFonts.value = true, customFonts.value = await scanCustomFonts(), isLoadingFonts.value = false, loadFonts(customFonts.value));
-  const setFont = (f?: FontFileInfo, cb?: () => void) => (settings.value.textSettings.fontFamily = f ? 'custom' : 'inherit', settings.value.textSettings.customFont = f ? { fontFamily: f.displayName, fontFile: f.name } : { fontFamily: '', fontFile: '' }, cb?.());
-  const resetStyles = () => resetToDefaults(settings.value);
-  const open = async () => { 
-    dialog && (app?.unmount(), dialog.destroy()); 
-    await load(); 
-    const el = (dialog = new Dialog({ title: i18n?.settingsTitle || '设置', content: '<div id="sireader-settings-mount"></div>', width: '680px', height: '580px', destroyCallback: () => (app?.unmount(), dialog = null, app = null) })).element.querySelector('#sireader-settings-mount'); 
-    el && (app = createApp(SettingsVue, { modelValue: settings.value, i18n, onSave: async () => { await new Promise(r => setTimeout(r, 0)); await save() }, 'onUpdate:modelValue': (v: ReaderSettings) => settings.value = v }), app.use(MotionPlugin), app.mount(el));
-  }; 
-  
   load(); 
-  return { settings, isLoaded, open, save, loadCustomFonts, setFont, resetStyles, customFonts, isLoadingFonts };
+  return { settings, isLoaded, save };
 }

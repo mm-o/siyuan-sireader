@@ -166,11 +166,12 @@ export const jump=(item:any,activeView:any,activeReader:any,marks:any)=>{
 export const restorePosition=async(bookUrl:string,reader:any,pdfViewer:any,getMobilePosition:any)=>{
   if(!bookUrl)return
   const pos=await getMobilePosition(bookUrl)
-  if(pos?.cfi&&reader)reader.goTo(pos.cfi)
-  else if(pos?.page&&pdfViewer)pdfViewer.goToPage(pos.page)
+  if(!pos)return
+  if(pos.cfi&&reader)reader.goTo(pos.cfi)
+  else if(pos.page&&pdfViewer)pdfViewer.goToPage(pos.page)
 }
 
-export const initJump=(cfi:string,isPdf:boolean)=>{
+export const initJump=(cfi:string)=>{
   if(!cfi)return
   const m=cfi.match(/#txt-(\d+)-(\d+)/)
   setTimeout(()=>window.dispatchEvent(new CustomEvent('sireader:goto',{detail:m?{section:parseInt(m[1]),textOffset:parseInt(m[2])}:{cfi}})),500)

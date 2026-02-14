@@ -2,7 +2,7 @@
  * PDF 类型定义
  */
 
-import type { HighlightColor } from '../epub/types'
+import type { HighlightColor } from '../foliate/types'
 
 export interface PDFAnnotation {
   id: string

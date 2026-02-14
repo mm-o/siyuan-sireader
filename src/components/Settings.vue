@@ -8,7 +8,7 @@ import BookSearch from './BookSearch.vue'
 import Bookshelf from './Bookshelf.vue'
 import ReaderToc from './ReaderToc.vue'
 import { bookshelfManager } from '@/core/bookshelf'
-import { offlineDictManager, onlineDictManager } from '@/core/dict'
+import { offlineDictManager, onlineDictManager } from '@/core/dictionary'
 import { usePlugin } from '@/main'
 import { useReaderState } from '@/core/epub'
 

@@ -18,7 +18,8 @@ export function useStats(plugin: Plugin) {
 
   const load = async () => {
     try {
-      const data = await plugin.loadData('stats.json')
+      const db = await (await import('@/core/database')).getDatabase()
+      const data = await db.getSetting('reader_stats')
       if (data) stats.value = { ...stats.value, ...data }
     } catch (e) {
       console.error(`${i18n?.statsLoadError || '加载统计数据失败'}:`, e)
@@ -27,7 +28,8 @@ export function useStats(plugin: Plugin) {
 
   const save = async () => {
     try {
-      await plugin.saveData('stats.json', stats.value)
+      const db = await (await import('@/core/database')).getDatabase()
+      await db.saveSetting('reader_stats', stats.value)
     } catch (e) {
       console.error(`${i18n?.statsSaveError || '保存统计数据失败'}:`, e)
     }

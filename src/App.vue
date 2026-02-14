@@ -12,7 +12,7 @@ import { usePlugin, setOpenSettingHandler, registerCleanup } from '@/main'
 import { useSetting, settingsManager } from '@/composables/useSetting'
 import { useStats } from '@/composables/useStats'
 import { bookSourceManager } from '@/core/book'
-import { isMobile } from '@/core/utils/mobile'
+import { isMobile } from '@/core/mobile'
 import Settings from '@/components/Settings.vue'
 import Reader from '@/components/Reader.vue'
 
@@ -35,11 +35,9 @@ const fetchFile = async (url: string) => {
 }
 
 const mountReader = async (el: HTMLElement, props: any) => {
-  if (!isLoaded.value) await new Promise(resolve => { const check = () => isLoaded.value ? resolve(true) : setTimeout(check, 50); check() })
-  await new Promise(resolve => requestAnimationFrame(() => resolve(true)))
+  if (!isLoaded.value) await new Promise(r => { const check = () => isLoaded.value ? r(true) : setTimeout(check, 50); check() })
   const { toRaw } = await import('vue')
-  const currentSettings = JSON.parse(JSON.stringify(toRaw(settings.value)))
-  const app = createApp(Reader as Component, { ...props, plugin, settings: currentSettings, i18n: plugin.i18n })
+  const app = createApp(Reader as Component, { ...props, plugin, settings: JSON.parse(JSON.stringify(toRaw(settings.value))), i18n: plugin.i18n })
   app.mount(el)
   return app
 }
@@ -100,7 +98,7 @@ const handleEbookLink = async (e: MouseEvent) => {
   if (parsed) {
     e.preventDefault(), e.stopPropagation()
     if (!parsed.bookUrl) return showMessage('无效的书籍链接', 3000, 'error')
-    const { bookshelfManager } = await import('@/core/library')
+    const { bookshelfManager } = await import('@/core/bookshelf')
     const { getBookWithFallback, openOrActivateBook } = await import('@/utils/bookOpen')
     await bookshelfManager.init()
     const book = await getBookWithFallback(bookshelfManager, parsed.bookUrl)
@@ -116,7 +114,7 @@ const handleEbookLink = async (e: MouseEvent) => {
   if (url.startsWith('assets/') || url.includes('/assets/')) {
     if (!settings.value.openDocAssets) return // 设置关闭时不处理
     e.preventDefault(), e.stopPropagation()
-    const { bookshelfManager } = await import('@/core/library')
+    const { bookshelfManager } = await import('@/core/bookshelf')
     const { getOrAddAssetBook, openOrActivateBook } = await import('@/utils/bookOpen')
     await bookshelfManager.init()
     const file = await fetchFile(url.split('#')[0])
@@ -383,35 +381,6 @@ plugin.addIcons(`
     <path d="M18 6 6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
     <path d="m6 6 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
   </symbol>
-  <symbol id="lucide-plus" viewBox="0 0 24 24">
-    <path d="M5 12h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M12 5v14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-  </symbol>
-  <symbol id="lucide-edit" viewBox="0 0 24 24">
-    <path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="m15 5 4 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-  </symbol>
-  <symbol id="lucide-folder-plus" viewBox="0 0 24 24">
-    <path d="M12 10v6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M9 13h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-  </symbol>
-  <symbol id="lucide-folder-open" viewBox="0 0 24 24">
-    <path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-  </symbol>
-  <symbol id="lucide-sparkles" viewBox="0 0 24 24">
-    <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M20 3v4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M22 5h-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M4 17v2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M5 18H3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-  </symbol>
-  <symbol id="lucide-smile" viewBox="0 0 24 24">
-    <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M8 14s1.5 2 4 2 4-2 4-2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-    <line x1="9" x2="9.01" y1="9" y2="9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-    <line x1="15" x2="15.01" y1="9" y2="9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-  </symbol>
   <symbol id="lucide-check" viewBox="0 0 24 24">
     <path d="M20 6 9 17l-5-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
   </symbol>
@@ -440,15 +409,31 @@ plugin.addDock({
   type: 'SiyuanReaderDock',
   config: { position: 'RightTop', size: { width: 680, height: 580 }, icon: iconId, title: plugin.i18n?.name || '思阅' },
   data: { plugin },
-  init() {
-    const c = document.createElement('div');
-    c.className = 'sireader-dock-content';
-    c.style.cssText = 'width:100%;height:100%;overflow:auto';
-    this.element.appendChild(c);
-    (async () => { while (!isLoaded.value) await new Promise(r => setTimeout(r, 50)) })().then(() => (settingsApp = createApp(Settings, { modelValue: settings.value, i18n: (this.data.plugin as typeof plugin).i18n, onSave: async () => { await new Promise(r => setTimeout(r, 0)); await settingsManager.save(settings.value) }, 'onUpdate:modelValue': (v: any) => settings.value = v }), settingsApp.use(MotionPlugin), settingsApp.mount(c)));
+  async init() {
+    const container = document.createElement('div')
+    container.className = 'sireader-dock-content'
+    container.style.cssText = 'width:100%;height:100%;overflow:auto'
+    this.element.appendChild(container)
+    
+    // 等待设置加载
+    if (!isLoaded.value) {
+      container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--b3-theme-on-surface)">加载中...</div>'
+      await new Promise(r => { const check = () => isLoaded.value ? r(true) : setTimeout(check, 50); check() })
+      container.innerHTML = ''
+    }
+    
+    // 挂载设置组件
+    const { toRaw } = await import('vue')
+    settingsApp = createApp(Settings, {
+      modelValue: JSON.parse(JSON.stringify(toRaw(settings.value))),
+      i18n: (this.data.plugin as typeof plugin).i18n,
+      onSave: async () => await settingsManager.save(settings.value),
+      'onUpdate:modelValue': (v: any) => settings.value = v
+    })
+    settingsApp.use(MotionPlugin).mount(container)
   },
   resize() {},
-  destroy() { settingsApp?.unmount(), settingsApp = null }
+  destroy() { settingsApp?.unmount(); settingsApp = null }
 })
 
 plugin.addTopBar({ icon: `<svg><use xlink:href="#${iconId}"/></svg>`, title: '思阅', callback: openSetting })

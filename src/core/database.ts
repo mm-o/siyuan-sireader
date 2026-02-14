@@ -30,14 +30,13 @@ export interface Book {
   meta: any;          // 元数据(JSON)
   tags: string[];     // 标签数组
   groups: string[];   // 分组数组
-  toc?: any[];        // 目录
   bindDocId?: string; // 绑定文档ID
   bindDocName?: string; // 绑定文档名
   autoSync?: boolean; // 添加时同步
   syncDelete?: boolean; // 删除时同步
 }
 
-export type AnnotationType = 'highlight' | 'note' | 'bookmark' | 'shape' | 'ink';
+export type AnnotationType = 'highlight' | 'note' | 'bookmark' | 'vocab' | 'shape' | 'ink';
 
 export interface Annotation {
   id: string;         // 唯一ID
@@ -89,7 +88,7 @@ export class ReaderDatabase {
       }
     } catch {}
     const db = new SQL.Database();
-    db.exec(`CREATE TABLE books (url TEXT PRIMARY KEY, title TEXT, author TEXT, cover TEXT, format TEXT, path TEXT, size INT, added INT, read INT, finished INT, status TEXT, progress INT, time INT, chapter INT, total INT, pos TEXT, source TEXT, rating INT, meta TEXT, bindDocId TEXT, bindDocName TEXT, autoSync INT, syncDelete INT);CREATE INDEX idx_read ON books(read);CREATE TABLE annotations (id TEXT PRIMARY KEY, book TEXT, type TEXT, loc TEXT, text TEXT, note TEXT, color TEXT, data TEXT, created INT, updated INT, chapter TEXT, block TEXT);CREATE INDEX idx_ann_book ON annotations(book);CREATE TABLE tags (book TEXT, tag TEXT, PRIMARY KEY(book,tag));CREATE INDEX idx_tag ON tags(tag);CREATE TABLE groups (book TEXT, gid TEXT, PRIMARY KEY(book,gid));CREATE INDEX idx_group ON groups(gid);CREATE TABLE toc (book TEXT, idx INT, label TEXT, href TEXT, parent INT, PRIMARY KEY(book,idx));CREATE TABLE settings (key TEXT PRIMARY KEY, val TEXT);`);
+    db.exec(`CREATE TABLE books (url TEXT PRIMARY KEY, title TEXT, author TEXT, cover TEXT, format TEXT, path TEXT, size INT, added INT, read INT, finished INT, status TEXT, progress INT, time INT, chapter INT, total INT, pos TEXT, source TEXT, rating INT, meta TEXT, bindDocId TEXT, bindDocName TEXT, autoSync INT, syncDelete INT);CREATE INDEX idx_read ON books(read);CREATE TABLE annotations (id TEXT PRIMARY KEY, book TEXT, type TEXT, loc TEXT, text TEXT, note TEXT, color TEXT, data TEXT, created INT, updated INT, chapter TEXT, block TEXT);CREATE INDEX idx_ann_book ON annotations(book);CREATE TABLE tags (book TEXT, tag TEXT, PRIMARY KEY(book,tag));CREATE INDEX idx_tag ON tags(tag);CREATE TABLE groups (book TEXT, gid TEXT, PRIMARY KEY(book,gid));CREATE INDEX idx_group ON groups(gid);CREATE TABLE settings (key TEXT PRIMARY KEY, val TEXT);`);
     return db;
   }
 
@@ -108,7 +107,10 @@ export class ReaderDatabase {
     const r = this.db.exec('SELECT * FROM books WHERE url=?', [url]);
     if (!r[0]?.values[0]) return null;
     const b = this.toBook(r[0].values[0], r[0].columns);
-    [b.tags, b.groups, b.toc] = await Promise.all([this.getBookTags(url), this.getBookGroups(url), this.getBookToc(url)]);
+    const tags = this.db.exec('SELECT tag FROM tags WHERE book=?', [url]);
+    const groups = this.db.exec('SELECT gid FROM groups WHERE book=?', [url]);
+    b.tags = tags[0] ? tags[0].values.map((v: any) => v[0]) : [];
+    b.groups = groups[0] ? groups[0].values.map((v: any) => v[0]) : [];
     return b;
   }
 
@@ -116,11 +118,14 @@ export class ReaderDatabase {
     await this.init();
     const r = this.db.exec('SELECT * FROM books ORDER BY read DESC');
     if (!r[0]) return [];
-    return Promise.all(r[0].values.map(async (v: any) => {
+    return r[0].values.map((v: any) => {
       const b = this.toBook(v, r[0].columns);
-      [b.tags, b.groups] = await Promise.all([this.getBookTags(b.url), this.getBookGroups(b.url)]);
+      const tags = this.db.exec('SELECT tag FROM tags WHERE book=?', [b.url]);
+      const groups = this.db.exec('SELECT gid FROM groups WHERE book=?', [b.url]);
+      b.tags = tags[0] ? tags[0].values.map((v: any) => v[0]) : [];
+      b.groups = groups[0] ? groups[0].values.map((v: any) => v[0]) : [];
       return b;
-    }));
+    });
   }
 
   async saveBook(b: any) {
@@ -132,31 +137,30 @@ export class ReaderDatabase {
     (b.tags||[]).forEach((t: string) => this.db.run('INSERT INTO tags VALUES(?,?)', [b.url, t]));
     this.db.run('DELETE FROM groups WHERE book=?', [b.url]);
     (b.groups||[]).forEach((g: string) => this.db.run('INSERT INTO groups VALUES(?,?)', [b.url, g]));
-    this.db.run('DELETE FROM toc WHERE book=?', [b.url]);
-    const flatToc: any[] = [];
-    const flatten = (items: any[], parentIdx: number | null = null) => {
-      items.forEach((item: any) => {
-        const idx = flatToc.length;
-        flatToc.push({ label: item.label, href: item.href, parent: parentIdx });
-        if (item.subitems?.length) flatten(item.subitems, idx);
-      });
-    };
-    flatten(b.toc || []);
-    flatToc.forEach((t: any, i: number) => this.db.run('INSERT INTO toc VALUES(?,?,?,?,?)', [b.url, i, t.label, t.href, t.parent]));
     await this.save();
   }
 
-  async deleteBook(url: string) { await this.init(); this.db.run('DELETE FROM books WHERE url=?', [url]); await this.save(); }
+  async deleteBook(url: string) { 
+    await this.init(); 
+    this.db.run('DELETE FROM books WHERE url=?', [url]); 
+    this.db.run('DELETE FROM annotations WHERE book=?', [url]);
+    this.db.run('DELETE FROM tags WHERE book=?', [url]);
+    this.db.run('DELETE FROM groups WHERE book=?', [url]);
+    await this.save(); 
+  }
 
   async searchBooks(q: string) {
     await this.init();
     const r = this.db.exec('SELECT * FROM books WHERE title LIKE ? OR author LIKE ? ORDER BY read DESC', [`%${q}%`, `%${q}%`]);
     if (!r[0]) return [];
-    return Promise.all(r[0].values.map(async (v: any) => {
+    return r[0].values.map((v: any) => {
       const b = this.toBook(v, r[0].columns);
-      [b.tags, b.groups] = await Promise.all([this.getBookTags(b.url), this.getBookGroups(b.url)]);
+      const tags = this.db.exec('SELECT tag FROM tags WHERE book=?', [b.url]);
+      const groups = this.db.exec('SELECT gid FROM groups WHERE book=?', [b.url]);
+      b.tags = tags[0] ? tags[0].values.map((v: any) => v[0]) : [];
+      b.groups = groups[0] ? groups[0].values.map((v: any) => v[0]) : [];
       return b;
-    }));
+    });
   }
 
   // ==================== 标注 ====================
@@ -224,43 +228,21 @@ export class ReaderDatabase {
     await this.init();
     const r = this.db.exec('SELECT b.* FROM books b JOIN groups g ON b.url=g.book WHERE g.gid=?', [gid]);
     if (!r[0]) return [];
-    return Promise.all(r[0].values.map(async (v: any) => {
+    return r[0].values.map((v: any) => {
       const b = this.toBook(v, r[0].columns);
-      [b.tags, b.groups] = await Promise.all([this.getBookTags(b.url), this.getBookGroups(b.url)]);
+      const tags = this.db.exec('SELECT tag FROM tags WHERE book=?', [b.url]);
+      const groups = this.db.exec('SELECT gid FROM groups WHERE book=?', [b.url]);
+      b.tags = tags[0] ? tags[0].values.map((v: any) => v[0]) : [];
+      b.groups = groups[0] ? groups[0].values.map((v: any) => v[0]) : [];
       return b;
-    }));
+    });
   }
   async getAllTags() {
     await this.init();
     const r = this.db.exec('SELECT tag, COUNT(*) as cnt FROM tags GROUP BY tag ORDER BY cnt DESC');
     return r[0] ? r[0].values.map((v: any) => ({ tag: v[0], count: v[1] })) : [];
   }
-  async getBookTags(book: string) {
-    await this.init();
-    const r = this.db.exec('SELECT tag FROM tags WHERE book=?', [book]);
-    return r[0] ? r[0].values.map((v: any) => v[0]) : [];
-  }
-  async getBookGroups(book: string) {
-    await this.init();
-    const r = this.db.exec('SELECT gid FROM groups WHERE book=?', [book]);
-    return r[0] ? r[0].values.map((v: any) => v[0]) : [];
-  }
 
-  async getBookToc(book: string) {
-    await this.init();
-    const r = this.db.exec('SELECT idx, label, href, parent FROM toc WHERE book=? ORDER BY idx', [book]);
-    if (!r[0]) return [];
-    const flat = r[0].values.map((v: any) => ({ idx: v[0], label: v[1], href: v[2], parent: v[3], subitems: [] }));
-    const root: any[] = [];
-    flat.forEach((item: any) => {
-      if (item.parent === null) root.push(item);
-      else {
-        const parent = flat.find((p: any) => p.idx === item.parent);
-        if (parent) parent.subitems.push(item);
-      }
-    });
-    return root;
-  }
   // ==================== 高性能查询 ====================
 
   async filterBooks(opt: {
@@ -311,11 +293,14 @@ export class ReaderDatabase {
 
     const r = this.db.exec(sql, params);
     if (!r[0]) return [];
-    return Promise.all(r[0].values.map(async (v: any) => {
+    return r[0].values.map((v: any) => {
       const b = this.toBook(v, r[0].columns);
-      [b.tags, b.groups] = await Promise.all([this.getBookTags(b.url), this.getBookGroups(b.url)]);
+      const tags = this.db.exec('SELECT tag FROM tags WHERE book=?', [b.url]);
+      const groups = this.db.exec('SELECT gid FROM groups WHERE book=?', [b.url]);
+      b.tags = tags[0] ? tags[0].values.map((v: any) => v[0]) : [];
+      b.groups = groups[0] ? groups[0].values.map((v: any) => v[0]) : [];
       return b;
-    }));
+    });
   }
 
   async getStats() {
@@ -352,11 +337,14 @@ export class ReaderDatabase {
     await this.init();
     const r = this.db.exec('SELECT b.* FROM books b JOIN groups g ON b.url=g.book WHERE g.gid=? ORDER BY b.read DESC LIMIT ?', [gid, limit]);
     if (!r[0]) return [];
-    return Promise.all(r[0].values.map(async (v: any) => {
+    return r[0].values.map((v: any) => {
       const b = this.toBook(v, r[0].columns);
-      [b.tags, b.groups] = await Promise.all([this.getBookTags(b.url), this.getBookGroups(b.url)]);
+      const tags = this.db.exec('SELECT tag FROM tags WHERE book=?', [b.url]);
+      const groups = this.db.exec('SELECT gid FROM groups WHERE book=?', [b.url]);
+      b.tags = tags[0] ? tags[0].values.map((v: any) => v[0]) : [];
+      b.groups = groups[0] ? groups[0].values.map((v: any) => v[0]) : [];
       return b;
-    }));
+    });
   }
 
   // ==================== 辅助 ====================
@@ -364,7 +352,7 @@ export class ReaderDatabase {
   private toBook(row: any, cols: string[]) {
     const get = (n: string) => row[cols.indexOf(n)];
     const parse = (v: any) => { try { return JSON.parse(v || '{}'); } catch { return {}; } };
-    return { url: get('url'), title: get('title'), author: get('author'), cover: get('cover'), format: get('format'), path: get('path'), size: get('size'), added: get('added'), read: get('read'), finished: get('finished'), status: get('status'), progress: get('progress'), time: get('time'), chapter: get('chapter'), total: get('total'), pos: parse(get('pos')), source: parse(get('source')), rating: get('rating'), meta: parse(get('meta')), tags: [], groups: [], toc: [], bindDocId: get('bindDocId')||'', bindDocName: get('bindDocName')||'', autoSync: !!get('autoSync'), syncDelete: !!get('syncDelete') };
+    return { url: get('url'), title: get('title'), author: get('author'), cover: get('cover'), format: get('format'), path: get('path'), size: get('size'), added: get('added'), read: get('read'), finished: get('finished'), status: get('status'), progress: get('progress'), time: get('time'), chapter: get('chapter'), total: get('total'), pos: parse(get('pos')), source: parse(get('source')), rating: get('rating'), meta: parse(get('meta')), tags: [], groups: [], bindDocId: get('bindDocId')||'', bindDocName: get('bindDocName')||'', autoSync: !!get('autoSync'), syncDelete: !!get('syncDelete') };
   }
 
   private toAnn(row: any, cols: string[]) {

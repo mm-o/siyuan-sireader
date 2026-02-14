@@ -61,10 +61,8 @@
 <script setup lang="ts">
 import { ref, reactive, computed, nextTick } from 'vue'
 import { showMessage } from 'siyuan'
-import type { AnnotationManager } from '@/core/annotation'
-import type { Annotation } from '@/core/database'
-import type { HighlightColor } from '@/core/annotation'
-import { COLORS, STYLES, getColorMap } from '@/core/annotation'
+import type { MarkManager, Mark, HighlightColor } from '@/core/MarkManager'
+import { COLORS, STYLES, getColorMap } from '@/core/MarkManager'
 import { openBlock, showFloat, hideFloat } from '@/utils/copy'
 import { jump } from '@/utils/jump'
 
@@ -84,14 +82,14 @@ interface MarkSelection {
 // ==================== Props ====================
 
 const props = defineProps<{
-  manager: AnnotationManager | null
+  manager: MarkManager | null
   i18n?: Record<string, string>
 }>()
 
 const emit = defineEmits<{
   copy: [text: string]
   dict: [text: string, x: number, y: number]
-  copyMark: [mark: Annotation]
+  copyMark: [mark: Mark]
 }>()
 
 // ==================== 常量 ====================
@@ -120,7 +118,7 @@ const state = reactive({
   
   // 当前选择/标注
   selection: null as MarkSelection | null,
-  currentMark: null as Annotation | null,
+  currentMark: null as Mark | null,
   
   // 编辑数据
   text: '',
@@ -170,7 +168,7 @@ const showMenu = (selection: MarkSelection, x: number, y: number) => {
 /**
  * 显示标注卡片
  */
-const showCard = (mark: Annotation, x: number, y: number, edit = false) => {
+const showCard = (mark: Mark, x: number, y: number, edit = false) => {
   state.currentMark = mark
   state.text = mark.text || (mark.type === 'shape' ? '形状标注' : '')
   state.note = mark.note || ''

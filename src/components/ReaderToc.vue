@@ -209,7 +209,7 @@
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { showMessage, Dialog, fetchSyncPost } from 'siyuan'
 import DeckHub from './deck/DeckHub.vue'
-import { COLORS, STYLES, getColorMap, formatTime } from '@/core/annotation'
+import { COLORS, STYLES, getColorMap, formatTime } from '@/core/MarkManager'
 import { useReaderState } from '@/core/epub'
 import { jump } from '@/utils/jump'
 import { copyMark as copyMarkUtil, openBlock, showFloat, hideFloat } from '@/utils/copy'
@@ -414,7 +414,7 @@ const onScroll=(e:Event)=>{
 const getUrl=()=>(window as any).__currentBookUrl,getId=(d:any)=>d.path?.split('/').pop()?.replace('.sy','')||d.id
 const autoSync=ref(false),syncDelete=ref(false),isSyncing=ref(false)
 const searchBindDoc=async()=>{bindResults.value=bindSearch.value.trim()?await searchDocs(bindSearch.value.trim()):[]}
-const updateBook=async(u:any)=>{const url=getUrl();if(!url)return;const b=await bookshelfManager.getBook(url);if(b){Object.assign(b,u);await bookshelfManager.updateBook(url, u)}}
+const updateBook=async(u:any)=>{const url=getUrl();if(!url)return;await bookshelfManager.updateBook(url,u)}
 const loadState=async()=>{
   const b=await bookshelfManager.getBook(getUrl())
   if(!b)return

@@ -51,13 +51,12 @@ import { showMessage } from 'siyuan'
 import type { Plugin } from 'siyuan'
 import type { ReaderSettings } from '@/composables/useSetting'
 import { PRESET_THEMES } from '@/composables/useSetting'
-import { openDict as openDictDialog } from '@/core/dict'
+import { openDict as openDictDialog } from '@/core/dictionary'
 import { createReader, type FoliateReader, setActiveReader, clearActiveReader } from '@/core/epub'
-import { AnnotationManager, getColorMap, COLORS, STYLES } from '@/core/annotation'
-import type { Annotation } from '@/core/database'
+import { createMarkManager, type MarkManager, getColorMap } from '@/core/MarkManager'
 import { createInkToolManager, type InkToolManager } from '@/core/pdf/ink'
 import { createShapeToolManager, type ShapeToolManager } from '@/core/pdf/shape'
-import { saveMobilePosition, getMobilePosition, isMobile } from '@/core/utils/mobile'
+import { saveMobilePosition, getMobilePosition, isMobile } from '@/core/mobile'
 import PdfToolbar from './PdfToolbar.vue'
 import MarkPanel from './MarkPanel.vue'
 import ReaderToc from './ReaderToc.vue'
@@ -72,7 +71,7 @@ const pdfToolbarFixed = computed(() => currentSettings.value?.pdfToolbarStyle ==
 
 // 标注面板引用
 const markPanelRef = ref()
-const markManager = ref<AnnotationManager | null>(null)
+const markManager = ref<MarkManager | null>(null)
 const colors = getColorMap()
 
 // 监听设置更新
@@ -156,19 +155,20 @@ const init=async()=>{
   try{
     loading.value=true
     error.value=''
-    if (!props.bookInfo?.path && !props.file && !props.url) throw new Error('缺少文件路径或文件对象');
     const bookUrl=props.bookInfo?.url||props.url||(props.file?`file://${props.file.name}`:`book-${Date.now()}`)
     ;(window as any).__currentBookUrl=bookUrl
     const format=props.bookInfo?.format||(props.bookInfo?.isEpub?'epub':props.file?.name.endsWith('.txt')?'txt':props.file?.name.endsWith('.pdf')?'pdf':'online')
     const isTxt=format==='txt'||format==='online',isPdf=format==='pdf'
     
-    const onProgress=()=>{updateBookmarkState();markManager.value?.updateProgress();updatePageInfo()}
+    const onProgress=async()=>{updateBookmarkState();const{bookshelfManager}=await import('@/core/bookshelf');await bookshelfManager.updateProgressAuto(bookUrl,reader,pdfViewer.value);updatePageInfo()}
     
     // 统一文件加载
     const loadFile=async()=>{
       if(props.file)return props.file
       const path=props.bookInfo?.path
       if(!path)return null
+      
+      // assets 文件 HTTP 访问，books 文件 API 访问
       const url=path.startsWith('assets/')?`/${path}`:'/api/file/getFile'
       const opts=path.startsWith('assets/')?{}:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path})}
       const res=await fetch(url,opts)
@@ -193,15 +193,16 @@ const init=async()=>{
       
       const view=await viewer.createView()
       
-      markManager.value=new AnnotationManager({format:'pdf',book:bookUrl,onAnnotationClick:showAnn,pdfViewer:viewer})
+      markManager.value=createMarkManager({format:'pdf',plugin:props.plugin,bookUrl,bookName:props.bookInfo?.title||props.file?.name||'book',onAnnotationClick:showAnn,pdfViewer:viewer})
       await markManager.value.init()
-      await markManager.value.restoreProgress(props.bookInfo)
+      const{bookshelfManager}=await import('@/core/bookshelf')
+      await bookshelfManager.restoreProgress(bookUrl,null,viewer)
       
       currentView.value={...view,isPdf:true,marks:markManager.value}
       pdfViewer.value=viewer
       pdfSearcher.value=searcher
       
-      inkToolManager=createInkToolManager(viewerContainerRef.value!,props.plugin,bookUrl,props.bookInfo?.name||props.file?.name||'book',viewer)
+      inkToolManager=createInkToolManager(viewerContainerRef.value!,props.plugin,bookUrl,props.bookInfo?.title||props.file?.name||'book',viewer)
       const handleShapeClick=(shape:any)=>{
         const el=document.querySelector(`.pdf-shape-layer[data-page="${shape.page}"]`)
         if(!el)return
@@ -209,7 +210,7 @@ const init=async()=>{
         const[x1,y1,x2,y2]=shape.rect
         markPanelRef.value?.showCard(shape,r.left+(x1+x2)/2,r.top+y2+10,false)
       }
-      shapeToolManager=createShapeToolManager(viewerContainerRef.value!,props.plugin,bookUrl,props.bookInfo?.name||props.file?.name||'book',handleShapeClick,viewer)
+      shapeToolManager=createShapeToolManager(viewerContainerRef.value!,props.plugin,bookUrl,props.bookInfo?.title||props.file?.name||'book',handleShapeClick,viewer)
       await inkToolManager.init()
       await shapeToolManager.init()
       ;(markManager.value as any).inkManager=inkToolManager
@@ -261,22 +262,23 @@ const init=async()=>{
       currentView.value=view
       
       if(format==='online'&&props.bookInfo){
-        await loadTxtBook(view,'',props.bookInfo.chapters||[],props.bookInfo,props.settings)
+        await loadTxtBook(view,'',props.bookInfo.toc||[],props.bookInfo,props.settings)
       }else{
         const file=await loadFile()
         if(!file)throw new Error('未提供TXT文件')
         await loadTxtBook(view,await file.arrayBuffer(),[],null,props.settings)
       }
       
-      markManager.value=new AnnotationManager({format:'txt',view,book:bookUrl,reader:null})
+      markManager.value=createMarkManager({format:'txt',view,plugin:props.plugin,bookUrl,bookName:props.bookInfo?.title||props.file?.name||'book',reader:null})
       await markManager.value.init()
       ;(view as any).marks=markManager.value
-      await markManager.value.restoreProgress(props.bookInfo)
+      const{bookshelfManager}=await import('@/core/bookshelf')
+      await bookshelfManager.restoreProgress(bookUrl,null,null)
       
       view.addEventListener('relocate',()=>onProgress())
       setActiveReader(view,null,props.settings)
     }else{
-      reader=createReader({container:viewerContainerRef.value!,settings:props.settings!,bookUrl,plugin:props.plugin})
+      reader=createReader({container:viewerContainerRef.value!,settings:props.settings!,plugin:props.plugin})
       
       if(props.file){
         await reader.open(props.file)
@@ -288,10 +290,11 @@ const init=async()=>{
         await reader.open(file)
       }
       
-      markManager.value=new AnnotationManager({format:'epub',view:reader.getView(),book:bookUrl,reader})
+      markManager.value=createMarkManager({format:'epub',view:reader.getView(),plugin:props.plugin,bookUrl,bookName:props.bookInfo?.title||props.file?.name||'book',reader})
       await markManager.value.init()
       ;(reader.getView() as any).marks=markManager.value
-      await markManager.value.restoreProgress(props.bookInfo)
+      const{bookshelfManager}=await import('@/core/bookshelf')
+      await bookshelfManager.restoreProgress(bookUrl,reader,null)
       
       reader.on('relocate',()=>onProgress())
       reader.on('load',({doc}:any)=>doc?.addEventListener?.('mouseup',(e:MouseEvent)=>setTimeout(()=>checkSelection(doc,e),50)))
@@ -308,7 +311,7 @@ const init=async()=>{
     loading.value=false
     await restorePos(getBookUrl(),reader,pdfViewer.value,getMobilePosition)
     // 初始化跳转
-    if(props.bookInfo?.epubCfi)initJump(props.bookInfo.epubCfi,isPdfMode.value)
+    if(props.bookInfo?.pos?.cfi)initJump(props.bookInfo.pos.cfi)
   }
 }
 
@@ -337,12 +340,12 @@ const checkSelection=(txtDoc?:Document,e?:MouseEvent)=>{
 // 复制文本处理
 const handleCopyText=async(text:string)=>{
   const copy=(t:string,msg='已复制')=>navigator.clipboard.writeText(t).then(()=>showMessage(msg,1000))
-  const bookUrl=(window as any).__currentBookUrl||props.bookInfo?.url||props.bookInfo?.bookUrl||props.url||''
+  const bookUrl=(window as any).__currentBookUrl||props.bookInfo?.url||props.url||''
   if(!bookUrl||bookUrl.startsWith('file://'))return copy(text,'本地文件无法生成跳转链接，仅复制文本')
   if(!currentSelection)return copy(text)
   
   const{formatBookLink}=await import('@/composables/useSetting')
-  const{formatAuthor,getChapterName}=await import('@/core/annotation')
+  const{formatAuthor,getChapterName}=await import('@/core/MarkManager')
   const isPdf=isPdfMode.value
   const book=isPdf?null:reader?.getBook()
   const loc=isPdf?null:reader?.getLocation()
@@ -350,16 +353,15 @@ const handleCopyText=async(text:string)=>{
   const page=currentSelection.page||(isPdf?pdfViewer.value?.getCurrentPage():loc?.page)
   const cfi=currentSelection.cfi||(isPdf&&page?`#page-${page}`:'')
   const chapter=getChapterName({cfi:currentSelection.cfi,page,isPdf,toc,location:loc})||'📒'
-  const link=formatBookLink(bookUrl,book?.metadata?.title||props.bookInfo?.name||'',formatAuthor(book?.metadata?.author||props.bookInfo?.author),chapter,cfi,text,props.settings?.linkFormat||'> [!NOTE] 📑 书名\n> [章节](链接) 文本')
+  const link=formatBookLink(bookUrl,book?.metadata?.title||props.bookInfo?.title||'',formatAuthor(book?.metadata?.author||props.bookInfo?.author),chapter,cfi,text,props.settings?.linkFormat||'> [!NOTE] 📑 书名\n> [章节](链接) 文本')
   copy(link)
 }
 
 // 复制标注处理
 const handleCopyMark=(mark:any)=>copyMarkUtil(mark,{
-  bookUrl:(window as any).__currentBookUrl||props.bookInfo?.bookUrl||props.url||'',
+  bookUrl:(window as any).__currentBookUrl||props.bookInfo?.url||props.url||'',
   bookInfo:props.bookInfo,
   settings:props.settings,
-  isPdf:isPdfMode.value,
   reader,
   pdfViewer:pdfViewer.value,
   showMsg:(msg:string)=>showMessage(msg,1000)
@@ -406,7 +408,7 @@ const handleSearchClear=()=>{searchQuery.value='';searchResults.value=[];searchC
 
 // PDF 工具栏
 const handlePrint=async()=>{if(!pdfViewer.value)return;const{printPDF}=await import('@/core/pdf');await printPDF(pdfViewer.value.getPDF()!)}
-const handleDownload=async()=>{if(!pdfSource)return;const{downloadPDF}=await import('@/core/pdf');await downloadPDF(pdfSource,props.file?.name||props.bookInfo?.name||'document.pdf')}
+const handleDownload=async()=>{if(!pdfSource)return;const{downloadPDF}=await import('@/core/pdf');await downloadPDF(pdfSource,props.file?.name||props.bookInfo?.title||'document.pdf')}
 const handleExportImages=async()=>{if(!pdfViewer.value)return;const{exportAsImages}=await import('@/core/pdf');await exportAsImages(pdfViewer.value.getPDF()!)}
 
 // 墨迹工具
@@ -432,8 +434,9 @@ const updateBookmarkState=()=>hasBookmark.value=!!markManager.value?.hasBookmark
 const toggleBookmark=()=>{try{hasBookmark.value=marks.value?.toggleBookmark?.()}catch(e:any){showMessage(e.message||'操作失败',2000,'error')}}
 
 // 位置管理
-const getBookUrl=()=>(window as any).__currentBookUrl||props.bookInfo?.bookUrl||props.url||''
-const savePosition=()=>{try{const url=getBookUrl();if(url&&isMobile())saveMobilePosition(url,isPdfMode.value?{page:pdfViewer.value?.getCurrentPage()}:{cfi:reader?.getLocation()?.cfi})}catch{}}
+const getBookUrl=()=>(window as any).__currentBookUrl||props.bookInfo?.url||props.url||''
+const getCurrentPosition=()=>isPdfMode.value?{page:pdfViewer.value?.getCurrentPage()}:{cfi:reader?.getLocation()?.cfi}
+const savePosition=()=>{if(!isMobile())return;const url=getBookUrl();if(url)saveMobilePosition(url,getCurrentPosition())}
 
 // 打开目录
 const openToc = () => { showToc.value = !showToc.value }
@@ -486,14 +489,9 @@ const handleShapeCreated=(e:CustomEvent)=>{
   }
 }
 
-onMounted(()=>{init();containerRef.value?.focus();events.forEach(([e,h])=>window.addEventListener(e,h as any));window.addEventListener('unhandledrejection',suppressError);window.addEventListener('shape-created',handleShapeCreated as any);setupTabObserver();if(isMobile()&&containerRef.value){containerRef.value.addEventListener('touchstart',handleTouchStart);containerRef.value.addEventListener('touchend',handleTouchEnd)};startReadTimer()})
+onMounted(()=>{init();containerRef.value?.focus();events.forEach(([e,h])=>window.addEventListener(e,h as any));window.addEventListener('unhandledrejection',suppressError);window.addEventListener('shape-created',handleShapeCreated as any);setupTabObserver();if(isMobile()&&containerRef.value){containerRef.value.addEventListener('touchstart',handleTouchStart);containerRef.value.addEventListener('touchend',handleTouchEnd)}})
 
-onUnmounted(async()=>{try{await markManager.value?.updateProgress?.()}catch{};savePosition();clearActiveReader();await markManager.value?.destroy();try{reader?.destroy();currentView.value?.cleanup?.();currentView.value?.viewer?.destroy?.()}catch{};inkToolManager?.destroy?.();shapeToolManager?.destroy?.();setTimeout(()=>viewerContainerRef.value&&(viewerContainerRef.value.innerHTML=''),50);events.forEach(([e,h])=>window.removeEventListener(e,h as any));window.removeEventListener('unhandledrejection',suppressError);window.removeEventListener('shape-created',handleShapeCreated as any);containerRef.value&&(containerRef.value as any).__observer?.disconnect();if(isMobile()&&containerRef.value){containerRef.value.removeEventListener('touchstart',handleTouchStart);containerRef.value.removeEventListener('touchend',handleTouchEnd)};stopReadTimer()})
-
-// 阅读时长计时
-let readTimer:any=null
-const startReadTimer=()=>{stopReadTimer();readTimer=setInterval(async()=>{if(document.hidden)return;const url=getBookUrl();if(url&&!url.startsWith('file://')){const{bookshelfManager}=await import('@/core/bookshelf');await bookshelfManager.updateReadTime(url,60)}},60000)}
-const stopReadTimer=()=>{if(readTimer){clearInterval(readTimer);readTimer=null}}
+onUnmounted(async()=>{savePosition();clearActiveReader();await markManager.value?.destroy();try{reader?.destroy();currentView.value?.cleanup?.();currentView.value?.viewer?.destroy?.()}catch{};inkToolManager?.destroy?.();shapeToolManager?.destroy?.();setTimeout(()=>viewerContainerRef.value&&(viewerContainerRef.value.innerHTML=''),50);events.forEach(([e,h])=>window.removeEventListener(e,h as any));window.removeEventListener('unhandledrejection',suppressError);window.removeEventListener('shape-created',handleShapeCreated as any);containerRef.value&&(containerRef.value as any).__observer?.disconnect();if(isMobile()&&containerRef.value){containerRef.value.removeEventListener('touchstart',handleTouchStart);containerRef.value.removeEventListener('touchend',handleTouchEnd)}})
 </script>
 
 <style scoped lang="scss">

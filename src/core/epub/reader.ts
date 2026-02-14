@@ -8,7 +8,7 @@ import type { FoliateView, Location } from './types'
 import type { ReaderSettings } from '@/composables/useSetting'
 import { PRESET_THEMES } from '@/composables/useSetting'
 import { bookSourceManager } from '@/core/book'
-import { createTooltip, showTooltip, hideTooltip } from '@/core/annotation'
+import { createTooltip, showTooltip, hideTooltip } from '@/core/MarkManager'
 import { EPUBSearch } from './search'
 import 'foliate-js/view.js'
 
@@ -22,7 +22,6 @@ interface TxtChapter {
 export interface ReaderOptions {
   container: HTMLElement
   settings: ReaderSettings
-  bookUrl: string
   plugin: Plugin
 }
 
@@ -81,8 +80,10 @@ function applyCustomCSS(view: FoliateView, s: ReaderSettings) {
 
 function getCurrentLocation(view: FoliateView): Location | null {
   try {
-    const loc = view.renderer?.location
-    return loc ? { index: loc.index ?? 0, fraction: loc.fraction ?? 0, cfi: view.lastLocation?.cfi } : null
+    const renderer = view.renderer as any
+    if (renderer?.index !== undefined) return { index: renderer.index ?? 0, fraction: renderer.fraction ?? 0, cfi: view.lastLocation?.cfi }
+    if (view.lastLocation) return { index: view.lastLocation.index ?? 0, fraction: view.lastLocation.fraction ?? 0, cfi: view.lastLocation.cfi }
+    return null
   } catch (e) {
     console.error('[FoliateView] Failed to get location:', e)
     return null
@@ -100,7 +101,6 @@ export class FoliateReader {
   private view: FoliateView
   private container: HTMLElement
   private settings: ReaderSettings
-  private bookUrl: string
   private plugin: Plugin
 
   // 统一标记管理器（从外部设置）
@@ -115,7 +115,6 @@ export class FoliateReader {
   constructor(options: ReaderOptions) {
     this.container = options.container
     this.settings = options.settings
-    this.bookUrl = options.bookUrl
     this.plugin = options.plugin
 
     // 创建 View

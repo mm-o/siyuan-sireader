@@ -74,17 +74,34 @@ class BookshelfManager {
     return { total: (await this.getBooks()).length, ...dbStats };
   }
   
-  // 进度管理
-  async updateProgress(url: string, progress: number, chapter?: number, cfi?: string) { 
-    const book = await this.getBook(url); 
-    if (!book) return false; 
-    const p = Math.max(0, Math.min(100, progress)), now = Date.now(), status = p === 0 ? 'unread' : p === 100 ? 'finished' : 'reading'; 
-    return this.updateBook(url, { progress: p, status, read: now, pos: { ...book.pos, chapter: chapter ?? book.pos.chapter, timestamp: now, cfi }, ...(chapter !== undefined && { chapter }), ...(p === 100 && { finished: now }) }); 
+  // ===== 进度管理 =====
+  // 更新阅读进度：保存进度百分比、章节、位置信息
+  async updateProgress(url:string,progress:number,chapter?:number,cfi?:string){
+    const book=await this.getBook(url);if(!book)return false
+    const p=Math.max(0,Math.min(100,progress)),now=Date.now(),status=p===0?'unread':p===100?'finished':'reading' // 限制进度范围并计算状态
+    return this.updateBook(url,{progress:p,status,read:now,pos:{...book.pos,chapter:chapter??book.pos.chapter,timestamp:now,cfi},...(chapter!==undefined&&{chapter}),...(p===100&&{finished:now})})
   }
   
-  updateRating = async (url: string, rating: number) => this.updateBook(url, { rating: rating ? Math.max(1, Math.min(5, rating)) : undefined })
-  updateStatus = async (url: string, status: BookStatus) => this.updateBook(url, { status, ...(status === 'finished' && { finished: Date.now(), progress: 100 }) })
-  updateReadTime = async (url: string, seconds: number) => { const book = await this.getBook(url); return book ? this.updateBook(url, { time: (book.time || 0) + seconds }) : false; }
+  // 自动更新进度：根据 reader/pdfViewer 自动获取当前位置并更新
+  async updateProgressAuto(url:string,reader?:any,pdfViewer?:any){
+    try{
+      if(pdfViewer){const p=pdfViewer.getCurrentPage()||1,t=pdfViewer.getPageCount()||1;await this.updateProgress(url,Math.round((p/t)*100),p,`#page-${p}`)} // PDF: 页码/总页数
+      else if(reader){const loc=reader.getLocation?.();if(loc?.fraction!==undefined)await this.updateProgress(url,Math.round(loc.fraction*100),loc.index,loc.cfi)} // EPUB: fraction/index/cfi
+    }catch(e){console.error('[Progress]',e)}
+  }
+  
+  // 恢复阅读进度：跳转到上次阅读位置
+  async restoreProgress(url:string,reader?:any,pdfViewer?:any){
+    try{
+      const book=await this.getBook(url);if(!book)return
+      if(pdfViewer){const page=book.chapter||0,total=pdfViewer.getPageCount();if(page>=1&&page<=total)pdfViewer.goToPage(page);else if(book.pos?.cfi?.startsWith('#page-')){const p=parseInt(book.pos.cfi.replace('#page-',''));if(p>=1&&p<=total)pdfViewer.goToPage(p)}} // PDF: 跳转到页码
+      else if(reader){if(book.pos?.cfi)await reader.goTo(book.pos.cfi);else if(book.chapter!==undefined)await reader.goTo(book.chapter)} // EPUB: 跳转到 CFI 或章节
+    }catch(e){console.error('[Restore]',e)}
+  }
+  
+  updateRating=async(url:string,rating:number)=>this.updateBook(url,{rating:rating?Math.max(1,Math.min(5,rating)):undefined}) // 更新评分(1-5星)
+  updateStatus=async(url:string,status:BookStatus)=>this.updateBook(url,{status,...(status==='finished'&&{finished:Date.now(),progress:100})}) // 更新状态(未读/在读/已读)
+  updateReadTime=async(url:string,seconds:number)=>{const book=await this.getBook(url);return book?this.updateBook(url,{time:(book.time||0)+seconds}):false} // 累加阅读时长
   
   // ===== 标签管理 =====
   manageTags = async (url: string, action: 'add' | 'remove' | 'set', data: string | string[]) => {
