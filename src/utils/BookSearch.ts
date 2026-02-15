@@ -1,6 +1,6 @@
 import JSZip from 'jszip'
 import { fetchSyncPost, fetchPost } from 'siyuan'
-import { ruleParser } from './RuleParser'
+import { ruleParser } from '@/utils/RuleParser'
 
 // 规则引擎（简化版）
 class RuleEngine {
@@ -144,7 +144,7 @@ class BookSourceManager {
     // 如果启用 Z-Library，先搜索 Z-Library
     if (includeZLib && !sourceUrl) {
       try {
-        const { annaArchive } = await import('./anna')
+        const { annaArchive } = await import('@/utils/AnnaBook')
         const annaBooks = await annaArchive.search(keyword, page)
         if (annaBooks.length > 0) {
           const sourceName = annaArchive.getCurrentSource().name

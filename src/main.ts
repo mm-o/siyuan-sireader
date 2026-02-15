@@ -2,8 +2,8 @@ import { Plugin } from 'siyuan'
 import { createApp } from 'vue'
 import App from './App.vue'
 import { bookshelfManager } from '@/core/bookshelf'
-import { initDictModule } from '@/core/dictionary'
-import { initMobile, isMobile } from '@/core/mobile'
+import { initDictModule } from '@/utils/dictionary'
+import { initMobile, isMobile } from '@/utils/mobile'
 import { setPlugin } from '@/utils/copy'
 
 let plugin: Plugin | null = null

@@ -1,9 +1,9 @@
 <template>
-  <div class="sr-toc" @click="showFilterMenu=false;showBindMenu=false;showDeckNotebookMenu=false">
+  <div class="sr-toc" @click="showFilterMenu=false">
     <!-- 工具栏 -->
     <div class="sr-toolbar">
       <input v-model="keyword" :placeholder="placeholders[mode]">
-      <div v-if="mode==='mark'||mode==='note'" class="sr-select">
+      <div v-if="mode==='mark'" class="sr-select">
         <button class="b3-tooltips b3-tooltips__sw" @click.stop="showFilterMenu=!showFilterMenu" :aria-label="filterLabel">
           <svg><use xlink:href="#lucide-sliders-horizontal"/></svg>
         </button>
@@ -37,46 +37,13 @@
       <button v-if="mode==='deck'" class="b3-tooltips b3-tooltips__sw" @click="deckTab='settings'" :class="{active:deckTab==='settings'}" aria-label="设置">
         <svg><use xlink:href="#lucide-settings-2"/></svg>
       </button>
-      <button v-if="mode==='bookmark'||mode==='mark'||mode==='note'||mode==='toc'" class="b3-tooltips b3-tooltips__sw" @click="isReverse=!isReverse" :aria-label="isReverse?'倒序':'正序'">
+      <button v-if="mode==='bookmark'||mode==='mark'||mode==='toc'" class="b3-tooltips b3-tooltips__sw" @click="isReverse=!isReverse" :aria-label="isReverse?'倒序':'正序'">
         <svg><use :xlink:href="isReverse?'#lucide-arrow-up-1-0':'#lucide-arrow-down-0-1'"/></svg>
       </button>
-      <button v-if="mode==='bookmark'||mode==='mark'||mode==='note'" class="b3-tooltips b3-tooltips__sw" @click="toggleScroll" :aria-label="scrollBtnLabel">
-        <svg><use :xlink:href="isAtTop?'#lucide-panel-top-open':'#lucide-panel-top-close'"/></svg>
-      </button>
-      <div v-if="mode==='mark'||mode==='note'" class="sr-select">
-        <button class="b3-tooltips b3-tooltips__sw" @click.stop="showBindMenu=!showBindMenu" :aria-label="bindDocName||props.i18n?.bindDoc"><svg><use xlink:href="#iconRef"/></svg></button>
-        <div v-if="showBindMenu" class="sr-menu sr-bind-menu" @click.stop>
-          <template v-if="bindDocId">
-            <Transition name="fade">
-              <div v-if="confirmUnbind" class="sr-confirm" @click.stop>
-                <span>{{ props.i18n?.confirmUnbind }}</span>
-                <button @click="confirmUnbind=false">{{ props.i18n?.cancel }}</button>
-                <button @click="unbindDoc" class="b3-button b3-button--text" style="color:var(--b3-theme-error)">{{ props.i18n?.unbind }}</button>
-              </div>
-            </Transition>
-            <div class="sr-menu-item active" style="flex-direction:column;align-items:flex-start">
-              <div style="font-weight:600;color:var(--b3-theme-primary);font-size:12px">{{ bindDocName }}</div>
-              <div style="font-size:10px;opacity:.5;font-family:monospace;margin-top:2px">{{ bindDocId }}</div>
-            </div>
-            <div class="sr-menu-item" style="justify-content:space-between">
-              <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" v-model="autoSync" @change="toggleAutoSync" style="cursor:pointer"><span>{{ props.i18n?.autoSync }}</span></label>
-              <button @click="syncAllMarks" class="sr-sync-btn b3-tooltips b3-tooltips__w" :class="{syncing:isSyncing}" :disabled="isSyncing" :aria-label="props.i18n?.syncAll"><svg><use xlink:href="#iconRefresh"/></svg></button>
-            </div>
-            <div class="sr-menu-item">
-              <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" v-model="syncDelete" @change="toggleSyncDelete" style="cursor:pointer"><span>{{ props.i18n?.syncDelete }}</span></label>
-            </div>
-            <div class="sr-menu-divider"></div>
-            <div class="sr-menu-item" @click="confirmUnbind=true" style="color:var(--b3-theme-error)">{{ props.i18n?.unbind }}</div>
-          </template>
-          <input v-model="bindSearch" :placeholder="props.i18n?.searchDoc" @input="searchBindDoc" style="width:100%;padding:8px;border:1px solid var(--b3-border-color);border-radius:4px;font-size:13px;outline:none;margin-bottom:8px">
-          <div v-for="d in bindResults" :key="d.path" class="sr-menu-item" @click="bindDoc(d)">{{ d.hPath||props.i18n?.noTitle }}</div>
-          <div v-if="bindSearch&&!bindResults.length" class="sr-empty-small">{{ props.i18n?.notFound }}</div>
-        </div>
-      </div>
     </div>
 
     <!-- 内容区 -->
-    <div ref="contentRef" class="sr-content" @scroll="onScroll">
+    <div ref="contentRef" class="sr-content">
       <!-- 目录 -->
       <div v-show="mode==='toc'&&!showThumbnail" ref="tocRef"></div>
       
@@ -102,8 +69,8 @@
           </div>
         </div>
         
-        <!-- 标注/笔记 -->
-        <div v-else-if="mode==='mark'||mode==='note'" :key="mode" class="sr-list">
+        <!-- 标注和笔记 -->
+        <div v-else-if="mode==='mark'" :key="mode" class="sr-list">
           <div v-if="!list.length" class="sr-empty">{{ emptyText }}</div>
           <template v-else v-for="(item,i) in list" :key="item.key||item.groupId||item.id||item.page||i">
             <!-- 分组头 -->
@@ -207,19 +174,17 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
-import { showMessage, Dialog, fetchSyncPost } from 'siyuan'
+import { showMessage } from 'siyuan'
 import DeckHub from './deck/DeckHub.vue'
 import { COLORS, STYLES, getColorMap, formatTime } from '@/core/MarkManager'
 import { useReaderState } from '@/core/epub'
 import { jump } from '@/utils/jump'
 import { copyMark as copyMarkUtil, openBlock, showFloat, hideFloat } from '@/utils/copy'
 import { drawInk, renderInkCanvas as renderInkUtil } from '@/core/pdf/ink'
-import { drawShape as drawShapeUtil, renderShapeCanvas as renderShapeUtil } from '@/core/pdf/shape'
-import { searchDocs } from '@/composables/useSetting'
+import { renderShapeCanvas as renderShapeUtil } from '@/core/pdf/shape'
 import { bookshelfManager } from '@/core/bookshelf'
 
-const props = withDefaults(defineProps<{ mode: 'toc'|'bookmark'|'mark'|'note'|'deck'; i18n?: any }>(), { i18n: () => ({}) })
-const emit = defineEmits(['update:mode'])
+const props = withDefaults(defineProps<{ mode: 'toc'|'bookmark'|'mark'|'deck'; i18n?: any }>(), { i18n: () => ({}) })
 
 // 响应式状态
 const { activeView, activeReader } = useReaderState()
@@ -228,7 +193,7 @@ const goToLocation = async (location: string | number) => activeView.value?.goTo
 // ===== 状态 =====
 const tocRef=ref<HTMLElement>(),contentRef=ref<HTMLElement>(),editNoteRef=ref<HTMLTextAreaElement>(),thumbContainer=ref<HTMLElement>()
 const keyword=ref(''),showFilterMenu=ref(false),showThumbnail=ref(false)
-const isReverse=ref(false),isAtTop=ref(true),refreshKey=ref(0)
+const isReverse=ref(false),refreshKey=ref(0)
 const deckTab=ref<'cards'|'packs'|'stats'|'review'|'settings'>('cards')
 const filter=ref({color:'',sort:'time'}),collapsed=ref(new Set<string>())
 const expandedGroup=ref<number|null>(null)
@@ -238,11 +203,10 @@ const editShapeType=ref<'rect'|'circle'|'triangle'>('rect')
 const shapes=[{type:'rect',label:'矩形',icon:'#iconSquareDashed'},{type:'circle',label:'圆形',icon:'#iconCircleDashed'},{type:'triangle',label:'三角形',icon:'#iconTriangleDashed'}]
 const loadedThumbs=ref<Record<number,string>>({})
 const shapePreviewCache=new Map<string,string>()
-const showBindMenu=ref(false),bindSearch=ref(''),bindResults=ref<any[]>([]),bindDocId=ref(''),bindDocName=ref(''),confirmUnbind=ref(false)
 
 // ===== 常量 =====
 const colors=getColorMap()
-const placeholders={toc:'搜索目录...',bookmark:'搜索书签...',mark:'搜索标注...',note:'搜索笔记...',deck:'搜索 · 卡组: 标签: 状态: 属性:'}
+const placeholders={toc:'搜索目录...',bookmark:'搜索书签...',mark:'搜索标注和笔记...',deck:'搜索 · 卡组: 标签: 状态: 属性:'}
 
 // ===== Computed =====
 const filterOpts=computed(()=>({
@@ -280,9 +244,9 @@ const data=computed(()=>{
   return{bookmarks:marks.value.getBookmarks(),marks:[...marks.value.getAnnotations(filter.value.color as any),...inkGroups,...shapeGroups],notes:marks.value.getNotes()}
 })
 const list=computed(()=>{
-  const kw=keyword.value.toLowerCase(),key={bookmark:'bookmarks',mark:'marks',note:'notes'}[props.mode]
+  const kw=keyword.value.toLowerCase(),key={bookmark:'bookmarks',mark:'marks'}[props.mode]
   let items=(data.value[key]||[]).filter((m:any)=>!kw||(m.title||m.text||m.note||'').toLowerCase().includes(kw))
-  if((props.mode==='mark'||props.mode==='note')&&filter.value.sort!=='time'){
+  if(props.mode==='mark'&&filter.value.sort!=='time'){
     const sortKey=filter.value.sort==='chapter'?'chapter':'date'
     items.sort((a:any,b:any)=>{
       const ka=sortKey==='chapter'?(a.chapter||'未分类'):formatTime(a.timestamp||0)
@@ -301,7 +265,6 @@ const list=computed(()=>{
   return isReverse.value?[...items].reverse():items
 })
 const emptyText=computed(()=>keyword.value?`${props.i18n?.notFound||'未找到'}${placeholders[props.mode].replace(/搜索|\.\.\./g,'')}`:`${props.i18n?.empty||'暂无'}${placeholders[props.mode].replace(/搜索|\.\.\./g,'')}`)
-const scrollBtnLabel=computed(()=>isAtTop.value?'到底部':'到顶部')
 // ===== 目录 =====
 let tocView:any,relocateHandler:any,bookmarkObs:IntersectionObserver|null,tocInteract=0
 
@@ -400,59 +363,19 @@ const goToPage=(p:number)=>jump(p,activeView.value,activeReader.value,marks.valu
 const preloadPage=(p:number)=>{const v=(activeView.value as any)?.viewer;if(v?.renderPage)v.renderPage(p)}
 const toggleExpand=(m:any)=>{const id=m.groupId;expandedGroup.value=expandedGroup.value===id?null:id;if(expandedGroup.value){preloadPage(m.page);setTimeout(()=>{renderInkCanvas();renderShapeCanvas()},100)}}
 const isExpanded=(m:any)=>expandedGroup.value===m.groupId
-const toggleScroll=()=>{
-  if(!contentRef.value)return
-  const target=isAtTop.value?contentRef.value.scrollHeight:0
-  contentRef.value.scrollTo({top:target,behavior:'smooth'})
-}
-const onScroll=(e:Event)=>{
-  const el=e.target as HTMLElement
-  isAtTop.value=el.scrollTop<50
-}
 
-// ===== 绑定文档 =====
-const getUrl=()=>(window as any).__currentBookUrl,getId=(d:any)=>d.path?.split('/').pop()?.replace('.sy','')||d.id
-const autoSync=ref(false),syncDelete=ref(false),isSyncing=ref(false)
-const searchBindDoc=async()=>{bindResults.value=bindSearch.value.trim()?await searchDocs(bindSearch.value.trim()):[]}
+// ===== 状态管理 =====
+const getUrl=()=>(window as any).__currentBookUrl
 const updateBook=async(u:any)=>{const url=getUrl();if(!url)return;await bookshelfManager.updateBook(url,u)}
 const loadState=async()=>{
   const b=await bookshelfManager.getBook(getUrl())
   if(!b)return
-  bindDocId.value=b.bindDocId||'';bindDocName.value=b.bindDocName||'';autoSync.value=!!b.autoSync;syncDelete.value=!!b.syncDelete
   filter.value={color:b.filterColor||'',sort:b.filterSort||'time'};isReverse.value=!!b.isReverse
 }
 const saveState=()=>updateBook({filterColor:filter.value.color,filterSort:filter.value.sort,isReverse:isReverse.value})
-const bindDoc=async(d:any)=>{
-  const id=getId(d)
-  if(!id)return showMsg('文档ID无效','error')
-  await updateBook({bindDocId:id,bindDocName:d.hPath||d.content||'无标题'})
-  await loadState()
-  showMsg('已绑定');showBindMenu.value=bindSearch.value='';bindResults.value=[]
-}
-const unbindDoc=async()=>{await updateBook({bindDocId:'',bindDocName:'',autoSync:false,syncDelete:false});bindDocId.value=bindDocName.value='';autoSync.value=syncDelete.value=false;confirmUnbind.value=false;showMsg('已解绑')}
-const toggleAutoSync=async()=>{await updateBook({autoSync:autoSync.value});showMsg(autoSync.value?'已开启添加同步':'已关闭添加同步')}
-const toggleSyncDelete=async()=>{await updateBook({syncDelete:syncDelete.value});showMsg(syncDelete.value?'已开启删除同步':'已关闭删除同步')}
-const syncAllMarks=async()=>{
-  if(isSyncing.value)return
-  const url=getUrl(),book=url&&await bookshelfManager.getBook(url)
-  if(!book?.bindDocId)return showMsg('未绑定文档','error')
-  isSyncing.value=true
-  try{
-    const{importMark,isMarkImported}=await import('@/utils/copy')
-    const all=data.value.marks.filter((m:any)=>!m.type||m.type==='highlight'||m.type==='note')
-    let count=0
-    for(const m of all)if(!await isMarkImported(m,book.bindDocId)){
-      await importMark(m,{bookUrl:url,bookInfo:book,isPdf:(activeView.value as any)?.isPdf||false,reader:activeReader.value,pdfViewer:(activeView.value as any)?.viewer,shapeCache,showMsg:()=>{},i18n:props.i18n,marks:marks.value})
-      count++;await new Promise(r=>setTimeout(r,100))
-    }
-    showMsg(count?`已同步 ${count} 条`:'全部已同步')
-    refreshKey.value++
-  }catch(e){showMsg('同步失败','error')}finally{isSyncing.value=false}
-}
 
 // ===== Canvas渲染 =====
 const inkCache=new Map(),shapeCache=shapePreviewCache
-const drawShape=(c:HTMLCanvasElement,shape:any,retry=0,highRes=false)=>drawShapeUtil(c,shape,activeView.value,shapeCache,preloadPage,retry,highRes)
 const copyMark=(item:any)=>copyMarkUtil(item,{
   bookUrl:(window as any).__currentBookUrl||'',
   isPdf:(activeView.value as any)?.isPdf||false,
@@ -494,7 +417,7 @@ onUnmounted(()=>{cleanupToc();thumbObs?.disconnect();window.removeEventListener(
 </script>
 
 <style scoped lang="scss">
-@import './deck/deck.scss';
+@use './deck/deck.scss';
 .sr-toc{display:flex;flex-direction:column;height:100%;overflow:hidden}
 .dot{width:12px;height:12px;border-radius:50%;flex-shrink:0}
 .sr-menu-section{padding:6px 12px;font-size:11px;font-weight:600;color:var(--b3-theme-on-surface-variant);text-transform:uppercase;letter-spacing:.5px}
@@ -571,13 +494,7 @@ onUnmounted(()=>{cleanupToc();thumbObs?.disconnect();window.removeEventListener(
 .sr-preview{width:100%;height:auto;border-radius:4px;background:var(--b3-theme-background);display:block;opacity:.85;cursor:pointer}
 .sr-group-preview{height:80px;margin:6px 0}
 
-// 绑定文档
-.sr-select{position:relative}
-.sr-bind-menu,.sr-deck-notebook-menu{min-width:260px;right:0;top:calc(100% + 8px)}
-.sr-menu{position:absolute;background:var(--b3-theme-surface);border:1px solid var(--b3-border-color);border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,.15);max-height:300px;overflow-y:auto;z-index:1000}
-.sr-menu-item{padding:8px 12px;cursor:pointer;font-size:13px;transition:background .15s;&:hover{background:var(--b3-list-hover)}&.active{background:var(--b3-theme-primary-lightest);color:var(--b3-theme-primary)}}
-.sr-confirm{position:absolute;top:8px;left:8px;right:8px;z-index:100}
-.sr-sync-btn{width:24px;height:24px;padding:0;border:none;background:transparent;color:var(--b3-theme-primary);border-radius:4px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .2s;svg{width:14px;height:14px;transition:transform .6s}&:hover{background:var(--b3-theme-primary-lighter)}&.syncing{pointer-events:none;svg{animation:spin .6s linear infinite}}@keyframes spin{to{transform:rotate(360deg)}}}
+
 
 
 </style>

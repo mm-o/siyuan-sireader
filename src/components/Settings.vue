@@ -5,10 +5,10 @@ import { showMessage } from 'siyuan'
 import type { ReaderSettings, FontFileInfo } from '@/composables/useSetting'
 import { PRESET_THEMES, UI_CONFIG, useSetting, useConfirm } from '@/composables/useSetting'
 import BookSearch from './BookSearch.vue'
-import Bookshelf from './Bookshelf.vue'
+import BookShelf from './BookShelf.vue'
 import ReaderToc from './ReaderToc.vue'
 import { bookshelfManager } from '@/core/bookshelf'
-import { offlineDictManager, onlineDictManager } from '@/core/dictionary'
+import { offlineDictManager, onlineDictManager } from '@/utils/dictionary'
 import { usePlugin } from '@/main'
 import { useReaderState } from '@/core/epub'
 
@@ -17,7 +17,7 @@ const emit = defineEmits<{ 'update:modelValue': [value: ReaderSettings] }>()
 
 // 基础状态
 const settings = ref<ReaderSettings>(props.modelValue)
-const activeTab = ref<'appearance' | 'bookshelf' | 'search' | 'toc' | 'bookmark' | 'mark' | 'note' | 'deck'>('bookshelf')
+const activeTab = ref<'appearance' | 'bookshelf' | 'search' | 'toc' | 'bookmark' | 'mark' | 'deck'>('bookshelf')
 const previewExpanded = ref(localStorage.getItem('sr-preview-expanded') !== '0')
 const activeAccordion = ref<string>('') // 主手风琴状态（互斥）
 const activeSub = ref<string>('') // 子手风琴状态（独立）
@@ -94,9 +94,8 @@ const navItems = computed(() => {
     { id: 'search', icon: 'lucide-book-search', tip: 'search', enabled: true, order: 1 },
     { id: 'deck', icon: 'lucide-wallet-cards', tip: '卡包', enabled: true, order: 2 },
     { id: 'toc', icon: 'lucide-scroll-text', tip: '目录', enabled: true, order: 3 },
-    { id: 'bookmark', icon: 'lucide-map-pin-check', tip: '书签', enabled: true, order: 4 },
-    { id: 'mark', icon: 'lucide-paint-bucket', tip: '标注', enabled: true, order: 5 },
-    { id: 'note', icon: 'lucide-map-pin-pen', tip: '笔记', enabled: true, order: 6 },
+    { id: 'bookmark', icon: 'lucide-bookmark-check', tip: '书签', enabled: true, order: 4 },
+    { id: 'mark', icon: 'lucide-square-pen', tip: '标注', enabled: true, order: 5 },
     { id: 'appearance', icon: 'lucide-settings-2', tip: '设置', enabled: true, order: 7 }
   ]).filter(item => item.id !== 'dictionary')
   return items.sort((a, b) => a.order - b.order)
@@ -130,7 +129,7 @@ onMounted(() => {
     onlineDicts.value = onlineDictManager.getDicts()
   }).finally(() => loadingDict.value = false)
 })
-watch(canShowToc, (show) => !show && ['toc', 'bookmark', 'mark', 'note'].includes(activeTab.value) && (activeTab.value = 'bookshelf'))
+watch(canShowToc, (show) => !show && ['toc', 'bookmark', 'mark'].includes(activeTab.value) && (activeTab.value = 'bookshelf'))
 </script>
 
 <template>
@@ -277,8 +276,8 @@ watch(canShowToc, (show) => !show && ['toc', 'bookmark', 'mark', 'note'].include
             <button v-else key="reset" class="ds-reset" @click="handleReset">{{i18n.resetDefault||'重置为默认'}}</button>
           </Transition>
         </div>
-        <Bookshelf v-else-if="activeTab==='bookshelf'" :key="activeTab" :i18n="i18n" @read="handleReadOnline"/>
-        <ReaderToc v-else-if="['toc','bookmark','mark','note','deck'].includes(activeTab)" :key="activeTab" v-model:mode="activeTab" :i18n="props.i18n"/>
+        <BookShelf v-else-if="activeTab==='bookshelf'" :key="activeTab" :i18n="i18n" @read="handleReadOnline"/>
+        <ReaderToc v-else-if="['toc','bookmark','mark','deck'].includes(activeTab)" :key="activeTab" v-model:mode="activeTab" :i18n="props.i18n"/>
       </Transition>
       <BookSearch v-show="activeTab==='search'" :i18n="i18n" @read="handleReadOnline"/>
     </main>

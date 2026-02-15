@@ -193,7 +193,7 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { bookshelfManager, SORTS, STATUS_OPTIONS, STATUS_MAP, RATING_OPTIONS, FORMAT_OPTIONS, type SortType, type Book, type BookStatus, type BookFormat, type GroupConfig } from '@/core/bookshelf'
 import { showMessage, Menu } from 'siyuan'
-import { isMobile } from '@/core/mobile'
+import { isMobile } from '@/utils/mobile'
 import { searchDocs } from '@/composables/useSetting'
 import { getDatabase } from '@/core/database'
 

@@ -133,7 +133,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { bookSourceManager } from '@/core/book'
+import { bookSourceManager } from '@/utils/BookSearch'
 import { bookshelfManager } from '@/core/bookshelf'
 import { showMessage } from 'siyuan'
 import SourceMgr from './SourceMgr.vue'

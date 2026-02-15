@@ -2,7 +2,7 @@ import { openTab } from 'siyuan'
 import type { Plugin } from 'siyuan'
 import { bookshelfManager, type Book } from '@/core/bookshelf'
 import type { ReaderSettings } from '@/composables/useSetting'
-import { isMobile } from '@/core/mobile'
+import { isMobile } from '@/utils/mobile'
 
 // 查找已打开的标签页
 export const findOpenedTab = (bookName: string) => {
@@ -20,15 +20,12 @@ export const getBookWithFallback = async (manager: typeof bookshelfManager, book
   if (!book) return null
   
   // 在线书籍延迟加载章节
-  if (book.format === 'online' && book.source?.origin && !book.toc?.length) {
+  if (book.format === 'online' && book.source?.origin && !book.total) {
     try {
-      const { bookSourceManager } = await import('@/core/book')
+      const { bookSourceManager } = await import('@/utils/BookSearch')
       const info = await bookSourceManager.getBookInfo(book.source.origin, book.url)
       const chapters = await bookSourceManager.getChapters(book.source.origin, info.tocUrl || book.url)
-      const toc = chapters.map((ch: any, i: number) => ({ label: ch.name, href: ch.url }))
-      await manager.updateBook(book.url, { toc, total: chapters.length })
-      book.toc = toc
-      book.total = chapters.length
+      await manager.updateBook(book.url, { total: chapters.length })
     } catch (e) {
       console.error('[章节加载]', e)
       return null

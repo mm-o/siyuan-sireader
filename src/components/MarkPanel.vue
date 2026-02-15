@@ -352,7 +352,7 @@ const handleOverlayClick = (e: MouseEvent) => {
 </script>
 
 <style scoped lang="scss">
-@import './deck/deck.scss';
+@use './deck/deck.scss';
 .mark-overlay{position:fixed;inset:0;z-index:900;background:transparent}
 .mark-selection-menu{position:fixed;z-index:950;display:flex;gap:4px;padding:6px;background:var(--b3-theme-surface);border:1px solid var(--b3-border-color);border-radius:8px;box-shadow:0 4px 16px #0002}
 .mark-menu-btn{width:32px;height:32px;display:flex;align-items:center;justify-content:center;border:none;background:transparent;border-radius:8px;cursor:pointer;transition:all .15s;color:var(--b3-theme-on-surface);svg{width:16px;height:16px}&:hover{background:var(--b3-list-hover);color:var(--b3-theme-primary)}}

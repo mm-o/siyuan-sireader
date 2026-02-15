@@ -31,8 +31,8 @@ class BookshelfManager {
     if (!info.url) throw new Error('URL required');
     const db = await getDatabase();
     if (await db.getBook(info.url)) throw new Error('已存在');
-    const now = Date.now(), toc = info.toc || [], total = toc.length;
-    await db.saveBook({ url: info.url, title: info.title || '未知', author: info.author || '未知', cover: info.cover || '', format: info.format || 'epub', path: info.path || '', size: info.size || 0, added: now, read: now, finished: 0, status: info.status || 'unread', progress: info.progress || 0, time: 0, chapter: 0, total, pos: info.location || {}, source: info.source || {}, rating: info.rating || 5, meta: info.metadata || {}, tags: info.tags || [], groups: info.groups || [], toc, bindDocId: '', bindDocName: '', autoSync: false, syncDelete: false });
+    const now = Date.now();
+    await db.saveBook({ url: info.url, title: info.title || '未知', author: info.author || '未知', cover: info.cover || '', format: info.format || 'epub', path: info.path || '', size: info.size || 0, added: now, read: now, finished: 0, status: info.status || 'unread', progress: info.progress || 0, time: 0, chapter: 0, total: 0, pos: info.location || {}, source: info.source || {}, rating: info.rating || 5, meta: info.metadata || {}, tags: info.tags || [], groups: info.groups || [], bindDocId: '', bindDocName: '', autoSync: false, syncDelete: false });
     this.notify();
   }
 
@@ -246,32 +246,31 @@ class BookshelfManager {
     const format = this.getFormat(file.name), name = file.name.replace(/\.[^.]+$/, ''), url = `${format}://${file.name}_${file.size}`;
     const meta = await this.extractMeta(file, format, name);
     const [path, cover] = await Promise.all([this.saveFile(file, meta.title || name, url), meta.coverBlob ? this.saveCover(meta.coverBlob, meta.title || name, url) : Promise.resolve(undefined)]);
-    await this.addBook({ url, title: meta.title || name, author: meta.author || '未知作者', cover, format, path, size: file.size, metadata: { publisher: meta.publisher, publishDate: meta.published, language: meta.language, isbn: meta.identifier, description: meta.intro, series: meta.series }, toc: meta.chapters || [] });
+    await this.addBook({ url, title: meta.title || name, author: meta.author || '未知作者', cover, format, path, size: file.size, metadata: { publisher: meta.publisher, publishDate: meta.published, language: meta.language, isbn: meta.identifier, description: meta.intro, series: meta.series } });
   }
   
   async addAssetBook(assetPath: string, file: File) {
     await this.init();
     const format = this.getFormat(file.name), name = file.name.replace(/\.[^.]+$/, ''), url = `asset://${assetPath}`;
     const meta = await this.extractMeta(file, format, name);
-    await this.addBook({ url, title: meta.title || name, author: meta.author || '未知作者', cover: meta.coverBlob ? await this.saveCover(meta.coverBlob, meta.title || name, url) : undefined, format, path: assetPath, metadata: { publisher: meta.publisher, publishDate: meta.published, language: meta.language, isbn: meta.identifier, description: meta.intro, series: meta.series }, toc: meta.chapters || [] });
+    await this.addBook({ url, title: meta.title || name, author: meta.author || '未知作者', cover: meta.coverBlob ? await this.saveCover(meta.coverBlob, meta.title || name, url) : undefined, format, path: assetPath, metadata: { publisher: meta.publisher, publishDate: meta.published, language: meta.language, isbn: meta.identifier, description: meta.intro, series: meta.series } });
   }
   
   private getFormat = (path: string): BookFormat => { const ext = path.split('.').pop()?.toLowerCase() || ''; return ({ epub: 'epub', pdf: 'pdf', mobi: 'mobi', azw3: 'azw3', azw: 'azw3', txt: 'txt' } as Record<string, BookFormat>)[ext] || 'epub'; };
   
   private async extractMeta(file: File, format: BookFormat, defaultName: string) {
-    const def = { title: defaultName, author: '未知作者', chapters: [], publisher: undefined, published: undefined, language: undefined, identifier: undefined, intro: undefined, subjects: [], series: undefined, coverBlob: undefined, subtitle: undefined };
+    const def = { title: defaultName, author: '未知作者', publisher: undefined, published: undefined, language: undefined, identifier: undefined, intro: undefined, subjects: [], series: undefined, coverBlob: undefined, subtitle: undefined };
     if (!['epub', 'mobi', 'azw3'].includes(format)) return def;
     try {
       const view = document.createElement('foliate-view') as any;
       await Promise.race([view.open(file), new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 10000))]);
-      const { metadata = {}, toc = [] } = view.book || {};
+      const { metadata = {} } = view.book || {};
       const norm = (v: any) => typeof v === 'string' ? v : (v?.['zh-CN'] || v?.['zh'] || v?.['en'] || Object.values(v || {})[0] || '');
       const arr = (v: any) => v ? (Array.isArray(v) ? v : [v]) : [];
       const contrib = (v: any) => arr(v).map((c: any) => typeof c === 'string' ? c : norm(c?.name)).filter(Boolean).join(', ') || undefined;
-      const convertToc = (items: any[]): any[] => Array.isArray(items) ? items.map((t: any) => ({ label: norm(t.label) || '', href: t.href || '', subitems: t.subitems ? convertToc(t.subitems) : [] })).filter((c: any) => c.label || c.href) : [];
-      const [chapters, coverBlob] = await Promise.all([Promise.resolve(convertToc(toc)), format === 'epub' ? this.extractCover(file).catch(() => undefined) : undefined]);
+      const coverBlob = format === 'epub' ? await this.extractCover(file).catch(() => undefined) : undefined;
       view.remove();
-      return { title: norm(metadata.title) || defaultName, subtitle: norm(metadata.subtitle), author: contrib(metadata.author) || '未知作者', publisher: contrib(metadata.publisher), published: metadata.published instanceof Date ? metadata.published.toISOString().split('T')[0] : metadata.published ? String(metadata.published) : undefined, language: arr(metadata.language)[0], identifier: arr(metadata.identifier)[0], intro: metadata.description, subjects: arr(metadata.subject).map((s: any) => typeof s === 'string' ? s : norm(s?.name)).filter(Boolean), series: Array.isArray(metadata.belongsTo) ? metadata.belongsTo[0] : metadata.belongsTo, coverBlob, chapters };
+      return { title: norm(metadata.title) || defaultName, subtitle: norm(metadata.subtitle), author: contrib(metadata.author) || '未知作者', publisher: contrib(metadata.publisher), published: metadata.published instanceof Date ? metadata.published.toISOString().split('T')[0] : metadata.published ? String(metadata.published) : undefined, language: arr(metadata.language)[0], identifier: arr(metadata.identifier)[0], intro: metadata.description, subjects: arr(metadata.subject).map((s: any) => typeof s === 'string' ? s : norm(s?.name)).filter(Boolean), series: Array.isArray(metadata.belongsTo) ? metadata.belongsTo[0] : metadata.belongsTo, coverBlob };
     } catch { return def; }
   }
   

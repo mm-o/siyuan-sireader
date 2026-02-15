@@ -84,8 +84,8 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
-import { bookSourceManager } from '@/core/book'
-import { annaArchive } from '@/core/anna'
+import { bookSourceManager } from '@/utils/BookSearch'
+import { annaArchive } from '@/utils/AnnaBook'
 import { showMessage } from 'siyuan'
 
 const props = defineProps<{ i18n?: any }>()
@@ -166,7 +166,7 @@ onBeforeUnmount(() => (stopCheck.value = true, checking.value = false))
 </script>
 
 <style scoped lang="scss">
-@import './deck/deck.scss';
+@use './deck/deck.scss';
 .sr-source-mgr{position:absolute;inset:0;display:flex;flex-direction:column;background:var(--b3-theme-background);z-index:10}
 .sr-confirm-bar{display:flex;align-items:center;gap:6px;padding:8px 12px;border-bottom:1px solid var(--b3-theme-border);background:var(--b3-theme-surface);font-size:13px;span{flex:1;font-weight:500}button{padding:6px 12px;font-size:13px;line-height:1.4;border:1px solid var(--b3-border-color);background:var(--b3-theme-surface);color:var(--b3-theme-on-surface);border-radius:4px;cursor:pointer;transition:all .15s;white-space:nowrap;display:inline-flex;align-items:center;justify-content:center;&:hover{background:var(--b3-list-hover)}&.btn-delete{background:var(--b3-theme-error)!important;color:white!important;border-color:var(--b3-theme-error)!important;&:hover{opacity:.9!important;background:var(--b3-theme-error)!important}}}}
 .slide-enter-active,.slide-leave-active,.fade-enter-active,.fade-leave-active{transition:all .2s}

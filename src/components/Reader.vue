@@ -51,12 +51,12 @@ import { showMessage } from 'siyuan'
 import type { Plugin } from 'siyuan'
 import type { ReaderSettings } from '@/composables/useSetting'
 import { PRESET_THEMES } from '@/composables/useSetting'
-import { openDict as openDictDialog } from '@/core/dictionary'
+import { openDict as openDictDialog } from '@/utils/dictionary'
 import { createReader, type FoliateReader, setActiveReader, clearActiveReader } from '@/core/epub'
 import { createMarkManager, type MarkManager, getColorMap } from '@/core/MarkManager'
 import { createInkToolManager, type InkToolManager } from '@/core/pdf/ink'
 import { createShapeToolManager, type ShapeToolManager } from '@/core/pdf/shape'
-import { saveMobilePosition, getMobilePosition, isMobile } from '@/core/mobile'
+import { saveMobilePosition, getMobilePosition, isMobile } from '@/utils/mobile'
 import PdfToolbar from './PdfToolbar.vue'
 import MarkPanel from './MarkPanel.vue'
 import ReaderToc from './ReaderToc.vue'
@@ -125,7 +125,7 @@ const pageInput = ref(1)
 const totalPages = ref(0)
 const showSearch = ref(false)
 const showToc = ref(false)
-const tocMode = ref<'toc' | 'bookmark' | 'mark' | 'note' | 'deck'>('toc')
+const tocMode = ref<'toc' | 'bookmark' | 'mark' | 'deck'>('toc')
 const searchQuery = ref('')
 const searchResults = ref<any[]>([])
 const searchCurrentIndex = ref(0)
