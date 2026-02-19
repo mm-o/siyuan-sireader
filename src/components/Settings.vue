@@ -215,7 +215,7 @@ watch(canShowToc, (show) => !show && ['toc', 'bookmark', 'mark'].includes(active
                     <div class="ds-sub-title">{{i18n.customFont||'自定义字体'}}<svg class="ds-arrow" :class="{expanded:activeSub==='customFont'}" viewBox="0 0 24 24"><path d="M7 10l5 5 5-5z"/></svg></div>
                     <Transition name="expand">
                       <div v-if="activeSub==='customFont'">
-                        <small class="ds-hint"><code>data/plugins/custom-fonts/</code> <button class="ds-link-btn" @click.stop="loadCustomFonts" :disabled="isLoadingFonts">{{i18n.fontTip||'刷新'}}</button></small>
+                        <small class="ds-hint"><code>data/plugins/custom-fonts/</code> <button class="ds-link-btn" @click.stop="loadCustomFonts(true)" :disabled="isLoadingFonts">{{i18n.fontTip||'刷新'}}</button></small>
                         <div v-if="settings.textSettings.customFont.fontFamily" class="ds-font-sel" @click.stop="setFont()"><span :style="{fontFamily:settings.textSettings.customFont.fontFamily}">{{settings.textSettings.customFont.fontFamily}}</span><small>{{settings.textSettings.customFont.fontFile}} ✕</small></div>
                         <div v-if="isLoadingFonts" class="sr-empty">{{i18n.loadingFonts}}</div>
                         <div v-else-if="customFonts.length" class="ds-font-list"><div v-for="f in customFonts" :key="f.name" class="ds-font-item" :style="{fontFamily:f.displayName}" @click.stop="setFont(f)">{{f.displayName}}</div></div>
@@ -276,10 +276,11 @@ watch(canShowToc, (show) => !show && ['toc', 'bookmark', 'mark'].includes(active
             <button v-else key="reset" class="ds-reset" @click="handleReset">{{i18n.resetDefault||'重置为默认'}}</button>
           </Transition>
         </div>
-        <BookShelf v-else-if="activeTab==='bookshelf'" :key="activeTab" :i18n="i18n" @read="handleReadOnline"/>
-        <ReaderToc v-else-if="['toc','bookmark','mark','deck'].includes(activeTab)" :key="activeTab" v-model:mode="activeTab" :i18n="props.i18n"/>
+        <!-- 外部组件，不使用 Transition -->
       </Transition>
       <BookSearch v-show="activeTab==='search'" :i18n="i18n" @read="handleReadOnline"/>
+      <BookShelf v-show="activeTab==='bookshelf'" :i18n="i18n" :cover-size="settings.bookshelfCoverSize" @read="handleReadOnline"/>
+      <ReaderToc v-if="['toc','bookmark','mark','deck'].includes(activeTab)" v-model:mode="activeTab" :i18n="props.i18n"/>
     </main>
   </div>
 </template>

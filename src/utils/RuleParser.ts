@@ -1,4 +1,4 @@
-// 规则模式枚举
+// 规则模式枚举 
 enum Mode { Default, Json, XPath, Js, Regex }
 
 // 规则类型检测器

@@ -5,6 +5,7 @@ import type{Plugin}from'siyuan'
 import{Overlayer}from'foliate-js/overlayer.js'
 import{getDatabase}from'./database'
 import type{Annotation}from'./database'
+import{getHighlightCoordsByRange as pdfGetCoords}from'./pdf/PdfAnnotationHelper'
 
 type Format='pdf'|'epub'|'txt'
 type HighlightColor='yellow'|'red'|'green'|'blue'|'purple'|'orange'|'pink'
@@ -307,7 +308,8 @@ export class MarkManager{
     this.marks.filter(m=>m.page===page).forEach(m=>cleanTooltips(m.id))
     const pdfPage=this.pdfViewer.getPages().get(page)
     if(!pdfPage)return
-    const viewport=pdfPage.getViewport({scale:this.pdfViewer.getScale(),rotation:this.pdfViewer.getRotation()})
+    // 固定rotation为0，避免旋转影响坐标计算（思源优化）
+    const viewport=pdfPage.getViewport({scale:this.pdfViewer.getScale(),rotation:0})
     this.marks.filter(m=>m.page===page&&(m.type==='highlight'||m.type==='note'||m.type==='vocab')).forEach(m=>{
       const bg=getColorBg(m.color),style=m.style||'highlight'
       m.rects?.forEach((r,idx)=>{
@@ -325,6 +327,17 @@ export class MarkManager{
         if(m.note&&idx===m.rects!.length-1)this.createNoteMarker(m,{x:vx,y:vy,w:vw,h:vh},layer)
       })
     })
+  }
+
+  /** PDF选择优化 */
+  getPdfSelectionRects():any[]|null{
+    if(this.format!=='pdf'||!this.pdfViewer)return null
+    const sel=window.getSelection()
+    if(!sel?.rangeCount||!sel.getRangeAt(0).toString().trim())return null
+    try{
+      const ann=pdfGetCoords(this.pdfViewer,sel.getRangeAt(0),'#ffeb3b')
+      return ann?.flatMap(a=>a.coords.map(c=>({x:c[0],y:c[1],w:c[2]-c[0],h:c[3]-c[1]})))||null
+    }catch{return null}
   }
 
   renderTxt(doc:Document,section:number,markId?:string){

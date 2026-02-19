@@ -136,16 +136,18 @@ class BookshelfManager {
   }
   
   addBooksToGroup = async (urls: string[], gid: string) => this.batch(urls, url => this.manageGroup(url, gid, 'add'))
-  getGroupCount = async (gid: string) => {
+  getGroupCount = async (gid: string, groups?: GroupConfig[]) => {
     await this.init();
-    const group = (await this.getGroups()).find(g => g.id === gid);
+    const allGroups = groups || await this.getGroups();
+    const group = allGroups.find(g => g.id === gid);
     if (!group) return 0;
     if (group.type === 'smart') return (await this.getGroupBooks(gid)).length;
     return (await getDatabase()).getGroupCount(gid);
   }
-  getGroupPreviewBooks = async (gid: string, limit = 4) => {
+  getGroupPreviewBooks = async (gid: string, limit = 4, groups?: GroupConfig[]) => {
     await this.init();
-    const group = (await this.getGroups()).find(g => g.id === gid);
+    const allGroups = groups || await this.getGroups();
+    const group = allGroups.find(g => g.id === gid);
     if (!group) return [];
     if (group.type === 'smart') return (await this.getGroupBooks(gid)).slice(0, limit);
     return (await getDatabase()).getGroupPreviewBooks(gid, limit);

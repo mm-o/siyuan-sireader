@@ -35,9 +35,13 @@ export default class PluginSample extends Plugin {
     init(this)
     this.addHotkeys()
     
-    // 启用思源闪卡实时同步
+    // 启用思源闪卡实时同步（仅在有思源卡组时）
     const { enableAutoSync } = await import('@/components/deck/siyuan-card')
-    enableAutoSync()
+    enableAutoSync() // 内部会检查是否有思源卡组
+    
+    // 自动检测并迁移旧版本数据
+    const { autoMigrate } = await import('@/utils/migration')
+    autoMigrate()
   }
 
   private addHotkeys() {

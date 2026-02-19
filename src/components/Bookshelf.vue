@@ -24,7 +24,7 @@
     <div class="sr-books">
       <Transition name="fade" mode="out-in">
         <div v-if="!displayItems.length" key="empty" class="sr-empty">{{keyword?'未找到':'暂无内容'}}</div>
-        <div v-else key="items" :class="`sr-${viewMode}`" :style="viewMode==='grid'?{gridTemplateColumns:'repeat(auto-fill,minmax(120px,1fr))'}:{}">
+        <div v-else key="items" :class="`sr-${viewMode}`" :style="gridStyle">
           <template v-for="item in displayItems" :key="item.type+'-'+(item.type==='group'?item.data.id:item.data.url)">
             <!-- 分组 -->
             <div v-if="item.type==='group'" :class="['sr-card',viewMode,'sr-group']" @click="selectGroup(item.data.id)" @contextmenu.prevent="showGroupMenu($event,item.data)">
@@ -197,7 +197,7 @@ import { isMobile } from '@/utils/mobile'
 import { searchDocs } from '@/composables/useSetting'
 import { getDatabase } from '@/core/database'
 
-defineProps<{ i18n?: any }>()
+const props = defineProps<{ i18n?: any; coverSize?: number }>()
 const emit = defineEmits<{ read: [book: Book] }>()
 
 // 常量
@@ -218,6 +218,7 @@ let settingsLoaded = false
 
 // 计算
 const folderGroups = computed(() => groups.value.filter(g => g.type==='folder'))
+const gridStyle = computed(() => viewMode.value==='grid'?{gridTemplateColumns:`repeat(auto-fill,minmax(${props.coverSize||120}px,1fr))`}:{})
 const activeFilterCount = computed(() => filterStatus.value.length+(filterRating.value?1:0)+filterFormats.value.length+filterTags.value.length+(filterHasUpdate.value?1:0))
 const viewModeIcon = computed(() => ({grid:'#lucide-panels-top-left',list:'#lucide-list-restart',compact:'#lucide-book-text'})[viewMode.value])
 const getSortKey = (item: any, type: string) => {
@@ -269,8 +270,9 @@ const isFilterActive = (key: string, value: any) => {
 const refreshGroups = async () => {
   groups.value = await bookshelfManager.getGroups();
   await Promise.all(groups.value.map(async g => {
-    groupCounts.value[g.id] = await bookshelfManager.getGroupCount(g.id);
-    groupPreviews.value[g.id] = [...await bookshelfManager.getGroupPreviewBooks(g.id,4),...Array(4)].slice(0,4);
+    const [count,preview]=await Promise.all([bookshelfManager.getGroupCount(g.id,groups.value),bookshelfManager.getGroupPreviewBooks(g.id,4,groups.value)]);
+    groupCounts.value[g.id]=count;
+    groupPreviews.value[g.id]=[...preview,...Array(4)].slice(0,4);
   }));
 }
 const loadBooks = async () => {
@@ -308,15 +310,15 @@ const deleteGroup = async (g: GroupConfig) => {
 
 // 菜单
 const buildMenu = (items: any[]) => {const m=new Menu(); items.forEach(i=>m.addItem(i)); return m}
-const showGroupMenu = (e?: MouseEvent, g?: GroupConfig) => buildMenu(g ? [
+const showGroupMenu = (e?: MouseEvent, g?: GroupConfig) => {const m=buildMenu(g ? [
   {icon:'iconEdit',label:g.type==='smart'?'编辑规则':'重命名',click:()=>startEditGroup(g)},
-  {icon:'iconTrashcan',label:'删除',click:()=>confirmDelete.value={type:'group',id:g.id,item:g}}
+  {icon:'iconTrashcan',label:'删除',click:()=>(m.close(),confirmDelete.value={type:'group',id:g.id,item:g})}
 ] : [
   {icon:'iconAdd',label:'新建文件夹',click:()=>startEditGroup()},
   {icon:'iconStar',label:'新建智能分组',click:()=>startEditGroup(undefined,'smart')},
   ...(groups.value.length?[{type:'separator'}]:[]),
   ...groups.value.map(gr=>({icon:gr.type==='smart'?'iconStar':'iconFolder',label:`${gr.name} (${groupCounts.value[gr.id]||0})`,click:()=>selectGroup(gr.id)}))
-]).open({x:e?.clientX||0,y:e?.clientY||0})
+]); m.open({x:e?.clientX||0,y:e?.clientY||0})}
 const showFilterMenu = () => panelMode.value = 'filter'
 const showSortMenu = (e: MouseEvent) => buildMenu([
   ...SORTS.map(([k,v])=>({icon:MENU_ICONS.sort[k]||'iconSort',label:v,click:()=>sortType.value=k})),
@@ -345,8 +347,7 @@ const handleClick = (book: Book, e?: MouseEvent) => {if (selectedBooks.value.siz
 
 // 选择
 const showContextMenu = (book: Book, e: MouseEvent) => {
-  const hasBinding = !!(book as any).bindDocId;
-  buildMenu([
+  const hasBinding = !!(book as any).bindDocId, m=buildMenu([
     {icon:'iconPlay',label:'打开阅读',click:()=>readBook(book)},
     {icon:'iconInfo',label:'详细信息',click:()=>showPanel('detail',book)},
     {icon:'iconStar',label:'评分',type:'submenu',submenu:[...Array(5)].map((_,i)=>({icon:'iconStar',label:`${'★'.repeat(i+1)} ${i+1}星`,click:()=>updateBookField(book,'rating',i+1,`已评 ${i+1} 星`)})).concat([{type:'separator'},{icon:'iconClose',label:'清除',click:()=>updateBookField(book,'rating',0,'已清除评分')}])},
@@ -355,8 +356,8 @@ const showContextMenu = (book: Book, e: MouseEvent) => {
     {icon:hasBinding?'iconLinkOff':'iconLink',label:hasBinding?'解除绑定':'绑定思源',click:()=>showPanel('edit',book)},
     {type:'separator'},
     {icon:'iconEdit',label:'编辑信息',click:()=>showPanel('edit',book)},
-    {icon:'iconTrashcan',label:'移出书架',click:()=>confirmDelete.value={type:'book',id:book.url,item:book}}
-  ]).open({x:e.clientX,y:e.clientY});
+    {icon:'iconTrashcan',label:'移出书架',click:()=>(m.close(),confirmDelete.value={type:'book',id:book.url,item:book})}
+  ]); m.open({x:e.clientX,y:e.clientY});
 }
 const toggleSelect = (book: Book) => selectedBooks.value.has(book.url) ? selectedBooks.value.delete(book.url) : selectedBooks.value.add(book.url)
 const toggleSelectAll = () => isAllSelected.value ? selectedBooks.value.clear() : displayBooks.value.forEach(b => selectedBooks.value.add(b.url))
@@ -426,7 +427,9 @@ const detailFields = computed(() => {
 
 // 生命周期
 onMounted(async () => {
-  await bookshelfManager.init(); await refreshGroups(); allTags.value = await bookshelfManager.getAllTags();
+  await bookshelfManager.init();
+  const [_,allTagsData]=await Promise.all([refreshGroups(),bookshelfManager.getAllTags()]);
+  allTags.value=allTagsData;
   const db = await getDatabase();
   sortType.value = await db.getSetting('bookshelf_sortType') || 'time';
   sortReverse.value = await db.getSetting('bookshelf_sortReverse') || false;

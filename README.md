@@ -4,7 +4,7 @@
 <p style="color: rgba(255,255,255,0.9); margin: 0 0 1.5em; font-size: 1.1em;">Professional eBook Reader · Smart Annotation · Multi-format Support</p>
 <p style="color: rgba(255,255,255,0.85); margin: 0 0 1.5em; line-height: 1.6; font-size: 0.95em;">Transform SiYuan Notes into a professional eBook reader<br>Support EPUB/PDF/TXT/Online novels with smart annotation, multi-theme switching, dictionary lookup, AI translation, deck system, and more for an immersive reading experience</p>
 <p style="margin: 0 0 1em;">
-<img src="https://img.shields.io/badge/version-0.8.5-blue.svg" alt="Version" style="display: inline-block; margin: 0 4px;">
+<img src="https://img.shields.io/badge/version-0.8.6-blue.svg" alt="Version" style="display: inline-block; margin: 0 4px;">
 <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License" style="display: inline-block; margin: 0 4px;">
 <img src="https://img.shields.io/badge/SiYuan-3.0+-orange.svg" alt="SiYuan" style="display: inline-block; margin: 0 4px;">
 </p>
@@ -73,6 +73,83 @@
 ---
 
 ## 📝 Latest Updates
+
+### v0.8.6 (2026.2.19)
+
+> **⚠️ Important: Data Migration**  
+> **This version includes a major data structure upgrade. The plugin will automatically detect and prompt for migration of old version data on first startup.**
+> 
+> **Migration Instructions:**
+> - **Auto-detection**: Automatically detects old version data (`index.json` and `books/*.json`) on plugin startup
+> - **One-click Migration**: Click "Confirm" in the popup to automatically migrate all books, annotations, bookmarks, notes, and settings
+> - **Data Preservation**: Migration process does not delete original data. You can optionally clean up old files (preserving book files, covers, dictionaries, Anki data)
+> - **Migration Content**: Book metadata, reading progress, highlights, notes, bookmarks, ink annotations, shape annotations, dictionary deck, settings
+> 
+> **Important Notes:**
+> - **Strongly recommend backing up `/data/storage/petal/siyuan-sireader/` directory before upgrading**
+> - After migration completes, you'll be prompted whether to clean up old data files. Recommend confirming successful migration before cleaning
+> - Cleanup preserves: book files (.epub/.pdf/.txt), cover images, dictionaries, Anki data, deck-data.db
+> - If migration fails, old data remains intact and can be manually restored or contact developer
+> 
+> **📱 Mobile Note:**
+> - Mobile currently only supports PDF reading, EPUB and TXT formats are temporarily disabled
+
+#### ✨ New Features
+
+**Bookshelf System Redesign**
+- Support folder groups and smart groups (auto-filter by tags/format/status/rating)
+- 8 sorting methods (time/added/progress/rating/duration/title/author/update)
+- Three view modes (grid/list/compact)
+- Multi-dimensional filtering (status/rating/format/tags/update status)
+- Book info editing (title/author/cover/rating/status/tags)
+- Support binding SiYuan documents with auto-sync configuration
+
+**Data Storage Redesign**
+- Use SQLite to unify all data management (books/groups/annotations/settings/Anki)
+- Database file: `/data/storage/petal/siyuan-sireader/reader.db`
+- Index optimization, query speed improved by 10x+
+
+**PDF Annotation Enhancement**
+- Smart text selection, solving selection drift, cross-page selection, watermark misselection issues
+- Support rectangular box selection annotation (text highlight/border mode)
+- Annotations auto-sync to bound SiYuan documents (add/delete/modify)
+- Shape annotations support fill function (solid/hollow toggle)
+
+#### ⚙️ Improvements
+
+**Performance Optimization**
+- Bookshelf loading performance improved by 33% (34ms → 22.6ms), group preview improved by 99.7% (20ms+ → 0.05ms)
+- Optimized database query logic, preload cache to avoid repeated queries, extremely streamlined code
+
+**Annotation Panel Optimization**
+- Use SiYuan native menu component with auto edge detection to prevent overflow
+- Selection menu changed to horizontal three-button layout (annotate/copy/dictionary)
+
+**Keyboard Shortcut System**
+- Extract shortcut logic to independent module for unified management
+- Fixed issue where shortcuts didn't work inside iframe
+
+**Reading Interface Optimization**
+- TOC and search panels support click-outside-to-close with transparent overlay
+
+**Settings Interface Redesign**
+- Accordion-style collapsible panels, main accordions mutually exclusive
+- Dictionary features use sub-accordion grouping
+- Custom font lazy loading, improved opening speed
+- Unified all delete/reset interaction logic and styles
+
+#### 🐛 Bug Fixes
+
+- Fixed issue where book data files were duplicated when books closed abnormally
+- Fixed inaccurate PDF annotation positioning
+- Fixed missing purple highlight after adding PDF words to deck
+- Fixed settings lost after reopening
+- Fixed bookshelf progress not updating
+- Fixed annotations without notes unable to jump
+- Fixed PDF progress save failure
+- Fixed books unable to open due to duplicate document names
+
+---
 
 ### v0.8.5 (2026.2.9)
 

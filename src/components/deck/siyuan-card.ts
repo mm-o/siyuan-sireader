@@ -124,16 +124,23 @@ export const syncAllSiyuanDecks = async (onComplete?: () => void) => {
   }
 }
 
-// WebSocket 实时同步
-export const enableAutoSync = () => {
+// WebSocket 实时同步 - 仅在有思源卡组时启用
+export const enableAutoSync = async () => {
   if (ws?.readyState === WebSocket.OPEN) return
   if (timer) clearTimeout(timer), timer = null
   
   try {
+    // 检查是否有思源卡组
+    const { getDatabase } = await import('./database')
+    const db = await getDatabase()
+    const decks = await db.getDecks()
+    const hasSiyuan = decks.some(d => d.tags?.some(t => t === 'siyuan' || t.startsWith('siyuan-')))
+    if (!hasSiyuan) return // 无思源卡组，不启用同步
+    
     const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
     ws = new WebSocket(`${protocol}//${location.host}/ws?app=siyuan-sireader&type=main`)
     
-    ws.onopen = () => { enabled = true; showMessage('✓ 自动同步已启用', 2000, 'info') }
+    ws.onopen = () => { enabled = true }
     
     ws.onmessage = async (e) => {
       try {
@@ -164,7 +171,7 @@ export const enableAutoSync = () => {
       } catch {}
     }
     
-    ws.onerror = () => { enabled = false; showMessage('同步连接异常', 2000, 'error') }
+    ws.onerror = () => { enabled = false }
     ws.onclose = (ev) => {
       enabled = false
       ws = null
@@ -181,7 +188,6 @@ export const disableAutoSync = () => {
   if (ws) ws.close(1000, 'close websocket'), ws = null
   pending.forEach(t => clearTimeout(t))
   pending.clear()
-  showMessage('自动同步已关闭', 2000, 'info')
 }
 
 // 防抖处理
@@ -206,11 +212,13 @@ const handleAdd = async (id: string, deckIds: string) => {
     const { createPack } = await import('./pack')
     const db = await getDatabase()
     const allDecks = await db.getDecks()
+    const siyuanDecks = allDecks.filter(d => d.tags?.some(t => t === 'siyuan' || t.startsWith('siyuan-')))
+    if (!siyuanDecks.length) return // 无思源卡组，跳过
     
     for (const deckId of deckIds.split(',').filter(Boolean)) {
       const did = deckId.trim()
-      let deck = allDecks.find(d => d.tags?.includes(`siyuan-${did}`)) || 
-                 allDecks.find(d => d.name.includes(did.substring(0, 8)) && d.tags?.includes('siyuan'))
+      let deck = siyuanDecks.find(d => d.tags?.includes(`siyuan-${did}`)) || 
+                 siyuanDecks.find(d => d.name.includes(did.substring(0, 8)))
       
       if (deck) {
         const needUpdate = !deck.tags?.includes(`siyuan-${did}`) || !deck.enabled

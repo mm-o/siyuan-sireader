@@ -452,10 +452,9 @@ plugin.addTopBar({ icon: `<svg><use xlink:href="#${iconId}"/></svg>`, title: '�
 // 移动端 Reader 处理
 const handleMobileReaderOpen = async (e: CustomEvent) => {
   const { book } = e.detail
-  
+  if (book.format !== 'pdf') return showMessage('移动端暂不支持 EPUB/TXT 格式，请在桌面端阅读或使用 PDF 格式', 3000, 'info')
   mobileReaderApp?.unmount()
   mobileReaderApp = null
-  
   let container = document.getElementById('sireader-mobile-container')
   if (!container) {
     container = document.createElement('div')
@@ -463,9 +462,7 @@ const handleMobileReaderOpen = async (e: CustomEvent) => {
     container.style.cssText = 'position:fixed;inset:0;z-index:100;background:var(--b3-theme-background)'
     document.body.appendChild(container)
   }
-  
   container.style.display = 'block'
-  
   const { toRaw } = await import('vue')
   mobileReaderApp = createApp(Reader as Component, {
     bookInfo: book,

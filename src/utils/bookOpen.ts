@@ -4,12 +4,13 @@ import { bookshelfManager, type Book } from '@/core/bookshelf'
 import type { ReaderSettings } from '@/composables/useSetting'
 import { isMobile } from '@/utils/mobile'
 
-// 查找已打开的标签页
-export const findOpenedTab = (bookName: string) => {
-  const tabs = document.querySelectorAll<HTMLElement>('.layout-tab-bar .item')
-  for (const tab of tabs) {
-    const title = tab.getAttribute('data-title') || tab.querySelector('.item__text')?.textContent
-    if (title?.includes(bookName)) return tab
+// 查找已打开的阅读器标签页
+export const findOpenedTab = (bookName: string, pluginName: string) => {
+  const type = `${pluginName}custom_tab_online_reader`
+  const find = (o: any, id: string): any => o?.id === id ? o : o?.children?.reduce((r: any, c: any) => r || find(c, id), null)
+  for (const el of document.querySelectorAll<HTMLElement>('.layout-tab-bar .item[data-id]')) {
+    if ((el.getAttribute('data-title') || el.querySelector('.item__text')?.textContent) !== bookName) continue
+    if (find((window as any).siyuan?.layout?.centerLayout, el.getAttribute('data-id')!)?.model?.type === type) return el
   }
   return null
 }
@@ -60,7 +61,7 @@ export const openOrActivateBook = (plugin: Plugin, book: Book, settings: ReaderS
     return
   }
   
-  const tab = findOpenedTab(book.title)
+  const tab = findOpenedTab(book.title, plugin.name)
   if (tab) {
     tab.click()
     onReady?.()
