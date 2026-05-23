@@ -2,6 +2,14 @@ import { computed, ref } from 'vue'
 import { bookshelfManager } from '@/core/bookshelf'
 import { createLocalFileRef, filterSupportedBookFiles, materializeNativeFile, toFileUrl } from '@/core/bookStore'
 
+export interface LinkedBookFile {
+  file?: File
+  linkSource: string
+  label?: string
+  size?: number
+  preview?: any
+}
+
 export interface BookImportItem {
   id: string
   mode: 'url' | 'file'
@@ -14,7 +22,7 @@ export interface BookImportItem {
   preview: any | null
 }
 
-type ImportMode = 'file' | 'link'
+type ImportMode = 'file' | 'link' | 'cloud'
 
 const nextId = () => `import-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 const asLines = (input: string) => input.split(/\r?\n/).map(line => line.trim()).filter(Boolean)
@@ -35,6 +43,7 @@ const chunked = async <T>(items: T[], limit: number, task: (item: T, index: numb
 }
 const revokeCover = (item: BookImportItem) => item.preview?.cover?.startsWith?.('blob:') && URL.revokeObjectURL(item.preview.cover)
 const getImportFile = (item: BookImportItem) => materializeNativeFile(item.source as File)
+const createVirtualFile = (name: string) => new File([], name || 'book', { type: 'application/octet-stream' })
 const createItem = (mode: BookImportItem['mode'], source: string | File, label: string, linkSource: string): BookImportItem => ({
   id: nextId(),
   mode,
@@ -124,6 +133,34 @@ export const useBookImport = () => {
     )
   }
 
+  const parseLinkedFiles = async (files: LinkedBookFile[]) => {
+    const validFiles = files.filter(item => {
+      const name = item.file?.name || item.label || item.linkSource
+      return item.linkSource && filterSupportedBookFiles([item.file || createVirtualFile(name)]).length
+    })
+    if (!validFiles.length) return
+    const next = validFiles.map(item => {
+      const label = item.label || item.file?.name || item.linkSource.split('/').pop() || 'book'
+      const row = createItem('file', item.file || createVirtualFile(label), label, item.linkSource)
+      if (item.preview) {
+        row.preview = item.preview
+        row.loading = false
+      }
+      return row
+    })
+    if (next.every(item => item.preview)) {
+      items.value.forEach(revokeCover)
+      items.value = next
+      progress.value = 100
+      return
+    }
+    await parseItems(
+      next,
+      item => item.preview || bookshelfManager.previewLocalBook(getImportFile(item)),
+      validFiles.length > 8 ? 5 : 3,
+    )
+  }
+
   const selectFiles = async () => {
     const electron = getElectron()
     if (!electron) return pickByInput()
@@ -152,12 +189,15 @@ export const useBookImport = () => {
     const selected = items.value.filter(item => item.selected && !item.loading && !item.error)
     if (!selected.length) return { success: 0, failed: 0 }
     importing.value = true
+    progress.value = 0
     let success = 0
     let failed = 0
+    let done = 0
     const concurrency = mode === 'file' ? (selected.length > 8 ? 3 : 2) : 4
     const importFile = {
       file: (item: BookImportItem) => bookshelfManager.addLocalBook(getImportFile(item), item.preview),
       link: (item: BookImportItem) => bookshelfManager.addLocalLinkBook(getImportFile(item), item.preview),
+      cloud: (item: BookImportItem) => bookshelfManager.addLinkedBook(item.linkSource, getImportFile(item), item.preview),
     } satisfies Record<ImportMode, (item: BookImportItem) => Promise<void>>
 
     await chunked(selected, concurrency, async item => {
@@ -170,6 +210,8 @@ export const useBookImport = () => {
       } catch (error) {
         item.error = error instanceof Error ? error.message : '导入失败'
         failed++
+      } finally {
+        progress.value = Math.round((++done / selected.length) * 100)
       }
     })
 
@@ -204,6 +246,8 @@ export const useBookImport = () => {
     allSelected,
     reset,
     pickAndParseFiles,
+    parseFiles,
+    parseLinkedFiles,
     parseDraftUrls,
     importSelected,
     importFiles,

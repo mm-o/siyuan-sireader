@@ -401,5 +401,17 @@
   "membership": "会员订阅",
   "activatedAt": "激活于",
   "logout": "退出登录",
-  "purchase": "购买"
+  "purchase": "购买",
+  "cloudAccounts": "云盘账号",
+  "cloudAccount": "云盘账号",
+  "addCloudAccount": "添加云盘账号",
+  "noCloudAccounts": "暂无云盘账号，点击右上角添加",
+  "cloudAccountName": "自定义名称",
+  "cloudServer": "服务器",
+  "cloudPathPrefix": "路径前缀",
+  "cloudPathPrefixDesc": "可选，仅部署在子路径时填写，例如 openlist",
+  "cloudPathPrefixPlaceholder": "可选，仅部署在子路径时填写，例如 openlist",
+  "optional": "可选",
+  "username": "用户",
+  "password": "密码"
 }

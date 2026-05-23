@@ -403,5 +403,17 @@
   "membership": "Membership",
   "activatedAt": "Activated at",
   "logout": "Logout",
-  "purchase": "Purchase"
+  "purchase": "Purchase",
+  "cloudAccounts": "Cloud Accounts",
+  "cloudAccount": "Cloud Account",
+  "addCloudAccount": "Add Cloud Account",
+  "noCloudAccounts": "No cloud accounts. Click the plus button to add one.",
+  "cloudAccountName": "Custom Name",
+  "cloudServer": "Server",
+  "cloudPathPrefix": "Path Prefix",
+  "cloudPathPrefixDesc": "Optional. Only fill this when deployed under a subpath, for example openlist.",
+  "cloudPathPrefixPlaceholder": "Optional, for example openlist",
+  "optional": "Optional",
+  "username": "Username",
+  "password": "Password"
 }

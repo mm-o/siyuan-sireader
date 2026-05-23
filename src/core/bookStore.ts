@@ -32,7 +32,7 @@ const hash = (str: string) => {
 }
 
 const publicToDataPath = (path = '') => path.startsWith('/public/') ? path.replace('/public/', '/data/public/') : path
-const isRemotePath = (path = '') => /^(https?:\/\/|file:\/\/)/i.test(path)
+const isRemotePath = (path = '') => /^(https?:\/\/|file:\/\/|openlist:\/\/)/i.test(path)
 const isPublicPath = (path = '') => path.startsWith('/public/') || path.startsWith('/data/public/')
 const getRecordKey = (url: string) => `${RECORDS_DIR}/${hash(url)}.json`
 const req = (id: string) => { try { return (window as any).require?.(id) } catch { return null } }
@@ -229,6 +229,18 @@ export const saveOptionalCover = async (blob: Blob | undefined, url: string) => 
 
 // 统一读取入口，避免上层重复判断 http / file / public / data 路径。
 export const loadBookFile = async (path: string): Promise<File> => {
+  if (path.startsWith('openlist://')) {
+    const [{ parseOpenListBookUrl, downloadOpenListFile }, { settingsManager }] = await Promise.all([
+      import('@/services/openlist'),
+      import('@/composables/useSetting'),
+    ])
+    const ref = parseOpenListBookUrl(path)
+    if (!ref) throw new Error('OpenList 路径无效')
+    const settings = await settingsManager.get()
+    const account = settings.cloudAccounts?.find(item => item.id === ref.accountId)
+    if (!account) throw new Error('OpenList 账号不存在，请检查云盘账号设置')
+    return downloadOpenListFile(account, ref.path)
+  }
   if (path.startsWith('http://') || path.startsWith('https://')) {
     const res = await fetch(path)
     if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`)

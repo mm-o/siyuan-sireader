@@ -48,6 +48,7 @@
               <div class="sr-grid2">
                 <button class="b3-button b3-button--outline" type="button" @click="importMode = 'file'; pickAndParseFiles()">导入书籍</button>
                 <button class="b3-button b3-button--outline" type="button" @click="importMode = 'link'">导入链接</button>
+                <button class="b3-button b3-button--outline" type="button" @click="openCloudImport">云盘导入</button>
                 <button class="b3-button b3-button--outline" type="button" @click="startEditGroup()">手动分组</button>
                 <button class="b3-button b3-button--outline" type="button" @click="startEditGroup(undefined, 'smart')">智能分组</button>
               </div>
@@ -69,12 +70,77 @@
               </div>
             </template>
 
+            <template v-if="importMode === 'cloud'">
+              <div class="sr-form-item">
+                <span class="ft__secondary">云盘文件</span>
+                <div class="sr-row">
+                  <select v-model="selectedCloudAccountId" class="b3-select sr-select" @change="loadCloudRoot">
+                    <option v-for="account in cloudAccounts" :key="account.id" :value="account.id">{{ cloudAccountLabel(account) }}</option>
+                  </select>
+                  <button class="b3-button b3-button--outline" type="button" @click="loadCloudAccounts(true)">刷新账号</button>
+                  <button class="b3-button b3-button--outline" type="button" :disabled="cloudLoading || !currentCloudAccount" @click="loadCloudDir(cloudPath)">刷新目录</button>
+                </div>
+                <div v-if="!cloudAccounts.length" class="sr-muted">请先在设置里的“云盘账号”填写 OpenList 服务器。</div>
+                <div v-else class="sr-cloud-panel">
+                  <div class="sr-row">
+                    <button class="sr-chip" type="button" :disabled="cloudPath === '/'" @click="loadCloudParent">上一级</button>
+                    <span class="mono">{{ cloudPath }}</span>
+                    <span v-if="cloudLoading">{{ cloudProgressText }}</span>
+                    <span v-else-if="cloudError" class="sr-error">{{ cloudError }}</span>
+                    <span class="fn__space"></span>
+                    <span class="sr-cloud-search">
+                      <input
+                        v-model.trim="cloudSearchKeyword"
+                        class="b3-text-field"
+                        type="search"
+                        placeholder="输入文件名搜索"
+                        @keydown.stop
+                        @keyup.enter.stop.prevent="searchCloudFiles"
+                      >
+                      <button class="block__icon block__icon--show b3-tooltips b3-tooltips__w" type="button" aria-label="搜索" :disabled="cloudLoading || !cloudSearchKeyword" @click="searchCloudFiles">
+                        <svg><use xlink:href="#iconSearch"></use></svg>
+                      </button>
+                      <button v-if="cloudSearchActive" class="block__icon block__icon--show b3-tooltips b3-tooltips__w" type="button" aria-label="清除搜索" @click="clearCloudSearch">
+                        <svg><use xlink:href="#iconClose"></use></svg>
+                      </button>
+                    </span>
+                  </div>
+                  <div v-if="cloudLoading || cloudProgress" class="sr-progress">
+                    <div class="sr-progress__bar" :style="{ width: `${cloudProgress || 12}%` }"></div>
+                  </div>
+                  <div class="sr-cloud-list">
+                    <button
+                      v-for="entry in displayedCloudEntries"
+                      :key="entry.path"
+                      class="sr-cloud-row"
+                      :class="{ 'is-dir': entry.isDir, 'is-selected': isCloudSelected(entry), 'is-disabled': !entry.isDir && !isSupportedCloudBook(entry.name) }"
+                      type="button"
+                      @click="entry.isDir ? loadCloudDir(entry.path) : toggleCloudSelection(entry)"
+                    >
+                      <svg class="sr-cloud-icon"><use :xlink:href="entry.isDir ? '#iconFolder' : '#lucide-file'"></use></svg>
+                      <span class="sr-cloud-name">{{ entry.name }}</span>
+                      <span class="sr-cloud-meta">{{ entry.isDir ? '目录' : formatBytes(entry.size) }}</span>
+                    </button>
+                  </div>
+                  <div class="sr-row sr-actions-end">
+                    <span class="sr-muted">已选 {{ selectedCloudPaths.length }} 个文件</span>
+                    <button class="b3-button b3-button--outline" type="button" :disabled="cloudLoading || !selectedCloudPaths.length" @click="prepareCloudImport">
+                      加入待导入
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </template>
+
             <div v-if="importHasItems" class="sr-form-item">
               <span class="ft__secondary">待导入项目</span>
               <div class="sr-row">
                 <button class="sr-chip" :class="{ 'is-active': importAllSelected }" type="button" @click="importAllSelected = !importAllSelected">{{ importAllSelected ? '取消全选' : '全选导入' }}</button>
                 <span>{{ importSelectedCount }} / {{ importItems.length }}</span>
-                <span v-if="importParsing">{{ importProgress }}%</span>
+                <span v-if="importParsing || importing">{{ importProgress }}%</span>
+              </div>
+              <div v-if="importParsing || importing" class="sr-progress">
+                <div class="sr-progress__bar" :style="{ width: `${importProgress || 8}%` }"></div>
               </div>
 
               <View
@@ -139,7 +205,7 @@
                 v-if="importHasItems"
                 class="b3-button b3-button--outline"
                 type="button"
-                @click="confirmImport(importMode === 'file' ? 'file' : 'link')"
+                @click="confirmImport(importMode === 'cloud' ? 'cloud' : importMode === 'file' ? 'file' : 'link')"
                 :disabled="!importSelectedCount || importParsing || importing"
               >
                 {{ importing ? '导入中...' : '确认导入' }}
@@ -256,11 +322,12 @@ import { bookInGroup, bookshelfManager, SORTS, STATUS_OPTIONS, STATUS_MAP, RATIN
 import View from '@/components/bookshelf/View.vue'
 import DockShell from './ui/DockShell.vue'
 import { isMobile } from '@/utils/mobile'
-import { searchDocs } from '@/composables/useSetting'
+import { searchDocs, settingsManager, type CloudDriveAccount } from '@/composables/useSetting'
 import { useBookImport } from '@/composables/useBookImport'
 import { useLicense } from '@/composables/useLicense'
+import { createOpenListBookUrl, deepSearchOpenListFiles, isSupportedCloudBook, listOpenListDir, searchOpenListFiles, type OpenListEntry } from '@/services/openlist'
 
-type ImportMode = 'link' | 'file'
+type ImportMode = 'link' | 'file' | 'cloud'
 type GroupType = 'folder' | 'smart'
 
 const props = defineProps<{ i18n?: any; coverSize?: number }>()
@@ -292,7 +359,19 @@ const importMode = ref<ImportMode>('file')
 const editForm = ref(createDefaultEditForm())
 const bindSearch = ref('')
 const bindResults = ref<any[]>([])
-const { items: importItems, draft: importDraft, parsing: importParsing, importing, progress: importProgress, hasItems: importHasItems, selectedCount: importSelectedCount, allSelected: importAllSelected, reset: resetImport, pickAndParseFiles, parseDraftUrls, importSelected } = useBookImport()
+const { items: importItems, draft: importDraft, parsing: importParsing, importing, progress: importProgress, hasItems: importHasItems, selectedCount: importSelectedCount, allSelected: importAllSelected, reset: resetImport, pickAndParseFiles, parseLinkedFiles, parseDraftUrls, importSelected } = useBookImport()
+const cloudAccounts = ref<CloudDriveAccount[]>([])
+const selectedCloudAccountId = ref('')
+const cloudPath = ref('/')
+const cloudEntries = ref<OpenListEntry[]>([])
+const cloudSearchEntries = ref<OpenListEntry[]>([])
+const cloudSearchKeyword = ref('')
+const cloudSearchActive = ref(false)
+const selectedCloudPaths = ref<string[]>([])
+const cloudLoading = ref(false)
+const cloudError = ref('')
+const cloudProgressText = ref('')
+const cloudProgress = ref(0)
 
 let settingsLoaded = false
 const settingTimers = new Map<string, number>()
@@ -351,6 +430,8 @@ const displayItems = computed(() => {
 const displayBooks = computed(() => displayItems.value.filter(i => i.type === 'book').map(i => i.data))
 const filterSections = computed(() => buildFilterSections(stats.value, allTags.value))
 const importDisplayItems = computed(() => importItems.value.map(item => ({ type: 'import' as const, data: item })))
+const currentCloudAccount = computed(() => cloudAccounts.value.find(account => account.id === selectedCloudAccountId.value) || null)
+const displayedCloudEntries = computed(() => cloudSearchActive.value ? cloudSearchEntries.value : cloudEntries.value)
 const batchRatingOptions = computed(() => [...RATING_OPTIONS, [0, '清除评分']] as Array<[number, string]>)
 const filterMap = { status: filterStatus, rating: filterRating, format: filterFormats, tags: filterTags }
 const setGroup = (id: string | null, close = false) => {
@@ -449,7 +530,153 @@ const removeBook = async (book: Book) => {
   showResult(res.success, res.failed, '已移出书架', '删除失败')
 }
 const parseImportUrls = async () => { try { await parseDraftUrls() } catch (e) { showMessage(e instanceof Error ? e.message : '解析失败', 2000, 'error') } }
-const confirmImport = async (mode: 'file' | 'link') => {
+const cloudAccountLabel = (account: CloudDriveAccount) => account.name || account.server || 'OpenList'
+const cloudEntryFormat = (name = '') => {
+  const ext = name.split('.').pop()?.toLowerCase() || ''
+  return ext === 'azw' ? 'azw3' : ext
+}
+const cloudEntryPreview = (entry: OpenListEntry) => {
+  const title = entry.name.replace(/\.[^.]+$/, '')
+  return {
+    title,
+    author: '未知作者',
+    format: cloudEntryFormat(entry.name),
+    cover: '',
+    size: entry.size || 0,
+  }
+}
+const formatBytes = (size = 0) => {
+  if (!size) return '-'
+  const units = ['B', 'KB', 'MB', 'GB']
+  const index = Math.min(units.length - 1, Math.floor(Math.log(size) / Math.log(1024)))
+  return `${(size / Math.pow(1024, index)).toFixed(index ? 1 : 0)} ${units[index]}`
+}
+const loadCloudAccounts = async (forceRoot = false) => {
+  const settings = await settingsManager.get()
+  cloudAccounts.value = (settings.cloudAccounts || []).filter(account => account.server?.trim())
+  if (!cloudAccounts.value.some(account => account.id === selectedCloudAccountId.value)) selectedCloudAccountId.value = cloudAccounts.value[0]?.id || ''
+  if (forceRoot && currentCloudAccount.value) await loadCloudRoot()
+}
+const openCloudImport = async () => {
+  importMode.value = 'cloud'
+  await loadCloudAccounts()
+  if (currentCloudAccount.value && !cloudEntries.value.length) await loadCloudRoot()
+}
+const loadCloudDir = async (path = '/') => {
+  if (!currentCloudAccount.value) return
+  cloudLoading.value = true
+  cloudError.value = ''
+  cloudProgress.value = 8
+  cloudProgressText.value = '加载中...'
+  try {
+    cloudPath.value = path || '/'
+    cloudEntries.value = await listOpenListDir(currentCloudAccount.value, cloudPath.value)
+    cloudProgress.value = 100
+    clearCloudSearch(false)
+    selectedCloudPaths.value = selectedCloudPaths.value.filter(item => cloudEntries.value.some(entry => entry.path === item))
+  } catch (error) {
+    cloudEntries.value = []
+    cloudError.value = error instanceof Error ? error.message : '云盘目录加载失败'
+  } finally {
+    cloudLoading.value = false
+    cloudProgressText.value = ''
+    window.setTimeout(() => { cloudProgress.value = 0 }, 200)
+  }
+}
+const loadCloudRoot = () => {
+  selectedCloudPaths.value = []
+  return loadCloudDir('/')
+}
+const loadCloudParent = () => {
+  const parent = cloudPath.value.split('/').filter(Boolean).slice(0, -1).join('/')
+  return loadCloudDir(parent ? `/${parent}` : '/')
+}
+const isCloudSelected = (entry: OpenListEntry) => selectedCloudPaths.value.includes(entry.path)
+const clearCloudSearch = (clearKeyword = true) => {
+  cloudSearchActive.value = false
+  cloudSearchEntries.value = []
+  if (clearKeyword) cloudSearchKeyword.value = ''
+}
+const searchCloudFiles = async () => {
+  if (!currentCloudAccount.value) return
+  const keyword = cloudSearchKeyword.value.trim()
+  if (!keyword) return clearCloudSearch()
+  const deepSearch = () => deepSearchOpenListFiles(currentCloudAccount.value!, keyword, cloudPath.value, {
+    maxDirs: 2000,
+    maxResults: 300,
+    onProgress: message => {
+      cloudProgressText.value = message
+      cloudProgress.value = Math.min(95, cloudProgress.value + 2)
+    },
+  })
+  cloudLoading.value = true
+  cloudError.value = ''
+  cloudProgress.value = 8
+  cloudProgressText.value = '搜索中...'
+  try {
+    cloudSearchEntries.value = await searchOpenListFiles(currentCloudAccount.value, keyword, cloudPath.value)
+    if (!cloudSearchEntries.value.length) {
+      cloudProgress.value = 30
+      cloudProgressText.value = '深度搜索中...'
+      cloudSearchEntries.value = await deepSearch()
+      if (!cloudSearchEntries.value.length) {
+        const local = cloudEntries.value.filter(entry => entry.name.toLowerCase().includes(keyword.toLowerCase()))
+        cloudSearchEntries.value = local
+      }
+    }
+    cloudProgress.value = 100
+    cloudSearchActive.value = true
+  } catch (error) {
+    try {
+      cloudProgress.value = 30
+      cloudProgressText.value = '索引不可用，正在深度搜索...'
+      cloudSearchEntries.value = await deepSearch()
+      cloudSearchActive.value = true
+      cloudError.value = cloudSearchEntries.value.length ? '' : '未找到匹配文件'
+    } catch (deepError) {
+      cloudSearchEntries.value = cloudEntries.value.filter(entry => entry.name.toLowerCase().includes(keyword.toLowerCase()))
+      cloudSearchActive.value = !!cloudSearchEntries.value.length
+      cloudError.value = cloudSearchEntries.value.length ? '已显示当前目录匹配结果' : (deepError instanceof Error ? deepError.message : error instanceof Error ? error.message : '搜索失败')
+    }
+  } finally {
+    cloudLoading.value = false
+    cloudProgressText.value = ''
+    window.setTimeout(() => { cloudProgress.value = 0 }, 200)
+  }
+}
+const toggleCloudSelection = (entry: OpenListEntry) => {
+  if (entry.isDir || !isSupportedCloudBook(entry.name)) return
+  const index = selectedCloudPaths.value.indexOf(entry.path)
+  index > -1 ? selectedCloudPaths.value.splice(index, 1) : selectedCloudPaths.value.push(entry.path)
+}
+const prepareCloudImport = async () => {
+  if (!currentCloudAccount.value || !selectedCloudPaths.value.length) return
+  cloudLoading.value = true
+  cloudError.value = ''
+  cloudProgress.value = 5
+  try {
+    const entriesByPath = new Map(displayedCloudEntries.value.map(entry => [entry.path, entry]))
+    const files: Array<{ linkSource: string; label: string; preview: any }> = []
+    for (const [index, path] of selectedCloudPaths.value.entries()) {
+      cloudProgressText.value = `准备引用 ${index + 1}/${selectedCloudPaths.value.length}`
+      cloudProgress.value = Math.round(((index + 1) / selectedCloudPaths.value.length) * 100)
+      const entry = entriesByPath.get(path) || { name: path.split('/').pop() || path, path, isDir: false, size: 0, modified: '' }
+      files.push({
+        linkSource: createOpenListBookUrl(currentCloudAccount.value, path),
+        label: entry.name,
+        preview: cloudEntryPreview(entry),
+      })
+    }
+    await parseLinkedFiles(files)
+  } catch (error) {
+    cloudError.value = error instanceof Error ? error.message : '云盘文件解析失败'
+  } finally {
+    cloudLoading.value = false
+    cloudProgressText.value = ''
+    window.setTimeout(() => { cloudProgress.value = 0 }, 200)
+  }
+}
+const confirmImport = async (mode: 'file' | 'link' | 'cloud') => {
   const res = await importSelected(mode)
   await loadBooks()
   showResult(res.success, res.failed, `导入${res.success}本`, `成功${res.success}本，失败${res.failed}本`, 3000)
@@ -549,6 +776,21 @@ button.sr-chip:hover{background:var(--b3-list-hover)}
 .sr-select{width:100%;min-width:0;min-height:32px;font-size:inherit;border-radius:8px;box-sizing:border-box}
 .sr-row{display:flex;gap:var(--sr-gap);flex-wrap:wrap;align-items:center}
 .sr-actions-end{justify-content:flex-end}
+.sr-error{color:var(--b3-theme-error)}
+.sr-cloud-panel{display:flex;flex-direction:column;gap:8px}
+.sr-cloud-search{display:flex;align-items:center;gap:4px;min-width:220px}
+.sr-cloud-search .b3-text-field{height:28px;min-width:180px}
+.sr-progress{height:4px;overflow:hidden;border-radius:999px;background:var(--b3-border-color)}
+.sr-progress__bar{height:100%;min-width:12px;border-radius:inherit;background:var(--b3-theme-primary);transition:width .18s ease}
+.sr-cloud-list{display:flex;flex-direction:column;max-height:260px;overflow:auto;border:1px solid var(--b3-border-color);border-radius:8px;background:var(--b3-theme-background)}
+.sr-cloud-row{display:grid;grid-template-columns:18px minmax(0,1fr) auto;align-items:center;gap:8px;width:100%;min-height:32px;padding:0 10px;border:0;border-bottom:1px solid var(--b3-border-color);background:transparent;color:var(--b3-theme-on-surface);font:inherit;text-align:left;cursor:pointer}
+.sr-cloud-row:last-child{border-bottom:0}
+.sr-cloud-row:hover{background:var(--b3-list-hover)}
+.sr-cloud-row.is-selected{background:var(--b3-theme-primary-lightest);color:var(--b3-theme-primary)}
+.sr-cloud-row.is-disabled{opacity:.45;cursor:not-allowed}
+.sr-cloud-icon{width:15px;height:15px}
+.sr-cloud-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sr-cloud-meta{font-size:11px;color:var(--b3-theme-on-surface-variant);white-space:nowrap}
 .sr-grow{flex:1;min-width:0}
 .sr-inline{display:flex;align-items:center;gap:4px;flex:0 0 auto;flex-wrap:nowrap}
 .sr-group-item{display:flex;align-items:center;gap:8px;margin-top:8px}

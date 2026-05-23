@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { showMessage } from 'siyuan'
-import type { ReaderSettings, FontFileInfo } from '@/composables/useSetting'
+import type { CloudDriveAccount, ReaderSettings, FontFileInfo } from '@/composables/useSetting'
 import { DEFAULT_NAV_ITEMS, LINK_FORMAT_PRESETS, NOTE_MODE_LABELS, NOTE_MODE_OPTIONS, NOTE_TARGET_OPTIONS, PRESET_THEMES, SectionTitle, SettingItem, SettingRows, SettingSection, UI_CONFIG, getLicenseMedia, setCustomBackgroundFromInput, settingSectionIcon, useSetting, useConfirm, useDocSearch, useNotebooks } from '@/composables/useSetting'
 import { bookshelfManager } from '@/core/bookshelf'
 import { offlineDictManager, onlineDictManager } from '@/utils/dictionary'
@@ -84,6 +84,29 @@ const dictSections = computed(() => [
     key: 'onlineDict', title: props.i18n.onlineDict||'在线词典', items: onlineDicts.value, empty: '', manager: onlineDictManager, desc: (d:any) => d.desc, drop: (e:DragEvent,i:number) => dragDrop(e,i,'dict',onlineDicts,onlineDictManager)
   }
 ])
+const cloudAccounts = computed(() => settings.value.cloudAccounts || (settings.value.cloudAccounts = []))
+const cloudAccountTitle = (account: CloudDriveAccount, index: number) => account.name || account.server || `${props.i18n.cloudAccount || '云盘账号'} ${index + 1}`
+const createCloudAccount = (): CloudDriveAccount => ({
+  id: `cloud-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+  name: '',
+  server: '',
+  pathPrefix: '',
+  username: '',
+  password: ''
+})
+const addCloudAccount = () => {
+  cloudAccounts.value.push(createCloudAccount())
+  openGroups.value.cloud = true
+  save()
+}
+const removeCloudAccount = (id:string) => {
+  settings.value.cloudAccounts = cloudAccounts.value.filter(account => account.id !== id)
+  save()
+}
+const updateCloudAccount = (account: CloudDriveAccount, key: keyof CloudDriveAccount, value: string) => {
+  account[key] = value
+  debouncedSave()
+}
 const voiceSections = computed(() => [
   {
     key: 'ttsFavorites', title: props.i18n.ttsFavoriteVoices||'我的语音', hint: `${props.i18n.ttsCurrentVoice||'当前'}: ${settings.value.tts?.voice||''}`,
@@ -356,6 +379,57 @@ onMounted(() => {
             </template>
         </SettingSection>
 
+        <ul class="b3-list b3-list--background" data-name="cloud">
+          <SectionTitle :title="i18n.cloudAccounts || '云盘账号'" :icon="settingSectionIcon('root', 'cloud')" :open="isOpen('cloud')" @toggle="toggleAccordion('cloud')">
+            <span class="fn__space"></span>
+            <span class="b3-list-item__action b3-tooltips b3-tooltips__w" :aria-label="i18n.addCloudAccount || '添加云盘账号'" @click.stop="addCloudAccount"><svg><use xlink:href="#lucide-plus"></use></svg></span>
+          </SectionTitle>
+          <template v-if="isOpen('cloud')">
+            <li v-if="!cloudAccounts.length" class="b3-list-item b3-list-item--hide-action">
+              <span class="b3-list-item__toggle fn__hidden"></span>
+              <span class="b3-list-item__text ft__secondary">{{ i18n.noCloudAccounts || '暂无云盘账号，点击右上角添加' }}</span>
+            </li>
+            <template v-for="(account, index) in cloudAccounts" :key="account.id">
+              <li class="b3-list-item b3-list-item--hide-action sr-cloud-account-title">
+                <span class="b3-list-item__toggle fn__hidden"></span>
+                <span class="b3-list-item__text">{{ cloudAccountTitle(account, index) }}</span>
+                <span class="fn__space"></span>
+                <span class="b3-list-item__action b3-tooltips b3-tooltips__w" :aria-label="i18n.delete || '删除'" @click.stop="removeCloudAccount(account.id)"><svg><use xlink:href="#lucide-trash-2"></use></svg></span>
+              </li>
+              <li class="b3-list-item b3-list-item--hide-action">
+                <span class="b3-list-item__toggle fn__hidden"></span>
+                <span class="b3-list-item__text">{{ i18n.cloudAccountName || '自定义名称' }}</span>
+                <span class="fn__space"></span>
+                <input :value="account.name" type="text" class="b3-text-field sr-cloud-input" :placeholder="i18n.optional || '可选'" @input="updateCloudAccount(account, 'name', ($event.target as HTMLInputElement).value)">
+              </li>
+              <li class="b3-list-item b3-list-item--hide-action">
+                <span class="b3-list-item__toggle fn__hidden"></span>
+                <span class="b3-list-item__text">{{ i18n.cloudServer || '服务器' }}</span>
+                <span class="fn__space"></span>
+                <input :value="account.server" type="url" class="b3-text-field sr-cloud-input" placeholder="https://openlist.example.com" @input="updateCloudAccount(account, 'server', ($event.target as HTMLInputElement).value)">
+              </li>
+              <li class="b3-list-item b3-list-item--hide-action">
+                <span class="b3-list-item__toggle fn__hidden"></span>
+                <span class="b3-list-item__text ariaLabel" :aria-label="i18n.cloudPathPrefixDesc || '可选，仅部署在子路径时填写，例如 openlist'">{{ i18n.cloudPathPrefix || '路径前缀' }}</span>
+                <span class="fn__space"></span>
+                <input :value="account.pathPrefix" type="text" class="b3-text-field sr-cloud-input" :placeholder="i18n.cloudPathPrefixPlaceholder || '可选，仅部署在子路径时填写，例如 openlist'" @input="updateCloudAccount(account, 'pathPrefix', ($event.target as HTMLInputElement).value)">
+              </li>
+              <li class="b3-list-item b3-list-item--hide-action">
+                <span class="b3-list-item__toggle fn__hidden"></span>
+                <span class="b3-list-item__text">{{ i18n.username || '用户' }}</span>
+                <span class="fn__space"></span>
+                <input :value="account.username" type="text" class="b3-text-field sr-cloud-input" autocomplete="username" @input="updateCloudAccount(account, 'username', ($event.target as HTMLInputElement).value)">
+              </li>
+              <li class="b3-list-item b3-list-item--hide-action">
+                <span class="b3-list-item__toggle fn__hidden"></span>
+                <span class="b3-list-item__text">{{ i18n.password || '密码' }}</span>
+                <span class="fn__space"></span>
+                <input :value="account.password" type="password" class="b3-text-field sr-cloud-input" autocomplete="current-password" @input="updateCloudAccount(account, 'password', ($event.target as HTMLInputElement).value)">
+              </li>
+            </template>
+          </template>
+        </ul>
+
         <SettingSection :title="i18n.readingTheme || '阅读主题'" :icon="settingSectionIcon('root', 'theme')" :open="isOpen('theme')" @toggle="toggleAccordion('theme')">
             <SettingItem :item="presetThemeItem" :model-value="settings.theme" :label="i18n.presetTheme || '预设主题'" :hint="i18n.presetThemeDesc || ''" :i18n="i18n" @change="value => (settings.theme = value, saveTheme())" />
             <template v-if="settings.theme === 'custom'">
@@ -488,6 +562,8 @@ onMounted(() => {
 .bs-tree :deep(.sr-section-title > svg.b3-list-item__graphic){width:14px;height:14px;flex:0 0 14px;color:var(--b3-theme-on-surface);opacity:.86;stroke-width:1.8;shape-rendering:geometricPrecision}
 .bs-tree :deep(.sr-section-title:hover > svg.b3-list-item__graphic){color:inherit;opacity:1}
 .sr-control{width:80px}
+.sr-cloud-input{flex:1 1 280px;max-width:520px}
+.sr-cloud-account-title{background:color-mix(in srgb,var(--b3-theme-surface) 70%,transparent)}
 .sr-settings-actions{display:flex;justify-content:center;align-items:center;gap:8px;padding:8px 0 0}
 .bs-tree :deep(input[type="color"].sr-control){height:24px;padding:0;border:none;background:transparent}
 .license-highlight{animation:license-pulse 2s ease}

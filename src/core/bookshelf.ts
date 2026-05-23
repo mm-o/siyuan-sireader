@@ -406,10 +406,15 @@ class BookshelfManager {
     await this.init()
     const localPath = (file as any)?.path || (file as any)?._path || ''
     if (!localPath) throw new Error('本地文件链接不可用')
+    await this.addLinkedBook(toFileUrl(localPath), file, parsedMeta)
+  }
+
+  async addLinkedBook(url: string, file: File, parsedMeta?: any) {
+    await this.init()
+    if (!url) throw new Error('外部文件链接不可用')
     const { file: source, format, meta, title } = await this.prepareLocalBook(file, parsedMeta)
-    const url=toFileUrl(localPath)
     const cover = await saveOptionalCover(meta.coverBlob, url)
-    await this.savePreparedBook({ url, path: url, format, size: source.size, meta, name: title, cover })
+    await this.savePreparedBook({ url, path: url, format, size: parsedMeta?.size || source.size, meta, name: title, cover })
   }
   
   async addUrlBook(url: string, coverUrl?: string, bookInfo?: { title?: string; author?: string }, parsedMeta?: any) {
