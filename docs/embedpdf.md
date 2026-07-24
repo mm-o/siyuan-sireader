@@ -16,11 +16,10 @@ Current loading path:
 
 - SiReader fetches/reads the PDF into an `ArrayBuffer`.
 - EmbedPDF receives it through `documentManager.initialDocuments`.
-- `worker: true` is intentional. PDFium wasm is cached once into SiYuan `/data/public`, then loaded by the worker from `/public/siyuan-sireader/embedpdf/pdfium.wasm`.
-- `pdfium.wasm` is downloaded on first PDF open from EmbedPDF's official `@embedpdf/pdfium@2.14.4` CDN into `/data/public/siyuan-sireader/embedpdf/pdfium.wasm`.
-- Runtime uses `/public/siyuan-sireader/embedpdf/pdfium.wasm` directly; SiReader does not convert the wasm path into a blob URL.
-- EmbedPDF snippet runtime is downloaded on first PDF open from EmbedPDF's official `@embedpdf/snippet@2.14.4` CDN into `/data/public/siyuan-sireader/embedpdf/snippet`, then imported from `/public/siyuan-sireader/embedpdf/snippet/embedpdf.js`.
-- Default stamp manifests and PDFs are downloaded from EmbedPDF's official default-stamps CDN on first PDF open, cached into `/data/public/siyuan-sireader/embedpdf/stamps/{zh-CN,en}`, then loaded from `/public/siyuan-sireader/embedpdf/stamps/{locale}/manifest.json`.
+- `worker: true` is intentional. PDFium wasm is bundled with the plugin and loaded by the worker from `/plugins/siyuan-sireader/embedpdf/pdfium.wasm`.
+- EmbedPDF snippet runtime is bundled under `/plugins/siyuan-sireader/embedpdf/snippet` and imported from `/plugins/siyuan-sireader/embedpdf/snippet/embedpdf.js`.
+- Default stamp manifests and PDFs for `zh-CN` and `en` are bundled under `/plugins/siyuan-sireader/embedpdf/stamps/{locale}`.
+- Existing `/public/siyuan-sireader/embedpdf/...` cached assets remain a compatibility fallback only; opening PDF must not require first-use CDN downloads.
 
 ## Stored State
 

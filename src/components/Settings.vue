@@ -208,7 +208,7 @@ const dragDrop = async (e:DragEvent, to:number, type:'nav'|'dict'|'quickDoc', re
 const ttsI18nKey = (key:string, suffix='') => `tts${key.charAt(0).toUpperCase()}${key.slice(1)}${suffix}`
 
 // 计算属性
-const navItems = computed(() => (settings.value.navItems || DEFAULT_NAV_ITEMS).filter(item => !['dictionary', 'weread'].includes(item.id)).sort((a, b) => a.order - b.order))
+const navItems = computed(() => (settings.value.navItems?.length ? settings.value.navItems : DEFAULT_NAV_ITEMS).map(item => ({ ...item })).filter(item => !['dictionary', 'weread'].includes(item.id)).sort((a, b) => a.order - b.order))
 const docRows = (field:any) => (field.docs || []).map((doc:any, i:number) => ({
   key: doc.id,
   text: doc.name,
@@ -234,7 +234,7 @@ const navRows = computed(() => navItems.value.map((item, idx) => ({
   drop: (e:DragEvent) => dragDrop(e, idx, 'nav'),
   checkbox: item.enabled,
   disabled: item.id === 'appearance',
-  onCheck: (value:boolean) => (item.enabled = value, save())
+  onCheck: (value:boolean) => (settings.value.navItems = navItems.value.map(v => v.id === item.id ? { ...v, enabled: value } : v), save())
 })))
 const bookshelfRows = computed(() => bookshelfHiddenFields.map(item => ({
   key: item.key,

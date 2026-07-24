@@ -58,6 +58,7 @@ let pdfTooltip: HTMLElement | null = null
 let pdfTooltipAnnotations: any[] = []
 let currentPdfTooltipId = ''
 let pdfTooltipFrame = 0
+let nativePdfAnnotationIds = new Set<string>()
 let cleanupDocumentEvents: (() => void) | null = null
 let cleanupAnnotationEvents: (() => void) | null = null
 let cleanupScrollEvents: (() => void) | null = null
@@ -65,8 +66,6 @@ let cleanupZoomEvents: (() => void) | null = null
 let cleanupCaptureEvents: (() => void) | null = null
 let cleanupTooltipEvents: (() => void) | null = null
 let cleanupMigrationEvents: (() => void) | null = null
-let cleanupPdfDoubleTapZoom: (() => void) | null = null
-let pdfZoomRestore: any = null
 let activeViewer: any = null
 let viewerToken = 0
 let copyNextCapture = false
@@ -94,7 +93,10 @@ const pdfShadowRoot = () => rootRef.value?.querySelector('embedpdf-container')?.
 const pdfTheme = () => buildEmbedPdfTheme(props.theme, rootRef.value || undefined, props.customTheme)
 const pdfThemePreference = () => embedPdfThemePreference(props.theme, rootRef.value || undefined, props.customTheme)
 const normalizePdfZoomLevel = (value: unknown) => value === 'automatic' || value === 'fit-page' || value === 'fit-width' || (typeof value === 'number' && Number.isFinite(value) && value > 0) ? value : undefined
-const pdfZoomLevel = () => normalizePdfZoomLevel(props.settings?.pdfZoomLevel) || 'automatic'
+const pdfZoomLevel = () => normalizePdfZoomLevel(props.settings?.pdfZoomLevel)
+const pdfInitialZoomLevel = () => { const value = pdfZoomLevel(); return typeof value === 'number' ? undefined : value }
+const readerSettings = () => ((window as any).__sireader_settings || props.settings) as ReaderSettings | undefined
+const nextIdle = () => new Promise<void>(resolve => 'requestIdleCallback' in window ? requestIdleCallback(() => resolve(), { timeout: 800 }) : setTimeout(resolve))
 const ensurePageThemeStyle = () => {
   const shadow = (activeContainer as any)?.shadowRoot as ShadowRoot | undefined
   if (!shadow || shadow.querySelector('style[data-sireader-page-theme]')) return
@@ -256,7 +258,7 @@ const queueCaptureCopyButton = () => {
 const setupPdfBottomButtons = (registry: PluginRegistry) => {
   const shadow = pdfShadowRoot()
   if (!shadow) return
-  let toolbarHidden = true
+  let toolbarHidden = false
   const labelToolbar = () => toolbarHidden ? '显示顶部工具栏' : '隐藏顶部工具栏'
   const paint = (button: HTMLButtonElement, label: string, icon: string) => {
     button.title = button.ariaLabel = label
@@ -286,7 +288,7 @@ const setupPdfBottomButtons = (registry: PluginRegistry) => {
     }
     return (
       mk('sireader-pdf-toc', props.i18n?.toc || '目录', PDF_BOTTOM_ICONS.toc, () => window.dispatchEvent(new Event('sireader:togglePdfToc'))) &&
-      mk('sireader-pdf-toolbar', labelToolbar(), PDF_BOTTOM_ICONS.show, toggleToolbar) &&
+      mk('sireader-pdf-toolbar', labelToolbar(), PDF_BOTTOM_ICONS.hide, toggleToolbar) &&
       (!isMobile() || mk('sireader-pdf-close', '关闭', PDF_BOTTOM_ICONS.close, () => window.dispatchEvent(new CustomEvent('reader:mobile-close'))))
     )
   }
@@ -294,45 +296,6 @@ const setupPdfBottomButtons = (registry: PluginRegistry) => {
   const observer = new MutationObserver(() => add() && observer.disconnect())
   observer.observe(shadow, { childList: true, subtree: true })
   setTimeout(() => observer.disconnect(), 3000)
-}
-const setupPdfDoubleTapZoom = (registry: PluginRegistry) => {
-  if (!isMobile()) return
-  const zoom = getCapability<any>(registry, 'zoom')?.forDocument(documentId)
-  const scroll = getCapability<any>(registry, 'scroll')?.forDocument(documentId)
-  const viewport = getCapability<any>(registry, 'viewport')?.forDocument?.(documentId)
-  const documents = getCapability<any>(registry, 'document-manager')
-  const shadow = pdfShadowRoot()
-  if (!shadow || !zoom || !scroll) return
-  let last = { t: 0, x: 0, y: 0 }
-  const zoomAt = (clientX: number, clientY: number) => {
-    const vp = viewport?.getMetrics?.()
-    const box = rootRef.value?.getBoundingClientRect()
-    const x = clientX - (vp?.relativePosition?.x ?? box?.left ?? 0)
-    const y = clientY - (vp?.relativePosition?.y ?? box?.top ?? 0)
-    const hit = scroll.getMetrics(vp).pageVisibilityMetrics.find((m: any) => x >= m.viewportX && x <= m.viewportX + m.scaled.visibleWidth && y >= m.viewportY && y <= m.viewportY + m.scaled.visibleHeight)
-    if (!hit) return
-    if (pdfZoomRestore) {
-      zoom.requestZoom?.(pdfZoomRestore, { vx: (vp?.clientWidth || box?.width || innerWidth) / 2, vy: (vp?.clientHeight || box?.height || innerHeight) / 2 })
-      pdfZoomRestore = null
-      return
-    }
-    const page = documents?.getDocumentState(documentId)?.document?.pages?.[hit.pageNumber - 1]
-    if (!page?.size) return
-    pdfZoomRestore = zoom.getState?.().zoomLevel
-    const half = page.size.width > page.size.height
-    zoom.zoomToArea(hit.pageNumber - 1, { origin: { x: half && x > hit.viewportX + hit.scaled.visibleWidth / 2 ? page.size.width / 2 : 0, y: 0 }, size: { width: half ? page.size.width / 2 : page.size.width, height: page.size.height } })
-  }
-  const onPointerUp = (event: PointerEvent) => {
-    if (event.isPrimary === false) return
-    const now = performance.now(), dx = event.clientX - last.x, dy = event.clientY - last.y
-    if (now - last.t > 300 || dx * dx + dy * dy > 324) return void (last = { t: now, x: event.clientX, y: event.clientY })
-    last.t = 0
-    event.preventDefault()
-    event.stopPropagation()
-    zoomAt(event.clientX, event.clientY)
-  }
-  shadow.addEventListener('pointerup', onPointerUp, true)
-  cleanupPdfDoubleTapZoom = () => shadow.removeEventListener('pointerup', onPointerUp, true)
 }
 const copyCaptureBlob = async (blob: Blob) => {
   await writeBlobToClipboard(blob)
@@ -564,7 +527,7 @@ const setupPdfMigration = () => {
 
 const savePdfZoomLevel = (level: unknown) => {
   const pdfZoomLevel = normalizePdfZoomLevel(level)
-  const settings = props.settings || (window as any).__sireader_settings
+  const settings = readerSettings()
   if (!pdfZoomLevel || !settings || settings.pdfZoomLevel === pdfZoomLevel) return
   clearTimeout(zoomSaveTimer)
   zoomSaveTimer = setTimeout(() => {
@@ -579,7 +542,8 @@ const saveAnnotations = async (registry: PluginRegistry) => {
   if (!annotation?.exportAnnotations) return
   const items = await annotation.exportAnnotations().toPromise().catch(() => null)
   if (!items) return
-  await writeEmbedPdfAnnotations(storageKey(), items)
+  const managed = nativePdfAnnotationIds.size ? items.filter(item => !nativePdfAnnotationIds.has((item.annotation || item)?.id)) : items
+  await writeEmbedPdfAnnotations(storageKey(), managed)
   window.dispatchEvent(new Event('sireader:marks-updated'))
 }
 
@@ -616,17 +580,20 @@ const handleInit = (container: EmbedPdfContainer) => {
 
 const handleReady = async (registry: PluginRegistry) => {
   activeRegistry = registry
+  nativePdfAnnotationIds = new Set()
   emit('ready', registry)
   setupPdfMigration()
-  ;[cleanupDocumentEvents, cleanupAnnotationEvents, cleanupScrollEvents, cleanupZoomEvents, cleanupPdfDoubleTapZoom].forEach(cleanup => cleanup?.())
-  pdfZoomRestore = null
-  cleanupDocumentEvents = cleanupAnnotationEvents = cleanupScrollEvents = cleanupZoomEvents = cleanupPdfDoubleTapZoom = null
+  ;[cleanupDocumentEvents, cleanupAnnotationEvents, cleanupScrollEvents, cleanupZoomEvents].forEach(cleanup => cleanup?.())
+  cleanupDocumentEvents = cleanupAnnotationEvents = cleanupScrollEvents = cleanupZoomEvents = null
   const scroll = getCapability<any>(registry, 'scroll')
-  if (props.bookUrl && scroll?.forDocument) {
+  const zoom = getCapability<any>(registry, 'zoom')?.forDocument?.(documentId)
+  const savedZoomLevel = pdfZoomLevel()
+  let pendingSavedZoom = typeof savedZoomLevel === 'number' && !!scroll?.forDocument
+  if (scroll?.forDocument) {
     let restored = false
-    const savedProgress = readEmbedPdfProgress(storageKey()).catch(() => null)
+    const savedProgress = props.bookUrl ? readEmbedPdfProgress(storageKey()).catch(() => null) : null
     const restore = async () => {
-      if (restored) return
+      if (restored || !savedProgress) return
       const saved = await savedProgress
       if (!saved?.pageNumber) return
       restored = true
@@ -638,35 +605,62 @@ const handleReady = async (registry: PluginRegistry) => {
         alignY: 0,
       })
     }
-    const offPage = scroll.onPageChange?.((event: any) => {
+    const offPage = props.bookUrl && scroll.onPageChange?.((event: any) => {
       if (event.documentId === documentId) queueProgressSave({ pageNumber: event.pageNumber, totalPages: event.totalPages })
     })
     const offLayout = scroll.onLayoutReady?.((event: any) => {
-      if (event.documentId === documentId && event.isInitial) void restore()
+      if (event.documentId === documentId && event.isInitial) {
+        if (pendingSavedZoom) zoom?.requestZoom?.(savedZoomLevel)
+        pendingSavedZoom = false
+        void restore()
+      }
     })
     cleanupScrollEvents = () => { offPage?.(); offLayout?.() }
   }
   const documents = getCapability<any>(registry, 'document-manager')
   const getPageHeights = () => (documents?.getDocumentState(documentId)?.document?.pages || []).map((page: any) => Number(page?.size?.height || 0))
-  activeAnnotationScope = getCapability<any>(registry, 'annotation')?.forDocument(documentId) || null
+  const annotationRoot = getCapability<any>(registry, 'annotation')
+  const toolIds = ['ink', 'inkHighlighter', 'line', 'lineArrow', 'polyline', 'polygon', 'square', 'circle'] as const
+  const tool = (id: string) => annotationRoot?.getTool?.(id) || annotationRoot?.getTools?.()?.find?.((item: any) => item?.id === id)
+  const clone = (value: any) => { try { value = value && typeof value === 'object' && !Array.isArray(value) ? JSON.parse(JSON.stringify(value)) : null } catch { value = null } return value && Object.keys(value).length ? value : null }
+  const readToolDefaults = () => toolIds.reduce((next: Record<string, Record<string, any>>, id) => { const value = clone(tool(id)?.defaults); if (value) next[id] = value; return next }, {})
+  const applyToolDefaults = (defaults: any) => toolIds.forEach(id => { const value = clone(defaults?.[id]); if (value && tool(id)) annotationRoot?.setToolDefaults?.(id, value) })
+  let toolDefaultsTimer: any = null
+  let offTools: (() => void) | null = null
+  const saveToolDefaults = () => {
+    const settings = readerSettings()
+    if (!settings) return
+    const pdfAnnotationToolDefaults = readToolDefaults()
+    if (JSON.stringify(settings.pdfAnnotationToolDefaults || {}) === JSON.stringify(pdfAnnotationToolDefaults || {})) return
+    void settingsManager.save({ ...settings, pdfAnnotationToolDefaults })
+  }
+  if (annotationRoot) {
+    applyToolDefaults(readerSettings()?.pdfAnnotationToolDefaults)
+    offTools = annotationRoot.onToolsChange?.(() => {
+      clearTimeout(toolDefaultsTimer)
+      toolDefaultsTimer = setTimeout(() => {
+        toolDefaultsTimer = null
+        saveToolDefaults()
+      }, 400)
+    })
+  }
+  activeAnnotationScope = annotationRoot?.forDocument(documentId) || null
   activeScrollScope = scroll?.forDocument?.(documentId) || null
-  const zoom = getCapability<any>(registry, 'zoom')?.forDocument?.(documentId)
-  const offZoomState = zoom?.onStateChange?.((state: any) => savePdfZoomLevel(state?.zoomLevel))
+  const offZoomState = zoom?.onStateChange?.((state: any) => {
+    if (pendingSavedZoom && typeof state?.zoomLevel !== 'number') return
+    savePdfZoomLevel(state?.zoomLevel)
+  })
   cleanupZoomEvents = () => offZoomState?.()
   const ui = getCapability<any>(registry, 'ui'), sidebarPanel = ui?.getSchema?.().sidebars?.['sidebar-panel'] as any, tabs = sidebarPanel?.content?.tabs
   const outline = Array.isArray(tabs) ? tabs.find((tab: any) => tab.id === 'outline') : null
   if (outline && tabs[0]?.id !== 'outline') ui?.mergeSchema?.({ sidebars: { 'sidebar-panel': { ...sidebarPanel, content: { ...sidebarPanel.content, tabs: [outline, ...tabs.filter((tab: any) => tab.id !== 'outline')] } } } as any })
-  ui?.forDocument(documentId)?.closeToolbarSlot?.('top', 'main')
   setupPdfCommands(registry)
   setupPdfBottomButtons(registry)
-  setupPdfDoubleTapZoom(registry)
   setupPdfCapture(registry)
   let annotationsLoaded = false
   const annotation = activeAnnotationScope
-  let annotationFallbackTimer: any = null
   const annotationIds = () => new Set(annotation?.getAnnotations?.()?.map((item: any) => item.object?.id).filter(Boolean) || [])
   const loadAnnotations = async () => {
-    clearTimeout(annotationFallbackTimer)
     if (annotationsLoaded) return
     annotationsLoaded = true
     if (!storageKey() || !annotation?.importAnnotations) {
@@ -674,39 +668,46 @@ const handleReady = async (registry: PluginRegistry) => {
       refreshPdfTooltipAnnotations()
       return
     }
+    nativePdfAnnotationIds = annotationIds()
     const pageHeights = getPageHeights()
     const stored = await readEmbedPdfAnnotations(storageKey(), pageHeights).catch(() => null)
-    const aligned = stored?.length && needsLegacyPdfTextAlign(stored) ? await alignLegacyPdfAnnotations(stored, registry, documents, documentId) : stored
-    if (aligned !== stored && aligned?.length) await writeEmbedPdfAnnotations(storageKey(), aligned)
-    if (aligned?.length) {
+    const managed = stored?.filter((item: any) => !nativePdfAnnotationIds.has((item.annotation || item)?.id)) || []
+    const aligned = managed.length && needsLegacyPdfTextAlign(managed) ? await alignLegacyPdfAnnotations(managed, registry, documents, documentId) : managed
+    if ((stored?.length || 0) !== managed.length || aligned !== managed) await writeEmbedPdfAnnotations(storageKey(), aligned)
+    if (managed.length) {
       const existing = annotationIds()
       const missing = aligned.filter((item: any) => !existing.has((item.annotation || item)?.id))
-      if (missing.length) annotation.importAnnotations(missing)
+      if (missing.length) {
+        if (missing.length > 500) await nextIdle()
+        annotation.importAnnotations(missing)
+      }
     }
     window.dispatchEvent(new Event('sireader:marks-updated'))
     refreshPdfTooltipAnnotations()
   }
-  const scheduleAnnotationLoad = (delay = 0) => {
-    clearTimeout(annotationFallbackTimer)
-    annotationFallbackTimer = setTimeout(() => void loadAnnotations(), delay)
-  }
   if (annotation) {
     const offEvent = annotation.onAnnotationEvent?.((event: any) => {
-      if (event?.type === 'loaded') void loadAnnotations()
-      else queueAnnotationSave(registry)
+      if (event?.type === 'loaded') {
+        void loadAnnotations()
+      } else if (!nativePdfAnnotationIds.has(event?.annotation?.id)) {
+        queueAnnotationSave(registry)
+      }
       refreshPdfTooltipAnnotations()
     })
     const offState = annotation.onStateChange?.(refreshPdfTooltipAnnotations)
-    cleanupAnnotationEvents = () => { clearTimeout(annotationFallbackTimer); offEvent?.(); offState?.() }
+    cleanupAnnotationEvents = () => {
+      clearTimeout(toolDefaultsTimer)
+      offEvent?.()
+      offState?.()
+      offTools?.()
+      if (toolDefaultsTimer) saveToolDefaults()
+    }
   }
-  const offOpen = documents?.onDocumentOpened?.((state: any) => {
-    if (state.id === documentId) scheduleAnnotationLoad(2000)
-  })
   const offError = documents?.onDocumentError?.((event: any) => {
     if (event.documentId === documentId) showMessage(event.message || pdfLoadFailedMessage(), 3000, 'error')
   })
-  cleanupDocumentEvents = () => { clearTimeout(annotationFallbackTimer); offOpen?.(); offError?.() }
-  if (documents?.getDocumentState(documentId)?.status === 'loaded') scheduleAnnotationLoad(annotationIds().size ? 0 : 2000)
+  cleanupDocumentEvents = () => offError?.()
+  if (annotationIds().size) void loadAnnotations()
   ensurePageThemeStyle()
   void nextTick(setupPdfTooltip)
 }
@@ -735,13 +736,12 @@ const config = computed(() => ({
   documentManager: {
     initialDocuments: [documentSource.value],
   },
-  fontFallback: null,
   fonts: { ui: null, signature: null },
   stamp: { manifests: pdfAssets.value?.stampManifests || [] },
   permissions: { enforceDocumentPermissions: true },
   capture: { imageType: 'image/png', scale: 2, withAnnotations: true },
   scroll: { defaultBufferSize: 1 },
-  zoom: { defaultZoomLevel: pdfZoomLevel() },
+  zoom: { defaultZoomLevel: pdfInitialZoomLevel() ?? 'fit-width' },
   redaction: { useAnnotationMode: true, drawBlackBoxes: true },
   i18n: {
     defaultLocale: 'zh-CN',
@@ -792,12 +792,11 @@ onBeforeUnmount(() => {
   cleanupCaptureEvents?.()
   cleanupTooltipEvents?.()
   cleanupMigrationEvents?.()
-  cleanupPdfDoubleTapZoom?.()
-  pdfZoomRestore = null
   themeObserver.disconnect()
   activeAnnotationScope = null
   activeScrollScope = null
   activeContainer = null
+  nativePdfAnnotationIds = new Set()
   disposePdfViewer()
   pdfTooltip?.remove()
   pdfTooltip = null

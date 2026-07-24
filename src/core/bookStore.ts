@@ -123,7 +123,23 @@ export const isSupportedBookFile = (name = '') => new RegExp(`\\.(${SUPPORTED_BO
 export const filterSupportedBookFiles = (files: File[]) => files.filter(file => isSupportedBookFile(file.name))
 export const readDirEntries = async (path: string) => (await readDir(path).catch(() => ({ data: [] as any[] })))?.data || []
 
+const normalizeCloudOpenPath = (path = '/') => `/${path}`.replace(/\/+/g, '/').replace(/\/$/, '') || '/'
+const encodeCloudOpenPath = (path: string) => decodeURI(encodeURI(path)).replace(/#/g, '%23').replace(/\?/g, '%3F')
+const parseSiyuanCloudOpenUrl = (value: string) => {
+  try {
+    const url = new URL(value)
+    const path = url.searchParams.get('path')
+    return url.protocol === 'siyuan:' && url.hostname === 'plugins' && url.pathname === '/siyuan-cloud/open' && path
+      ? `${SIYUAN_CLOUD_BASE}/p${encodeCloudOpenPath(normalizeCloudOpenPath(path))}`
+      : ''
+  } catch {
+    return ''
+  }
+}
+
 export const normalizeSiyuanCloudUrl = (value = '') => {
+  const openUrl = parseSiyuanCloudOpenUrl(value)
+  if (openUrl) return openUrl
   const i = value.indexOf(SIYUAN_CLOUD_BASE)
   return i >= 0 ? value.slice(i) : value
 }

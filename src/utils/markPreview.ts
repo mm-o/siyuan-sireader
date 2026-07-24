@@ -132,7 +132,6 @@ const getOfflinePdfSession = async (ctx: PreviewContext) => {
           worker: true,
           wasmUrl,
           documentManager: { initialDocuments: [documentSource] },
-          fontFallback: null,
           fonts: { ui: null, signature: null },
           stamp: { manifests: [] },
         })

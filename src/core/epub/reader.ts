@@ -49,13 +49,12 @@ const numericNotePattern = /^.{0,2}\d+$/
 const inlineFootnoteSelector = '.js_readerFooterNote,.zhangyue-footnote,.duokan-footnote,.qqreader-footnote'
 const footnoteSelector = `${inlineFootnoteSelector},.footnote-link,.footnote`
 const footnoteLinkClasses = ['duokan-footnote', 'footnote-link', 'footnote']
+const epubTypeOf = (el: Element) => el.getAttribute('epub:type') || el.getAttributeNS('http://www.idpf.org/2007/ops', 'type') || el.getAttribute('type') || ''
+const hrefId = (href = '') => { const id = href.split('#')[1] || ''; try { return decodeURIComponent(id) } catch { return id } }
 const shouldCheckAsFootnote = (a: HTMLAnchorElement) => {
   if (!numericNotePattern.test(a.textContent?.trim() || '')) return false
-  for (let el = a.parentElement, depth = 0; el && depth < 3; el = el.parentElement, depth++) {
-    const count = Array.from(el.querySelectorAll('a')).filter(link => link !== a && numericNotePattern.test(link.textContent?.trim() || '')).length
-    if (count >= 2) return false
-  }
-  return true
+  const nav = a.closest('nav,ol,ul')
+  return !nav || Array.from(nav.querySelectorAll('a')).filter(link => link !== a && numericNotePattern.test(link.textContent?.trim() || '')).length < 2
 }
 const footnoteText = (el: HTMLElement, target?: Element | null) =>
   (el.getAttribute('data-wr-footernote') || el.getAttribute('zy-footnote') || el.querySelector('img')?.getAttribute('alt') || el.getAttribute('alt') || (target as HTMLElement | null)?.getAttribute?.('alt') || el.textContent || '').trim()
@@ -65,10 +64,23 @@ const inlineFootnote = (target: Element | null) => {
   const text = footnoteText(el, target)
   return text.trim() ? { el, text: text.trim() } : null
 }
-const normalizeFootnoteTypes = (doc?: Document) => doc?.querySelectorAll('[type~="noteref"],[type~="footnote"],[type~="endnote"],[type~="note"],[type~="rearnote"]').forEach(el => {
-  const type = el.getAttribute('type')
-  if (type && !el.getAttribute('epub:type')) el.setAttribute('epub:type', type)
-})
+const normalizeFootnoteTypes = (doc?: Document) => {
+  doc?.querySelectorAll('[type~="noteref"],[type~="footnote"],[type~="endnote"],[type~="note"],[type~="rearnote"]').forEach(el => {
+    const type = el.getAttribute('type')
+    if (type && !el.getAttribute('epub:type')) el.setAttribute('epub:type', type)
+  })
+  const ids = new Set<string>()
+  doc?.querySelectorAll('aside,section').forEach(el => {
+    if (/\b(footnote|endnote|rearnote)\b/.test(epubTypeOf(el)) || /\bdoc-(footnote|endnote)\b/.test(el.getAttribute('role') || '')) {
+      el.setAttribute('data-sr-footnote', 'true')
+      if (el.id) ids.add(el.id)
+    }
+  })
+  ids.size && doc?.querySelectorAll('a[href]').forEach(a => {
+    const id = hrefId(a.getAttribute('href') || ''), role = a.getAttribute('role') || ''
+    if (id && ids.has(id) && !/\bdoc-noteref\b/.test(role)) a.setAttribute('role', `${role} doc-noteref`.trim())
+  })
+}
 
 const isFootnoteClick = (target: Element | null) => {
   const a = target?.closest?.('a')
@@ -119,16 +131,19 @@ function createFoliateView(container: HTMLElement): FoliateView {
 }
 
 function getLayoutMetrics(settings: ReaderSettings) {
-  const { viewMode = 'single', layoutSettings: layout = { gap: 0, headerFooterMargin: 0 } } = settings
+  const { viewMode = 'single', layoutSettings: layout } = settings
   const scroll = viewMode === 'scroll'
-  const columns = isMobile() || scroll ? 1 : viewMode === 'double' ? 2 : 1
+  const legacyMargin = layout?.headerFooterMargin ?? 0
   return {
     scroll,
-    columns,
-    gap: Math.max(0, layout.gap || 0),
-    margin: Math.max(0, layout.headerFooterMargin || 0),
-    maxInlineSize: layout.maxInlineSize || 0,
-    maxBlockSize: layout.maxBlockSize || 0,
+    columns: isMobile() || scroll || viewMode === 'single' ? 1 : 2,
+    gap: Math.max(0, layout?.gapPercent ?? layout?.gap ?? 5),
+    margins: {
+      top: Math.max(0, layout?.marginTopPx ?? legacyMargin),
+      right: Math.max(0, layout?.marginRightPx ?? legacyMargin),
+      bottom: Math.max(0, layout?.marginBottomPx ?? legacyMargin),
+      left: Math.max(0, layout?.marginLeftPx ?? legacyMargin),
+    },
   }
 }
 
@@ -136,14 +151,12 @@ function configureView(view: FoliateView, settings: ReaderSettings) {
   const renderer = view.renderer
   if (!renderer) return
   const { pageAnimation = 'slide', visualSettings } = settings
-  const { scroll, columns, gap, margin, maxInlineSize, maxBlockSize } = getLayoutMetrics(settings)
+  const { scroll, columns, gap, margins } = getLayoutMetrics(settings)
   setAttr(renderer, 'flow', scroll ? 'scrolled' : 'paginated')
   setAttr(renderer, 'max-column-count', String(columns))
   setAttr(renderer, 'animated', '', !scroll && pageAnimation === 'slide')
-  setAttr(renderer, 'gap', `${gap}%`, gap > 0)
-  setAttr(renderer, 'margin', `${margin}px`, margin > 0)
-  setAttr(renderer, 'max-inline-size', `${maxInlineSize}px`, maxInlineSize)
-  setAttr(renderer, 'max-block-size', `${maxBlockSize}px`, maxBlockSize)
+  setAttr(renderer, 'gap', `${gap}%`)
+  for (const side of ['top', 'right', 'bottom', 'left'] as const) setAttr(renderer, `margin-${side}`, `${margins[side]}px`)
   applyVisualFilter(visualSettings)
   applyViewTheme(view, getTheme(settings))
 }
@@ -184,7 +197,7 @@ function applyCustomCSS(view: FoliateView, settings: ReaderSettings) {
   const darkText = ['#000', '#000000', 'black', 'rgb(0,0,0)', 'rgb(0, 0, 0)'].map(c => `font[color="${c}"],[style*="color:${c}"],[style*="color: ${c}"]`).join(',')
   const customFont = text.fontFamily === 'custom' ? text.customFont?.fontFamily : ''
   const font = customFont ? `"${customFont}", sans-serif` : text.fontFamily || 'inherit'
-  const fontUrl = customFont ? `${location.origin}/plugins/custom-fonts/${text.customFont.fontFile}` : ''
+  const fontUrl = customFont ? `${location.origin}/plugins/custom-fonts/${encodeURI(text.customFont.fontFile)}` : ''
   fontUrl && preloadFont(fontUrl)
   const fontFace = customFont ? `@font-face{font-family:"${customFont}";src:url("${fontUrl}");font-display:swap}` : ''
   const css = [
@@ -195,9 +208,6 @@ function applyCustomCSS(view: FoliateView, settings: ReaderSettings) {
       background:transparent!important;
       color:${theme.color}!important;
       ${mobile ? '' : 'color-scheme:light dark'}
-      width:100%!important;
-      min-width:100%!important;
-      min-height:100%!important;
       box-sizing:border-box!important;
       scrollbar-width:none!important;
       -ms-overflow-style:none!important;
@@ -221,7 +231,7 @@ function applyCustomCSS(view: FoliateView, settings: ReaderSettings) {
     body,body>*{background-size:cover!important;background-position:center!important;background-repeat:no-repeat!important}
     ${transparentContent}
     body,body *{font-family:${font}!important}
-    p,li,dd,blockquote,span,div{font-weight:${text.fontWeight}!important}
+    p,li,dd,blockquote,span,div{font-size:${text.fontSize}px!important;font-weight:${text.fontWeight}!important}
     p:not(:has(img)),li,blockquote,dd{line-height:${paragraph.lineHeight}!important;text-align:start;text-indent:${paragraph.textIndent}em!important;margin-bottom:${paragraph.paragraphSpacing}em!important}
     img,svg,p:has(img),figure,figure *{background-color:transparent!important}
     p:has(img){text-indent:0!important;margin:0!important}
@@ -240,7 +250,8 @@ function applyCustomCSS(view: FoliateView, settings: ReaderSettings) {
     section[epub|type~="endnote"],
     section[epub|type~="rearnote"],
     [role~="doc-footnote"],
-    [role~="doc-endnote"]{display:none!important}
+    [role~="doc-endnote"],
+    [data-sr-footnote]{display:none!important}
   `
   ].join('')
   const renderer = view.renderer as any
@@ -272,32 +283,46 @@ const applyMarginal = (el: HTMLElement | undefined, text: string, margin = 48) =
   })
 }
 
-function updateMarginals(view: FoliateView) {
-  const renderer = view.renderer as any
-  const head = renderer?.heads?.[0] as HTMLElement | undefined
-  const foot = renderer?.feet?.[0] as HTMLElement | undefined
-  if (!head || !foot) return
-  const margin = parseFloat(getComputedStyle(renderer).getPropertyValue('--_margin')) || 48
-  const title = readText(view.book?.metadata?.title)
-  const chapter = readText(view.lastLocation?.tocItem?.label) || title
-  const chapterPages = Number.isFinite(renderer?.page) && Number.isFinite(renderer?.pages) && renderer.pages > 2
+function formatClock(layout: ReaderSettings['layoutSettings']) {
+  return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: layout.use24HourClock ? false : undefined })
+}
+
+function formatProgress(view: FoliateView, renderer: any, layout: ReaderSettings['layoutSettings']) {
+  const fraction = view.lastLocation?.fraction
+  if (layout.progressStyle === 'percentage' && typeof fraction === 'number') return `${Math.round(fraction * 100)}%`
+  if (layout.progressStyle === 'reference' && typeof fraction === 'number' && layout.referencePageCount > 0) return `${Math.max(1, Math.round(fraction * layout.referencePageCount))}/${layout.referencePageCount}`
+  return Number.isFinite(renderer?.page) && Number.isFinite(renderer?.pages) && renderer.pages > 2
     ? `${Math.min(renderer.pages - 2, Math.max(1, renderer.page))}/${renderer.pages - 2}`
     : ''
-  const totalFraction = view.lastLocation?.fraction
-  const footer = [chapterPages, typeof totalFraction === 'number' ? `${Math.round(totalFraction * 100)}%` : '']
+}
+
+function updateMarginals(view: FoliateView, settings: ReaderSettings) {
+  const renderer = view.renderer as any
+  const heads = [...(renderer?.heads || [])] as HTMLElement[]
+  const feet = [...(renderer?.feet || [])] as HTMLElement[]
+  if (!heads.length && !feet.length) return
+  const layout = settings.layoutSettings
+  const topMargin = layout.marginTopPx || layout.headerFooterMargin || 44
+  const bottomMargin = layout.marginBottomPx || layout.headerFooterMargin || 44
+  const title = readText(view.book?.metadata?.title)
+  const chapter = readText(view.lastLocation?.tocItem?.label) || title
+  const footer = [
+    layout.showProgressInfo && formatProgress(view, renderer, layout),
+    layout.showCurrentTime && formatClock(layout),
+  ]
     .filter(Boolean)
     .join(' · ')
-  applyMarginal(head, chapter || title, margin)
-  applyMarginal(foot, footer, margin)
+  heads.forEach(head => applyMarginal(head, layout.showHeader ? chapter || title : '', topMargin))
+  feet.forEach(foot => applyMarginal(foot, layout.showFooter ? footer : '', bottomMargin))
 }
 
-function refreshMarginals(view: FoliateView) {
-  requestAnimationFrame(() => requestAnimationFrame(() => updateMarginals(view)))
-  setTimeout(() => updateMarginals(view), 0)
+function refreshMarginals(view: FoliateView, settings: ReaderSettings) {
+  requestAnimationFrame(() => requestAnimationFrame(() => updateMarginals(view, settings)))
+  setTimeout(() => updateMarginals(view, settings), 0)
 }
 
-function refreshRenderer(view: FoliateView) {
-  requestAnimationFrame(() => { ;(view.renderer as any)?.render?.(); refreshMarginals(view) })
+function refreshRenderer(view: FoliateView, settings: ReaderSettings) {
+  requestAnimationFrame(() => { ;(view.renderer as any)?.render?.(); refreshMarginals(view, settings) })
 }
 
 export class FoliateReader {
@@ -309,6 +334,7 @@ export class FoliateReader {
   private themeObserver?: MutationObserver
   private resizeObserver?: ResizeObserver
   private resizeTimer: any = null
+  private clockTimer: any = null
   private lastResizeWidth = 0
   private footnote = new FootnoteHandler()
   private footnoteAnchor: HTMLElement | null = null
@@ -349,7 +375,7 @@ export class FoliateReader {
       const renderer = this.view.renderer as any
       if (renderer && !renderer.__sireaderMarginalsBound) {
         renderer.__sireaderMarginalsBound = true
-        const refresh = () => refreshMarginals(this.view)
+        const refresh = () => refreshMarginals(this.view, this.settings)
         renderer.addEventListener('load', refresh)
         renderer.addEventListener('relocate', refresh)
       }
@@ -364,7 +390,13 @@ export class FoliateReader {
   private applySettings() {
     configureView(this.view, this.settings)
     applyCustomCSS(this.view, this.settings)
-    refreshRenderer(this.view)
+    refreshRenderer(this.view, this.settings)
+    this.syncClock()
+  }
+
+  private syncClock() {
+    clearInterval(this.clockTimer)
+    this.clockTimer = this.settings.layoutSettings.showCurrentTime ? setInterval(() => refreshMarginals(this.view, this.settings), 60000) : null
   }
 
   private scheduleResize() {
@@ -380,7 +412,7 @@ export class FoliateReader {
     this.resizeTimer = setTimeout(() => this.applySettings(), delay)
   }
 
-  private handleLoad(detail: any) { normalizeFootnoteTypes(detail?.doc); refreshMarginals(this.view); this.bindContentMedia(detail?.doc, detail?.index); this.emit('load', detail) }
+  private handleLoad(detail: any) { normalizeFootnoteTypes(detail?.doc); refreshMarginals(this.view, this.settings); this.bindContentMedia(detail?.doc, detail?.index); this.emit('load', detail) }
 
   private cfiFor(doc: Document, index: number | undefined, node: Node) {
     try { const range = doc.createRange(); range.selectNode(node); return index !== undefined ? (this.view as any).getCFI(index, range) : '' } catch { return '' }
@@ -437,7 +469,7 @@ export class FoliateReader {
     }) as EventListener)
     this.footnote.addEventListener('render', ((e: CustomEvent) => this.renderFootnote(e.detail)) as EventListener)
     this.view.addEventListener('relocate', ((e: CustomEvent) => {
-      refreshMarginals(this.view)
+      refreshMarginals(this.view, this.settings)
       this.emit('relocate', e.detail)
     }) as EventListener)
     this.view.addEventListener('load', ((e: CustomEvent) => this.handleLoad(e.detail)) as EventListener)
@@ -450,6 +482,8 @@ export class FoliateReader {
       this.footnoteAnchor = a
       this.footnoteHistory = [e.detail]
       this.footnoteIndex = 0
+      const sameDocNote = a.ownerDocument.getElementById(hrefId(a.getAttribute('href') || ''))
+      if (sameDocNote?.hasAttribute('data-sr-footnote')) return e.preventDefault(), this.renderSameDocFootnote(a, sameDocNote)
       if (footnoteLinkClasses.some(cls => a.classList.contains(cls))) e.detail.follow = true
       if (shouldCheckAsFootnote(a)) e.detail.check = true
       const handled = this.footnote.handle(this.view.book, e as any)
@@ -469,12 +503,20 @@ export class FoliateReader {
   }
 
   private renderInlineFootnote(el: HTMLElement, text: string) {
+    this.renderFootnoteContent(el, text)
+  }
+
+  private renderSameDocFootnote(anchor: HTMLElement, target: Element) {
+    this.renderFootnoteContent(anchor, target.innerHTML, true)
+  }
+
+  private renderFootnoteContent(anchor: HTMLElement, value: string, html = false) {
     const tooltip = this.getFootnoteTooltip()
-    const i = this.plugin.i18n
-    tooltip.innerHTML = createTooltip({ icon: '#iconMark', iconColor: '#ef4444', title: i.footnote || '脚注', content: '<div data-footnote-content style="max-height:min(360px,calc(100vh - 120px));overflow:auto;user-select:text;padding:14px;font-size:13px;line-height:1.7;white-space:pre-wrap"></div>' })
-    tooltip.querySelector('[data-footnote-content]')!.textContent = text
-    const rect = el.getBoundingClientRect()
-    const frameRect = (el.ownerDocument.defaultView?.frameElement as HTMLIFrameElement | null)?.getBoundingClientRect()
+    tooltip.innerHTML = createTooltip({ icon: '#iconMark', iconColor: '#ef4444', title: this.plugin.i18n.footnote || '脚注', content: `<div data-footnote-content style="max-height:min(360px,calc(100vh - 120px));overflow:auto;user-select:text;padding:14px;font-size:13px;line-height:1.7;${html ? '' : 'white-space:pre-wrap'}"></div>` })
+    const content = tooltip.querySelector('[data-footnote-content]')!
+    html ? content.innerHTML = value : content.textContent = value
+    const rect = anchor.getBoundingClientRect()
+    const frameRect = (anchor.ownerDocument.defaultView?.frameElement as HTMLIFrameElement | null)?.getBoundingClientRect()
     showTooltip(tooltip, (frameRect?.left || 0) + rect.left, (frameRect?.top || 0) + rect.bottom + 8)
   }
 
@@ -584,6 +626,7 @@ export class FoliateReader {
     this.themeObserver?.disconnect()
     this.resizeObserver?.disconnect()
     clearTimeout(this.resizeTimer)
+    clearInterval(this.clockTimer)
     this.eventListeners.clear()
     this.view.close?.()
     this.view.book?.destroy?.()

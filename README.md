@@ -7,7 +7,7 @@
 Transform SiYuan Notes into a professional eBook reader  
 Professional eBook reader for EPUB/PDF/MOBI/TXT/online novels. PDFs support highlights, ink, shapes, forms, stamps, signatures, images, screenshots, search, printing, export, and backlinks, with annotation notes, dictionary, translation, themes, and bookshelf management.
 
-[![Version](https://img.shields.io/badge/version-2.2.0-blue.svg)](https://github.com/your-repo/siyuan-sireader)
+[![Version](https://img.shields.io/badge/version-2.2.1-blue.svg)](https://github.com/your-repo/siyuan-sireader)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![SiYuan](https://img.shields.io/badge/SiYuan-3.0+-orange.svg)](https://github.com/siyuan-note/siyuan)
 
@@ -18,6 +18,29 @@ Professional eBook reader for EPUB/PDF/MOBI/TXT/online novels. PDFs support high
 ---
 
 ## 📝 Latest Updates
+
+### v2.2.1 (2026.7.23)
+
+### Added
+
+- Added persistent default settings for PDF shape annotation tools, including color, line width, and related options.
+- Added EPUB page layout settings for margins, column gap, header/footer, reading progress, current time, and progress style.
+
+### Improved
+
+- Improved restoring and saving default PDF shape annotation settings to reduce duplicate writes.
+- Improved document book-link opening: SiReader now parses and adds the linked book to the bookshelf first, then falls back to temporary reading if import fails.
+- Improved PDF core asset loading by bundling PDFium, the EmbedPDF runtime, and default stamps with the plugin to reduce open failures caused by network issues.
+
+### Fixed
+
+- Fixed PDFs sometimes reopening to a blank page. SiReader now initializes with a safe zoom state, then restores numeric zoom after layout is ready.
+- Fixed slow opening and missing annotation-list pages in PDFs with many embedded annotations. SiReader now waits for native annotations to finish loading and only saves plugin-created annotations.
+- Fixed some EPUB font-size settings not taking effect by applying the reader font size to common body elements.
+- Fixed EPUB layout settings, header/footer, and two-column display issues under the newer foliate foundation, aligning margins, column gap, header/footer, and progress styles with Readest.
+- Fixed SiYuan inserted-link parsing failures that prevented books from opening.
+- Fixed garbled rendering in some legacy Chinese PDFs by using EmbedPDF/PDFium native font fallback.
+- Fixed navigation bar display toggles not taking effect.
 
 ### v2.2.0 (2026.7.21)
 

@@ -277,8 +277,8 @@ export const useReaderMarks = (i18n?: any, context?: any) => {
   const mainText = (item: any) => {
     return item.text || item.title || '无内容'
   }
-  const canEdit = (_item: any) => !readOnly.value && !!marks.value?.updateMark
-  const canDelete = (_item: any) => !readOnly.value && !!marks.value?.deleteMark
+  const canEdit = (item: any) => !readOnly.value && !item?.readOnly && !!marks.value?.updateMark
+  const canDelete = (item: any) => !readOnly.value && !item?.readOnly && !!marks.value?.deleteMark
   const canImport = (_item: any) => !readOnly.value && !!marks.value?.updateMark
   const pendingImportMarks = computed(() => allEntries.value.filter(item => canImport(item) && !item.blockId))
   const pendingImportCount = computed(() => pendingImportMarks.value.length)

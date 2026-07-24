@@ -94,6 +94,27 @@ export default defineConfig(({
             src: "./src/i18n/*.json",
             dest: "./i18n/",
           },
+          {
+            src: [
+              "./node_modules/@embedpdf/snippet/dist/embedpdf*.js",
+              "./node_modules/@embedpdf/snippet/dist/worker-engine*.js",
+              "./node_modules/@embedpdf/snippet/dist/direct-engine*.js",
+              "./node_modules/@embedpdf/snippet/dist/browser*.js",
+            ],
+            dest: "./embedpdf/snippet/",
+          },
+          {
+            src: "./node_modules/@embedpdf/snippet/dist/pdfium.wasm",
+            dest: "./embedpdf/",
+          },
+          {
+            src: "./node_modules/@embedpdf/default-stamps/zh-CN/*",
+            dest: "./embedpdf/stamps/zh-CN/",
+          },
+          {
+            src: "./node_modules/@embedpdf/default-stamps/en/*",
+            dest: "./embedpdf/stamps/en/",
+          },
         ],
       }),
     ],

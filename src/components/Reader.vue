@@ -144,6 +144,7 @@ const embedPdfSource = ref<File | string | null>(null)
 const embedPdfPages = ref<any>(null)
 const embedPdfAnnotations = ref<any>(null)
 const embedPdfMarks = ref<any[]>([])
+let embedPdfNativeIds = new Set<string>()
 const embedPdfAnnotationsHidden = ref(false)
 const currentView = ref<any>(null)
 let cleanupEmbedPdfEvents: (()=>void) | null = null
@@ -179,7 +180,7 @@ const embedPdfMark=(item:any)=>{
   const a=item?.annotation||item, page=(a.pageIndex??0)+1, bookmark=a.custom?.type==='bookmark', redaction=a.type===PDF_REDACT_TYPE
   const text=a.custom?.title||a.custom?.text||a.contents||(redaction?'遮蔽':i18n.value.annotation||i18n.value.mark||'Annotation')
   const color=[a.strokeColor,a.color,a.fontColor,a.backgroundColor].map(embedPdfColor).find(c=>c&&c!=='transparent')||'#ffcd45'
-  return Object.assign(item,{id:a.id,type:bookmark?'bookmark':redaction?'redaction':a.type===1||a.type===3?'note':'highlight',format:'pdf',page,cfi:`#page-${page}`,title:bookmark?text:a.custom?.title,text:bookmark?text:a.custom?.text||a.contents||text,note:bookmark||redaction?'':a.custom?.note||a.contents||'',tags:a.custom?.tags||[],blockId:a.custom?.blockId,color,style:embedPdfStyle(a.type,a.custom),timestamp:new Date(a.created||a.modified||Date.now()).getTime(),chapter:bookmark?'':a.custom?.chapter||`${i18n.value.page||'Page '}${page}${i18n.value.pageSuffix||''}`,customOrder:a.custom?.customOrder})
+  return Object.assign(item,{id:a.id,type:bookmark?'bookmark':redaction?'redaction':a.type===1||a.type===3?'note':'highlight',format:'pdf',readOnly:embedPdfNativeIds.has(a.id)||a.flags?.includes('readOnly'),page,cfi:`#page-${page}`,title:bookmark?text:a.custom?.title,text:bookmark?text:a.custom?.text||a.contents||text,note:bookmark||redaction?'':a.custom?.note||a.contents||'',tags:a.custom?.tags||[],blockId:a.custom?.blockId,color,style:embedPdfStyle(a.type,a.custom),timestamp:new Date(a.created||a.modified||Date.now()).getTime(),chapter:bookmark?'':a.custom?.chapter||`${i18n.value.page||'Page '}${page}${i18n.value.pageSuffix||''}`,customOrder:a.custom?.customOrder})
 }
 const uniquePdfItems=(items:any[]=[])=>[...new Map(items.map((item:any)=>[(item.annotation||item)?.id,item]).filter(([id])=>id)).values()]
 const compact=(value:Record<string,any>)=>Object.fromEntries(Object.entries(value).filter(([,v])=>v!==undefined))
@@ -212,10 +213,11 @@ const initEmbedPdfMode=async(loadSource:()=>Promise<File|string|null>)=>{
   const file=await loadSource()
   if(!file)throw new Error('PDF file is missing')
   embedPdfSource.value=file
+  embedPdfNativeIds=new Set()
   embedPdfMarks.value=[]
   embedPdfAnnotationsHidden.value=false
   markManager.value=null
-  currentView.value={engine:'embedpdf',isPdf:true,annotationsHidden:embedPdfAnnotationsHidden,marks:{getAnnotations:()=>embedPdfMarks.value.filter((item:any)=>item.type!=='bookmark'),getBookmarks:()=>embedPdfMarks.value.filter((item:any)=>item.type==='bookmark'),updateMark:updateEmbedPdfMark,deleteMark:deleteEmbedPdfMark,toggleBookmark:toggleEmbedPdfBookmark},goTo:(page:any,id?:string)=>{const pageNumber=Number(page)||1;embedPdfPages.value?.scrollToPage({pageNumber,behavior:'smooth'});if(id)requestAnimationFrame(()=>embedPdfAnnotations.value?.selectAnnotation?.(pageNumber-1,id))},getCurrentPage:()=>embedPdfPages.value?.getCurrentPage?.()||1,toggleAnnotationsHidden:()=>embedPdfAnnotationsHidden.value=!embedPdfAnnotationsHidden.value,cleanup:()=>{cleanupEmbedPdfEvents?.();cleanupEmbedPdfEvents=null;embedPdfSource.value=null;embedPdfPages.value=null;embedPdfAnnotations.value=null;embedPdfMarks.value=[];embedPdfAnnotationsHidden.value=false}}
+  currentView.value={engine:'embedpdf',isPdf:true,annotationsHidden:embedPdfAnnotationsHidden,marks:{getAnnotations:()=>embedPdfMarks.value.filter((item:any)=>item.type!=='bookmark'),getBookmarks:()=>embedPdfMarks.value.filter((item:any)=>item.type==='bookmark'),updateMark:updateEmbedPdfMark,deleteMark:deleteEmbedPdfMark,toggleBookmark:toggleEmbedPdfBookmark},goTo:(page:any,id?:string)=>{const pageNumber=Number(page)||1;embedPdfPages.value?.scrollToPage({pageNumber,behavior:'smooth'});if(id)requestAnimationFrame(()=>embedPdfAnnotations.value?.selectAnnotation?.(pageNumber-1,id))},getCurrentPage:()=>embedPdfPages.value?.getCurrentPage?.()||1,toggleAnnotationsHidden:()=>embedPdfAnnotationsHidden.value=!embedPdfAnnotationsHidden.value,cleanup:()=>{cleanupEmbedPdfEvents?.();cleanupEmbedPdfEvents=null;embedPdfSource.value=null;embedPdfPages.value=null;embedPdfAnnotations.value=null;embedPdfNativeIds=new Set();embedPdfMarks.value=[];embedPdfAnnotationsHidden.value=false}}
   setActiveReader(currentView.value,null,getSettings())
 }
 const handleEmbedPdfReady=(registry:any)=>{
@@ -225,9 +227,13 @@ const handleEmbedPdfReady=(registry:any)=>{
   embedPdfAnnotations.value=registry.getPlugin('annotation').provides().forDocument(documentId)
   const emitPage=(page:number)=>window.dispatchEvent(new CustomEvent('sireader:pdf-page',{detail:{bookUrl:getBookUrl(),page}}))
   const offPage=scroll.onPageChange?.((event:any)=>event.documentId===documentId&&emitPage(event.pageNumber))
+  const rememberNative=()=>embedPdfNativeIds=new Set(embedPdfAnnotations.value?.getAnnotations?.().map((item:any)=>item.object?.id).filter(Boolean)||[])
+  const offAnno=embedPdfAnnotations.value.onAnnotationEvent?.((event:any)=>{if(event?.type==='loaded')rememberNative();if(['loaded','create','update','delete'].includes(event?.type))void loadEmbedPdfMarks()})
   cleanupEmbedPdfEvents?.()
-  cleanupEmbedPdfEvents=()=>offPage?.()
+  cleanupEmbedPdfEvents=()=>{offPage?.();offAnno?.()}
   emitPage(embedPdfPages.value?.getCurrentPage?.()||1)
+  rememberNative()
+  void loadEmbedPdfMarks()
   const pageTextCache=new Map<number,Promise<string>>()
   currentView.value.getPageText=(page:number)=>{
     const pageNumber=Number(page)||1

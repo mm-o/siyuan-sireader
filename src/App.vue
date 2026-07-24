@@ -10,7 +10,7 @@ import { computed, createApp, defineComponent, h, onMounted, onUnmounted, provid
 import { MotionPlugin } from '@vueuse/motion'
 import { showMessage } from 'siyuan'
 import { usePlugin, setOpenSettingHandler, registerCleanup } from '@/main'
-import { useSetting, settingsManager, parseBookLink } from '@/composables/useSetting'
+import { useSetting, settingsManager, parseBookLink, DEFAULT_NAV_ITEMS } from '@/composables/useSetting'
 import { useStats } from '@/composables/useStats'
 import { READER_ICON_ID } from '@/utils/icon'
 import { isMobile } from '@/utils/mobile'
@@ -27,6 +27,7 @@ import Stats from '@/components/Stats.vue'
 import TTSMini from '@/components/TTSMini.vue'
 import { getTTSController } from '@/services/TTSPlayer'
 import { isWereadReaderUrl, normalizeWereadReaderUrl, openWereadReaderLink, registerWeread } from '@/weread/open'
+import { normalizeSiyuanCloudUrl } from '@/core/bookStore'
 
 const plugin = usePlugin()
 const { settings, isLoaded } = useSetting(plugin)
@@ -40,21 +41,13 @@ const waitForSettings = async () => {
   await new Promise(r => { const check = () => isLoaded.value ? r(true) : setTimeout(check, 50); check() })
 }
 
-const SETTINGS_TABS = [
-  { id: 'bookshelf', icon: 'lucide-library-big', tip: 'bookshelf', enabled: true, order: 0 },
-  { id: 'search', icon: 'lucide-book-search', tip: 'search', enabled: true, order: 1 },
-  { id: 'toc', icon: 'lucide-scroll-text', tip: '目录', enabled: true, order: 3 },
-  { id: 'mark', icon: 'lucide-square-pen', tip: '标注', enabled: true, order: 4 },
-  { id: 'appearance', icon: 'lucide-settings-2', tip: '设置', enabled: true, order: 7 },
-]
-
 const SettingsDock = defineComponent({
   props: ['modelValue', 'i18n', 'onSave', 'onUpdate:modelValue'],
   setup(props: any) {
     const { canShowToc } = useReaderState()
     const activeTab = ref('bookshelf')
     const model = ref(props.modelValue)
-    const navItems = computed(() => (model.value.navItems?.length ? model.value.navItems : SETTINGS_TABS).filter((item: any) => !['dictionary', 'weread'].includes(item.id)).sort((a: any, b: any) => a.order - b.order))
+    const navItems = computed(() => (model.value.navItems?.length ? model.value.navItems : DEFAULT_NAV_ITEMS).filter((item: any) => !['dictionary', 'weread'].includes(item.id)).sort((a: any, b: any) => a.order - b.order))
     const tabs = computed(() => navItems.value.filter((item: any) => item.enabled && (item.id !== 'toc' || canShowToc.value)).map((item: any) => ({ id: item.id, icon: item.icon, tip: props.i18n?.[item.tip] || item.tip })))
     const tooltipDir = computed(() => ({ left: 'e', right: 'w', top: 's', bottom: 'n' }[model.value.navPosition] || 'n'))
     const handleUpdate = (value: any) => {
@@ -248,9 +241,17 @@ const handleEbookLink = async (e: MouseEvent) => {
   
   // 普通文件链接
   e.preventDefault(), e.stopPropagation()
-  const { openReaderTab } = await import('@/utils/bookOpen')
-  const title = cleanUrl.split('/').pop()?.split('?')[0]?.replace(/\.[^.]+$/, '') || 'Reader'
-  openReaderTab(plugin, title, { url: cleanUrl, blockId: link.closest('[data-node-id]')?.getAttribute('data-node-id') }, `${plugin.name}epub_reader`, settings.value)
+  const { bookshelfManager } = await import('@/core/bookshelf')
+  const { openOrActivateBook, openReaderTab } = await import('@/utils/bookOpen')
+  const readUrl = normalizeSiyuanCloudUrl(cleanUrl)
+  const blockId = link.closest('[data-node-id]')?.getAttribute('data-node-id')
+  const existing = await bookshelfManager.getBook(readUrl)
+  const addedUrl = existing ? readUrl : await bookshelfManager.addUrlBook(readUrl).catch(() => '')
+  const book = existing || (addedUrl ? await bookshelfManager.getBook(addedUrl) : null)
+  if (book) return openOrActivateBook(plugin, book, settings.value)
+  const name = readUrl.split('/').pop()?.split('?')[0] || ''
+  const title = (decodeURIComponent(name).replace(/\.[^.]+$/, '') || 'Reader')
+  openReaderTab(plugin, title, { url: readUrl, blockId }, `${plugin.name}epub_reader`, settings.value)
 }
 
 const handleEbookLinkEnter = async (e: MouseEvent) => {

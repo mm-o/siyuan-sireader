@@ -7,7 +7,7 @@
 让思源笔记变身专业阅读器，支持 EPUB/PDF/TXT/在线小说  
 专业电子书阅读器，支持 EPUB/PDF/MOBI/TXT/在线小说；PDF 支持高亮、墨迹、形状、表单、印章、签名、图片、截图、搜索、打印、导出和回链，并提供标注笔记、词典、翻译、主题与书架管理
 
-[![Version](https://img.shields.io/badge/version-2.2.0-blue.svg)](https://github.com/your-repo/siyuan-sireader)
+[![Version](https://img.shields.io/badge/version-2.2.1-blue.svg)](https://github.com/your-repo/siyuan-sireader)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![SiYuan](https://img.shields.io/badge/SiYuan-3.0+-orange.svg)](https://github.com/siyuan-note/siyuan)
 
@@ -18,6 +18,29 @@
 ---
 
 ## 📝 最新更新
+
+### v2.2.1（2026.7.23）
+
+### 新增
+
+- 支持 PDF 形状标注工具默认配置持久化，包含颜色、线宽等参数。
+- 支持 EPUB 页面布局设置，包含四边距、分栏间距、页眉页脚、阅读进度、当前时间和进度样式。
+
+### 优化
+
+- 优化 PDF 形状标注默认配置的恢复与保存流程，减少重复写入。
+- 优化文档内书籍链接打开流程，优先解析并加入书架，失败时再临时打开阅读。
+- 优化 PDF 核心资源加载，PDFium、EmbedPDF 运行时和默认图章随插件打包，减少网络异常导致的打开失败。
+
+### 修复
+
+- 修复 PDF 重新打开后可能出现空白页面的问题，现在会先安全初始化，布局就绪后再恢复数字缩放。
+- 修复 PDF 内嵌标注较多时打开卡顿、标注页不显示的问题，现在会等待原生标注加载完成，并只保存插件自建标注。
+- 修复部分 EPUB 字号设置不生效的问题，现在会同步覆盖常见正文元素字号。
+- 修复新版 foliate 下 EPUB 页面布局设置不生效、页眉页脚不显示、双栏显示异常的问题，并对齐 Readest 的四边距、分栏间距、页眉页脚与进度样式。
+- 修复思源插入链接解析失败导致无法打开的问题。
+- 修复部分旧版中文 PDF 打开乱码的问题，现在会使用 EmbedPDF/PDFium 原生字体回退。
+- 修复导航栏配置中显示开关不生效的问题。
 
 ### v2.2.0（2026.7.21）
 

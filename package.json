@@ -1,6 +1,6 @@
 {
   "name": "siyuan-sireader",
-  "version": "2.2.0",
+  "version": "2.2.1",
   "type": "module",
   "description": "专业电子书阅读器，支持 EPUB/PDF/MOBI/TXT/在线小说；PDF 支持标注、表单、印章、签名、截图、搜索、打印、导出和回链，并提供词典、翻译、主题与书架管理 - 思阅 SiReader",
   "author": "mm-o",
@@ -21,6 +21,8 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
+    "@embedpdf/default-stamps": "0.0.1",
+    "@embedpdf/snippet": "2.14.4",
     "@vueuse/motion": "^3.0.3",
     "fflate": "^0.8.2",
     "foliate-js": "github:readest/foliate-js#dd71f2be356563c16a23272686189fcfb45d0b82",
