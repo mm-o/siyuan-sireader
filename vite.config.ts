@@ -11,6 +11,7 @@ import {
 } from "vite"
 import { viteStaticCopy } from "vite-plugin-static-copy"
 import zipPack from "vite-plugin-zip-pack"
+import { foliateCustomElementsGuard } from "./scripts/foliate-custom-elements"
 
 const pluginInfo = require("./plugin.json")
 const PRIVATE_SOURCES_ID = "@private-sources"
@@ -57,6 +58,7 @@ export default defineConfig(({
     },
 
     plugins: [
+      foliateCustomElementsGuard(),
       {
         name: "private-sources",
         enforce: "pre",
