@@ -60,6 +60,20 @@ export default defineConfig(({
       {
         name: "private-sources",
         enforce: "pre",
+        transform(code, id) {
+          const matched = id.replace(/\\/g, "/").match(/\/foliate-js\/(view|fixed-layout|paginator)\.js(?:\?.*)?$/)
+          if (!matched) return null
+          let next = code.replace(/((?:this\.#)?iframe)\.setAttribute\('sandbox', 'allow-same-origin allow-scripts'\)/g, "$1.setAttribute('sandbox', 'allow-same-origin')")
+          const [tag, constructor] = ({
+            view: ["foliate-view", "View"],
+            "fixed-layout": ["foliate-fxl", "FixedLayout"],
+            paginator: ["foliate-paginator", "Paginator"],
+          } as Record<string, string[]>)[matched[1]]
+          const original = `customElements.define('${tag}', ${constructor})`
+          if (!next.includes(original)) throw new Error(`Expected Foliate custom-element registration in ${id}: ${original}`)
+          next = next.replace(original, `if (!customElements.get('${tag}')) ${original}`)
+          return next === code ? null : { code: next, map: null }
+        },
         resolveId(id, importer) {
           if (/[\\/]foliate-js[\\/]pdf\.js$/.test(id) || id === "foliate-js/pdf.js" || (id === "./pdf.js" && /[\\/]foliate-js[\\/]view\.js$/.test(importer || ""))) return FOLIATE_PDF_STUB_ID
           if (id !== PRIVATE_SOURCES_ID) return null

@@ -114,6 +114,12 @@ export const pdfMarkFromAnnotation = (annotation: any, annotations: any[] = []) 
   return { id: annotation.id, type: 'note', format: 'pdf', page, cfi: `#page-${page}`, chapter: `Page ${page}`, text: pdfAnnotationText(item), note: pdfAnnotationNote(item) }
 }
 
+export const isPdfImageAnnotation = (annotation: any) => annotation?.rect && [4, 5, 6, 8, 15].includes(Number(annotation.type))
+export const capturePdfAnnotationImage = (renderScope: any, annotation: any) =>
+  isPdfImageAnnotation(annotation)
+    ? taskToPromise<Blob>(renderScope?.renderPageRect?.({ pageIndex: annotation.pageIndex, rect: annotation.rect, options: { imageType: 'image/png', scaleFactor: 2, withAnnotations: true } })).catch(() => null)
+    : null
+
 export const pdfSelectionFromAnnotation = (annotation: any) => {
   const page = Number(annotation.pageIndex || 0) + 1
   return { text: pdfAnnotationText({ annotation }) || pdfAnnotationNote({ annotation }), page, cfi: `#page-${page}`, rects: annotation.segmentRects?.length ? annotation.segmentRects : [annotation.rect].filter(Boolean) }

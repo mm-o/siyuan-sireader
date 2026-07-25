@@ -30,12 +30,6 @@ const getTheme = (settings: ReaderSettings) =>
   resolveTheme(settings.theme === 'custom' ? settings.customTheme : PRESET_THEMES[settings.theme] || PRESET_THEMES.default)
 const getViewBackground = (theme: any) => theme.bgImg ? `${theme.bg} url("${theme.bgImg}") center/cover no-repeat` : theme.bg
 const isDark = (c = '') => { const m = c.match(/\d+(\.\d+)?/g)?.slice(0, 3).map(Number); return !!m && (m[0] * 299 + m[1] * 587 + m[2] * 114) / 1000 < 128 }
-const preloadedFonts = new Set<string>()
-const preloadFont = (url: string) => {
-  if (preloadedFonts.has(url)) return
-  preloadedFonts.add(url)
-  document.head.appendChild(Object.assign(document.createElement('link'), { rel: 'preload', as: 'font', href: url, crossOrigin: 'anonymous' }))
-}
 const watchTheme = (cb: () => void) => {
   const observer = new MutationObserver(() => requestAnimationFrame(cb))
   observer.observe(document.documentElement, { attributeFilter: ['data-theme-mode', 'class'] })
@@ -44,7 +38,10 @@ const watchTheme = (cb: () => void) => {
 
 const getStyleTag = (id: string) =>
   document.getElementById(id) || Object.assign(document.head.appendChild(document.createElement('style')), { id })
-const setAttr = (el: Element, name: string, value: string, on: any = true) => on ? el.setAttribute(name, value) : el.removeAttribute(name)
+const setAttr = (el: Element, name: string, value: string, on: any = true) => {
+  if (!on) return el.hasAttribute(name) && el.removeAttribute(name)
+  if (el.getAttribute(name) !== value) el.setAttribute(name, value)
+}
 const numericNotePattern = /^.{0,2}\d+$/
 const inlineFootnoteSelector = '.js_readerFooterNote,.zhangyue-footnote,.duokan-footnote,.qqreader-footnote'
 const footnoteSelector = `${inlineFootnoteSelector},.footnote-link,.footnote`
@@ -198,7 +195,6 @@ function applyCustomCSS(view: FoliateView, settings: ReaderSettings) {
   const customFont = text.fontFamily === 'custom' ? text.customFont?.fontFamily : ''
   const font = customFont ? `"${customFont}", sans-serif` : text.fontFamily || 'inherit'
   const fontUrl = customFont ? `${location.origin}/plugins/custom-fonts/${encodeURI(text.customFont.fontFile)}` : ''
-  fontUrl && preloadFont(fontUrl)
   const fontFace = customFont ? `@font-face{font-family:"${customFont}";src:url("${fontUrl}");font-display:swap}` : ''
   const css = [
     `@namespace epub "http://www.idpf.org/2007/ops";`,
@@ -317,12 +313,7 @@ function updateMarginals(view: FoliateView, settings: ReaderSettings) {
 }
 
 function refreshMarginals(view: FoliateView, settings: ReaderSettings) {
-  requestAnimationFrame(() => requestAnimationFrame(() => updateMarginals(view, settings)))
-  setTimeout(() => updateMarginals(view, settings), 0)
-}
-
-function refreshRenderer(view: FoliateView, settings: ReaderSettings) {
-  requestAnimationFrame(() => { ;(view.renderer as any)?.render?.(); refreshMarginals(view, settings) })
+  requestAnimationFrame(() => updateMarginals(view, settings))
 }
 
 export class FoliateReader {
@@ -332,10 +323,7 @@ export class FoliateReader {
   private plugin: Plugin
   private eventListeners = new Map<string, Set<Function>>()
   private themeObserver?: MutationObserver
-  private resizeObserver?: ResizeObserver
-  private resizeTimer: any = null
   private clockTimer: any = null
-  private lastResizeWidth = 0
   private footnote = new FootnoteHandler()
   private footnoteAnchor: HTMLElement | null = null
   private footnoteHref = ''
@@ -358,8 +346,6 @@ export class FoliateReader {
     this.view = createFoliateView(options.container)
     this.searchManager = new EPUBSearch(this.view)
     this.setupEventListeners()
-    this.resizeObserver = new ResizeObserver(() => this.scheduleResize())
-    this.resizeObserver.observe(this.container)
     this.listenToSettingsChanges()
   }
 
@@ -378,6 +364,7 @@ export class FoliateReader {
         const refresh = () => refreshMarginals(this.view, this.settings)
         renderer.addEventListener('load', refresh)
         renderer.addEventListener('relocate', refresh)
+        renderer.addEventListener('stabilized', refresh)
       }
       this.applySettings()
       await this.view.init?.({})
@@ -390,7 +377,7 @@ export class FoliateReader {
   private applySettings() {
     configureView(this.view, this.settings)
     applyCustomCSS(this.view, this.settings)
-    refreshRenderer(this.view, this.settings)
+    refreshMarginals(this.view, this.settings)
     this.syncClock()
   }
 
@@ -399,17 +386,10 @@ export class FoliateReader {
     this.clockTimer = this.settings.layoutSettings.showCurrentTime ? setInterval(() => refreshMarginals(this.view, this.settings), 60000) : null
   }
 
-  private scheduleResize() {
-    const width = Math.round(this.container.clientWidth)
-    if (!width || Math.abs(width - this.lastResizeWidth) < 4) return
-    this.lastResizeWidth = width
-    this.resize(180)
-  }
-
-  resize = (delay = 60) => {
+  resize = () => {
     if (!this.container.isConnected) return
-    clearTimeout(this.resizeTimer)
-    this.resizeTimer = setTimeout(() => this.applySettings(), delay)
+    ;(this.view.renderer as any)?.render?.()
+    refreshMarginals(this.view, this.settings)
   }
 
   private handleLoad(detail: any) { normalizeFootnoteTypes(detail?.doc); refreshMarginals(this.view, this.settings); this.bindContentMedia(detail?.doc, detail?.index); this.emit('load', detail) }
@@ -624,8 +604,6 @@ export class FoliateReader {
     this.destroyed = true
     await this.marks?.destroy()
     this.themeObserver?.disconnect()
-    this.resizeObserver?.disconnect()
-    clearTimeout(this.resizeTimer)
     clearInterval(this.clockTimer)
     this.eventListeners.clear()
     this.view.close?.()

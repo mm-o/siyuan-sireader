@@ -15,7 +15,7 @@ import { alignLegacyPdfAnnotations, needsLegacyPdfTextAlign } from '@/core/dataM
 import { createTooltip, showTooltip } from '@/core/MarkManager'
 import { copyMark } from '@/utils/copy'
 import { buildEmbedPdfTheme, embedPdfThemePreference } from '@/utils/embedPdfTheme'
-import { addMissingPdfMenuItemsAfterFirst, createEmbedPdfDocumentSource, ensureEmbedPdfStampManifests, ensureEmbedPdfWasmUrl, getPdfSelectionMark, initEmbedPdfViewer, pdfAnnotationNote, pdfAnnotationText, pdfAnnotationWithReplies, pdfMarkFromAnnotation, pdfSelectionFromAnnotation, sendPdfMarkToDoc, taskToPromise, writeBlobToClipboard } from '@/utils/embedPdfActions'
+import { addMissingPdfMenuItemsAfterFirst, capturePdfAnnotationImage, createEmbedPdfDocumentSource, ensureEmbedPdfStampManifests, ensureEmbedPdfWasmUrl, getPdfSelectionMark, initEmbedPdfViewer, pdfAnnotationNote, pdfAnnotationText, pdfAnnotationWithReplies, pdfMarkFromAnnotation, pdfSelectionFromAnnotation, sendPdfMarkToDoc, taskToPromise, writeBlobToClipboard } from '@/utils/embedPdfActions'
 import { settingsManager, type ReaderSettings, type ReadTheme } from '@/composables/useSetting'
 import { isMobile } from '@/utils/mobile'
 import Translate from './Translate.vue'
@@ -188,11 +188,7 @@ const refreshPdfTooltipAnnotations = () => {
 }
 const selectedPdfAnnotation = () => activeAnnotationScope?.getSelectedAnnotation?.()?.object
 const selectedPdfText = (annotation = selectedPdfAnnotation()) => annotation ? pdfSelectionFromAnnotation(annotation).text : ''
-const capturePdfAnnotationImage = (registry: PluginRegistry, annotation: any) =>
-  annotation?.rect && [4, 5, 6, 8, 15].includes(Number(annotation.type))
-    ? taskToPromise<Blob>(getCapability<any>(registry, 'render')?.forDocument(documentId)?.renderPageRect?.({ pageIndex: annotation.pageIndex, rect: annotation.rect, options: { imageType: 'image/png', scaleFactor: 2, withAnnotations: true } })).catch(() => null)
-    : null
-const pdfMarkWithImage = async (registry: PluginRegistry, annotation: any) => ({ ...pdfMarkFromAnnotation(annotation, pdfTooltipAnnotations), image: await capturePdfAnnotationImage(registry, annotation) })
+const pdfMarkWithImage = async (registry: PluginRegistry, annotation: any) => ({ ...pdfMarkFromAnnotation(annotation, pdfTooltipAnnotations), image: await capturePdfAnnotationImage(getCapability<any>(registry, 'render')?.forDocument(documentId), annotation) })
 const quickDocs = () => ((props.settings ? props.settings.quickSendDocs : (window as any).__sireader_settings?.quickSendDocs) || []).filter((doc: any) => doc?.id).slice(0, 5)
 const sendPdfMark = async (mark: any, docId: string, registry: PluginRegistry) => {
   await sendPdfMarkToDoc(mark, docId, {
@@ -223,10 +219,10 @@ const createPdfHoleFromSelection = async (registry: PluginRegistry) => {
   queueAnnotationSave(registry)
   refreshPdfTooltipAnnotations()
 }
-const updateSelectedPdfBlockId = (registry: PluginRegistry) => async (item: any, blockId: string) => {
+const updateSelectedPdfBlockId = (registry: PluginRegistry) => async (item: any, updates: any) => {
   const annotation = item?.annotation || selectedPdfAnnotation()
   if (!annotation || !activeAnnotationScope?.updateAnnotation) return
-  const custom = { ...(annotation.custom || {}), blockId }
+  const custom = { ...(annotation.custom || {}), ...(typeof updates === 'string' ? { blockId: updates } : updates) }
   await activeAnnotationScope.updateAnnotation(annotation.pageIndex, annotation.id, { custom })
   queueAnnotationSave(registry)
 }

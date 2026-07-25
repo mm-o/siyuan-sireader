@@ -7,7 +7,7 @@
 Transform SiYuan Notes into a professional eBook reader  
 Professional eBook reader for EPUB/PDF/MOBI/TXT/online novels. PDFs support highlights, ink, shapes, forms, stamps, signatures, images, screenshots, search, printing, export, and backlinks, with annotation notes, dictionary, translation, themes, and bookshelf management.
 
-[![Version](https://img.shields.io/badge/version-2.2.1-blue.svg)](https://github.com/your-repo/siyuan-sireader)
+[![Version](https://img.shields.io/badge/version-2.2.2-blue.svg)](https://github.com/your-repo/siyuan-sireader)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![SiYuan](https://img.shields.io/badge/SiYuan-3.0+-orange.svg)](https://github.com/siyuan-note/siyuan)
 
@@ -18,6 +18,20 @@ Professional eBook reader for EPUB/PDF/MOBI/TXT/online novels. PDFs support high
 ---
 
 ## 📝 Latest Updates
+
+### v2.2.2 (2026.7.25)
+
+### Added
+
+- Added a document-link import exclusion regex setting for filtering invoices, receipts, and other book links that should not be auto-added to the bookshelf.
+- Added a lightweight bottom progress bar to the EPUB reader.
+
+### Fixed
+
+- Fixed EPUB reader reload, warning, reflow, and close-preview issues.
+- Fixed `tree not found` when the notebook selected by "insert under notebook" had been deleted [#40](https://github.com/mm-o/siyuan-sireader/issues/40).
+- Fixed multi-block template delete sync, deleted bound-document sync errors, PDF annotation sync, and shape annotation image sync [#39](https://github.com/mm-o/siyuan-sireader/issues/39).
+- Fixed EPUB/PDF backlink characters breaking Markdown link parsing, and ensured copy only writes to the clipboard [#39](https://github.com/mm-o/siyuan-sireader/issues/39).
 
 ### v2.2.1 (2026.7.23)
 

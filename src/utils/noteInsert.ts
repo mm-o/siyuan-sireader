@@ -13,6 +13,7 @@ type ProtyleLike = {
 
 // ===== 常量与工具 =====
 const ATTR = 'custom-sireader-note-key'
+const DEFAULT_NOTEBOOK_NAME = '思阅笔记'
 const isWindowReader = () => /\/window\.html$/i.test(location.pathname)
 const pickId = (value: any) => typeof value === 'string' ? value : value?.id || ''
 const escapeSql = (value = '') => String(value).replace(/'/g, "''")
@@ -143,6 +144,18 @@ const insertCurrent = async (text: string, settings: ReaderSettings) => {
 
 // ===== 笔记文档复用 =====
 const getDocIdByAttr = async (value: string) => !value ? '' : (await api.sql(`SELECT b.id FROM blocks b JOIN attributes a ON a.block_id = b.id WHERE b.type = 'd' AND a.name = '${ATTR}' AND a.value = '${escapeSql(value)}' LIMIT 1`).catch(() => []))?.[0]?.id || ''
+const ensureNotebookId = async (settings: ReaderSettings) => {
+  const notebook = getNotebookId(settings)
+  const notebooks = (await api.lsNotebooks().catch(() => null))?.notebooks
+  if (notebook && (!Array.isArray(notebooks) || notebooks.some((item: any) => item?.id === notebook))) return notebook
+  const next = pickId(Array.isArray(notebooks) && notebooks.find((item: any) => item?.name === DEFAULT_NOTEBOOK_NAME)) || pickId(await api.createNotebook(DEFAULT_NOTEBOOK_NAME).catch(() => null))
+  if (!next) throw new Error('创建思阅笔记本失败')
+  settings.notebookId = next
+  const current = (window as any).__sireader_settings
+  if (current && current !== settings) current.notebookId = next
+  await import('@/composables/useSetting').then(({ settingsManager }) => settingsManager.save(current || settings)).catch(() => {})
+  return next
+}
 const getCreateDocPath = async (parentID?: string, notebook?: string) => {
   const docId = createNodeId()
   if (!parentID) return { docId, path: `/${docId}.sy` }
@@ -150,7 +163,7 @@ const getCreateDocPath = async (parentID?: string, notebook?: string) => {
   return { docId, path: `${parentPath.replace(/\.sy$/, '')}/${docId}.sy` }
 }
 const appendToNoteDoc = async (title: string, settings: ReaderSettings, text: string, key: string, parentID?: string) => {
-  const notebook = getNotebookId(settings)
+  const notebook = parentID ? getNotebookId(settings) : await ensureNotebookId(settings)
   if (!notebook) throw new Error('未设置目标笔记本')
   const id = await getDocIdByAttr(key)
   if (id) {

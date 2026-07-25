@@ -7,7 +7,7 @@
 让思源笔记变身专业阅读器，支持 EPUB/PDF/TXT/在线小说  
 专业电子书阅读器，支持 EPUB/PDF/MOBI/TXT/在线小说；PDF 支持高亮、墨迹、形状、表单、印章、签名、图片、截图、搜索、打印、导出和回链，并提供标注笔记、词典、翻译、主题与书架管理
 
-[![Version](https://img.shields.io/badge/version-2.2.1-blue.svg)](https://github.com/your-repo/siyuan-sireader)
+[![Version](https://img.shields.io/badge/version-2.2.2-blue.svg)](https://github.com/your-repo/siyuan-sireader)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![SiYuan](https://img.shields.io/badge/SiYuan-3.0+-orange.svg)](https://github.com/siyuan-note/siyuan)
 
@@ -18,6 +18,20 @@
 ---
 
 ## 📝 最新更新
+
+### v2.2.2（2026.7.25）
+
+### 新增
+
+- 新增文档链接入库排除正则设置，可过滤发票、收据等不需要自动加入书架的文档内书籍链接。
+- 新增 EPUB 阅读器底部进度条，轻量显示当前阅读进度。
+
+### 修复
+
+- 修复 EPUB 阅读器重载、警告、重排和关闭预览相关问题。
+- 修复“插入笔记本下”的目标笔记本被删除后同步报 `tree not found` 的问题 [#40](https://github.com/mm-o/siyuan-sireader/issues/40)。
+- 修复多块模板删除同步、绑定文档删除后同步报错、PDF 标注同步与形状标注图片同步问题 [#39](https://github.com/mm-o/siyuan-sireader/issues/39)。
+- 修复 EPUB/PDF 回链字符导致 Markdown 链接截断的问题，并确保“复制”只复制到剪贴板 [#39](https://github.com/mm-o/siyuan-sireader/issues/39)。
 
 ### v2.2.1（2026.7.23）
 

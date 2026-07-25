@@ -14,7 +14,7 @@ type HighlightColor='yellow'|'red'|'green'|'blue'|'purple'|'orange'|'pink'
 type MarkStyle='highlight'|'underline'|'outline'|'dotted'|'dashed'|'double'|'squiggly'
 type MarkType='bookmark'|'highlight'|'note'|'vocab'
 
-interface Mark{id:string;type:MarkType;format:Format;cfi?:string;section?:number;page?:number;rects?:Array<{page?:number;x:number;y:number;w:number;h:number}>;text?:string;color?:HighlightColor;style?:MarkStyle;note?:string;tags?:string[];title?:string;image?:string;timestamp:number;progress?:number;textOffset?:number;blockId?:string;chapter?:string;customOrder?:number}
+interface Mark{id:string;type:MarkType;format:Format;cfi?:string;section?:number;page?:number;rects?:Array<{page?:number;x:number;y:number;w:number;h:number}>;text?:string;color?:HighlightColor;style?:MarkStyle;note?:string;tags?:string[];title?:string;image?:string;timestamp:number;progress?:number;textOffset?:number;blockId?:string;blockIds?:string[];chapter?:string;customOrder?:number}
 
 export const COLORS=[{name:'黄色',color:'yellow'as const,bg:'#ffeb3b'},{name:'红色',color:'red'as const,bg:'#ef5350'},{name:'绿色',color:'green'as const,bg:'#66bb6a'},{name:'蓝色',color:'blue'as const,bg:'#42a5f5'},{name:'紫色',color:'purple'as const,bg:'#ab47bc'},{name:'橙色',color:'orange'as const,bg:'#ff9800'},{name:'粉色',color:'pink'as const,bg:'#ec407a'}]
 export const STYLES=[{type:'highlight'as const,name:'高亮',text:'A'},{type:'underline'as const,name:'下划线',text:'A'},{type:'outline'as const,name:'边框',text:'A'},{type:'squiggly'as const,name:'波浪线',text:'A',epubOnly:true}]
@@ -123,6 +123,7 @@ export class MarkManager{
           tags:normalizeTags(a.tags),
           timestamp:a.created,
           blockId:a.block,
+          blockIds:data.blockIds,
           chapter:a.chapter,
           title:data.title,
           image:data.image,
@@ -160,6 +161,7 @@ export class MarkManager{
           image:m.image,
           progress:m.progress,
           textOffset:m.textOffset,
+          blockIds:m.blockIds,
           customOrder:m.customOrder
         },
         created:m.timestamp,
@@ -349,7 +351,7 @@ export class MarkManager{
     if(!m||!await this.del(m.id))return false
     
     // 同步删除文档块
-    if(m.blockId)import('@/utils/copy').then(({syncMarkOnDelete})=>syncMarkOnDelete(m)).catch(e=>console.error('[DeleteBlock]',e))
+    if(m.blockId||m.blockIds?.length)import('@/utils/copy').then(({syncMarkOnDelete})=>syncMarkOnDelete(m)).catch(e=>console.error('[DeleteBlock]',e))
     
     // 清理渲染
     {

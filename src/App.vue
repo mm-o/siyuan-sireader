@@ -119,6 +119,17 @@ const openSetting = (openLicense = false) => {
 
 // ===== 阅读器核心 =====
 const BOOK_RE = /\.(epub|pdf|mobi|azw3|azw|fb2|cbz|txt)(?:[?#].*)?$/i
+let docAssetExcludePattern = '', docAssetExcludeRegex: RegExp | null = null
+const decodeLink = (value = '') => { try { return decodeURIComponent(value) } catch { return value } }
+const shouldAddDocAssetToShelf = (url: string, pattern = '') => {
+  pattern = pattern.trim()
+  if (pattern !== docAssetExcludePattern) {
+    docAssetExcludePattern = pattern
+    try { docAssetExcludeRegex = pattern ? new RegExp(pattern) : null } catch { docAssetExcludeRegex = null }
+  }
+  const name = decodeLink(url.split(/[?#]/)[0].split('/').pop() || '')
+  return !docAssetExcludeRegex || (!docAssetExcludeRegex.test(decodeLink(url)) && !docAssetExcludeRegex.test(name))
+}
 const fetchFile = async (url: string) => {
   try {
     const res = await fetch(url[0] === '/' || url.startsWith('http') ? url : `/${url}`)
@@ -230,10 +241,14 @@ const handleEbookLink = async (e: MouseEvent) => {
   if (url.startsWith('assets/') || url.includes('/assets/')) {
     if (!settings.value.openDocAssets) return // 设置关闭时不处理
     e.preventDefault(), e.stopPropagation()
-    const { bookshelfManager } = await import('@/core/bookshelf')
-    const { getOrAddAssetBook, openOrActivateBook } = await import('@/utils/bookOpen')
     const file = await fetchFile(cleanUrl)
     if (!file) return showMessage('文件不存在', 3000, 'error')
+    const { openReaderTab, getOrAddAssetBook, openOrActivateBook } = await import('@/utils/bookOpen')
+    if (!shouldAddDocAssetToShelf(url, settings.value.docAssetExcludeRegex)) {
+      const title = file.name.replace(/\.[^.]+$/, '') || 'Reader'
+      return openReaderTab(plugin, title, { file, bookInfo: { title, url: `asset://${url}`, temporary: true } }, `${plugin.name}epub_reader`, settings.value)
+    }
+    const { bookshelfManager } = await import('@/core/bookshelf')
     const book = await getOrAddAssetBook(bookshelfManager, url, file)
     if (!book) return showMessage('添加失败', 3000, 'error')
     return openOrActivateBook(plugin, book, settings.value)
@@ -270,8 +285,8 @@ const handleEbookLinkLeave = async (e: MouseEvent) => {
   const parsed = parseBookLink(url)
   if (!parsed) return
   e.stopPropagation()
-  const { hideMarkPreview } = await import('@/utils/markPreview')
-  hideMarkPreview()
+  const { scheduleHide } = await import('@/utils/markPreview')
+  scheduleHide()
 }
 
 setOpenSettingHandler(openSetting)

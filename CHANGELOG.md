@@ -1,4 +1,22 @@
-# 思阅 SiReader - 更新日志
+﻿# 思阅 SiReader - 更新日志
+
+## v2.2.2（2026.7.25）
+
+### 新增
+
+- 新增文档链接入库排除正则设置，可过滤发票、收据等不需要自动加入书架的文档内书籍链接，打开方式仍由“使用插件 PDF 阅读器”开关决定。
+- 新增 EPUB 阅读器底部进度条，轻量显示当前阅读进度。
+
+### 修复
+
+- 修复插件重载后 Foliate 自定义元素重复注册导致 EPUB 阅读器可能无法打开的问题。
+- 消除 EPUB 阅读时 Foliate iframe sandbox 组合与自定义字体 preload 未使用的控制台警告。
+- 优化 EPUB 分屏调整大小流程，移除外层重复重排逻辑，改由 Foliate 原生 ResizeObserver 处理页面重排。
+- 修复关闭 EPUB 标签后链接标注预览隐藏回调可能报错的问题。
+- 修复“插入笔记本下”的目标笔记本被删除后同步报错 `tree not found` 的问题，现在会自动恢复可用的笔记本后继续插入笔记 [#40](https://github.com/mm-o/siyuan-sireader/issues/40)。
+- 修复标注使用多块模板同步后删除不同步完整内容，以及绑定文档被删除后继续同步报 `parent block not found` 的问题 [#39](https://github.com/mm-o/siyuan-sireader/issues/39)。
+- 统一 PDF 标注添加/删除同步链路，形状标注自动同步现在会带上区域图片 [#39](https://github.com/mm-o/siyuan-sireader/issues/39)。
+- 修复 EPUB/PDF 回链中括号、空格等字符可能导致 Markdown 链接截断的问题，并确保“复制”操作只复制到剪贴板 [#39](https://github.com/mm-o/siyuan-sireader/issues/39)。
 
 ## v2.2.1（2026.7.23）
 

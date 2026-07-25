@@ -24,8 +24,22 @@ const getShelfBook = async (bookUrl: string) => bookUrl ? (await import('@/core/
 const getGlobalSettings = async () => (window as any).__sireader_settings || await (await import('@/composables/useSetting')).settingsManager.get().catch(() => null)
 const shouldSyncOnAdd = async () => !!(await getGlobalSettings())?.annotationSyncOnAdd
 const shouldSyncOnDelete = async () => !!(await getGlobalSettings())?.annotationSyncOnDelete
-const getBoundDocId = async (bookUrl: string) => (await getShelfBook(bookUrl))?.bindDocId || ''
-const getInsertedBlockId = (result: any) => result?.[0]?.doOperations?.[0]?.id || result?.[0]?.id || result?.doOperations?.[0]?.id || ''
+const getBoundDocId = async (bookUrl: string) => {
+  const book = await getShelfBook(bookUrl), id = book?.bindDocId || ''
+  if (!id || await (await import('@/api')).getBlockByID(id).catch(() => null)) return id
+  await (await import('@/core/bookshelf')).bookshelfManager.updateBook(bookUrl, { bindDocId: '', bindDocName: '' }).catch(() => {})
+  return ''
+}
+const getInsertedBlockIds = (result: any) => (Array.isArray(result) ? result : [result]).flatMap((item: any) => item?.doOperations || item || []).map((item: any) => item?.id).filter(Boolean)
+const recordInsertedBlocks = async (item: any, result: any, ctx: any) => {
+  const blockIds = getInsertedBlockIds(result), blockId = blockIds[0] || ''
+  if (blockId) {
+    Object.assign(item, { blockId, blockIds })
+    if (ctx.marks) await ctx.marks.updateMark(item, { blockId, blockIds })
+  }
+  return blockId
+}
+const syncingMarks = new Set<string>()
 const imageSrcToMarkdown = async (src: string | Blob, name = 'mark') => {
   if (!src) return ''
   try {
@@ -57,8 +71,9 @@ const writeClipboard = async (text: string, showMsg: ExportCtx['showMsg'], messa
 const writeExport = async (text: string, ctx: ExportCtx, meta: Awaited<ReturnType<typeof resolveExportMeta>>, message = '已复制') => {
   const { settings, book, title } = meta
   if (settings?.noteInsertTarget && settings.noteInsertTarget !== 'clipboard') {
-    if (book?.bindDocId) {
-      await (await import('@/utils/noteInsert')).insertToDoc(text, book.bindDocId)
+    const docId = book?.bindDocId ? await getBoundDocId(ctx.bookUrl) : ''
+    if (docId) {
+      await (await import('@/utils/noteInsert')).insertToDoc(text, docId)
       return ctx.showMsg('已插入绑定文档')
     }
     await (await import('@/utils/noteInsert')).insertNote(text, settings, title, ctx.bookUrl || title)
@@ -99,11 +114,12 @@ export const copyMark = async (item: any, ctx: { bookUrl: string; bookInfo?: any
   if (item.image || item.src) {
     img = await imageSrcToMarkdown(item.image || item.src || '', 'mark')
   }
-  await exportBookLink({ chapter, cfi, text: item.text || '', note: item.note || '', image: img, id: item.id || '' }, ctx)
+  await exportBookLink({ chapter, cfi, text: item.text || '', note: item.note || '', image: img, id: item.id || '' }, { ...ctx, settings: { ...(ctx.settings || {}), noteInsertTarget: 'clipboard' } })
 }
 
 const genMarkdown = async (item: any, ctx: any): Promise<string> => {
   let md = ''
+  item = await ctx.marks?.imageMark?.(item).catch(() => item) || item
   const originalWriteText = navigator.clipboard.writeText
   navigator.clipboard.writeText = async (text: string) => (md = text, Promise.resolve())
   try {
@@ -114,17 +130,12 @@ const genMarkdown = async (item: any, ctx: any): Promise<string> => {
   return md
 }
 
-const updateMarkBlockId = async (item: any, blockId: string, ctx: any) => {
-  if (ctx.marks) await ctx.marks.updateMark(item, { blockId })
-}
-
 const appendMarkToDoc = async (item: any, docId: string, ctx: any, markdown?: string) => {
   if (!docId) return ctx.showMsg?.(ctx.i18n?.noBindDoc || '未绑定文档', 'error')
   try {
     const content = markdown || await genMarkdown(item, ctx)
     if (!content) return ctx.showMsg?.('生成失败', 'error')
-    const blockId = getInsertedBlockId(await (await import('@/api')).appendBlock('markdown', content, docId))
-    if (blockId) await updateMarkBlockId(item, blockId, ctx)
+    const blockId = await recordInsertedBlocks(item, await (await import('@/api')).appendBlock('markdown', content, docId), ctx)
     ctx.showMsg?.(blockId ? ctx.i18n?.imported || '已导入' : ctx.i18n?.importFailed || '导入失败', blockId ? 'info' : 'error')
     return blockId
   } catch (error) {
@@ -137,14 +148,13 @@ const appendMarkToDoc = async (item: any, docId: string, ctx: any, markdown?: st
 export const importMark = async (item: any, ctx: any) => {
   const settings = ctx.settings || await getGlobalSettings()
   const meta = await resolveExportMeta({ ...ctx, settings })
-  const docId = meta.book?.bindDocId || ''
+  const docId = await getBoundDocId(ctx.bookUrl)
   const md = await genMarkdown(item, { ...ctx, settings, showMsg: () => {} })
   if (!md) return ctx.showMsg?.('生成失败', 'error')
   if (docId) return await appendMarkToDoc(item, docId, ctx, md)
   if (!settings?.noteInsertTarget || settings.noteInsertTarget === 'clipboard') return ctx.showMsg?.(ctx.i18n?.noBindDoc || '未绑定文档', 'error')
-  const blockId = getInsertedBlockId(await (await import('@/utils/noteInsert')).insertNote(md, settings, meta.title, ctx.bookUrl || meta.title))
+  const blockId = await recordInsertedBlocks(item, await (await import('@/utils/noteInsert')).insertNote(md, settings, meta.title, ctx.bookUrl || meta.title), ctx)
   if (!blockId) return ctx.showMsg?.(ctx.i18n?.importFailed || '导入失败', 'error')
-  await updateMarkBlockId(item, blockId, ctx)
   ctx.showMsg?.(ctx.i18n?.imported || '已导入')
   return blockId
 }
@@ -162,8 +172,10 @@ export const updateMarkInDoc = async (item: any, ctx: any) => {
 }
 
 export const syncMarkOnCreate = async (item: any, ctx: any) => {
+  const syncKey = `${ctx.bookUrl || ''}:${item?.id || item?.cfi || item?.page || ''}`
   try {
-    if (item?.blockId || !await shouldSyncOnAdd()) return
+    if (item?.blockId || item?.type === 'bookmark' || item?.readOnly || syncingMarks.has(syncKey) || (ctx.maxAgeMs && item?.timestamp && Date.now() - item.timestamp > ctx.maxAgeMs) || !await shouldSyncOnAdd()) return
+    syncingMarks.add(syncKey)
     const settings = await getGlobalSettings()
     const meta = await resolveExportMeta({ ...ctx, settings })
     const docId = await getBoundDocId(ctx.bookUrl)
@@ -174,15 +186,16 @@ export const syncMarkOnCreate = async (item: any, ctx: any) => {
       return
     }
     if (!settings?.noteInsertTarget || settings.noteInsertTarget === 'clipboard') return
-    const blockId = getInsertedBlockId(await (await import('@/utils/noteInsert')).insertNote(md, settings, meta.title, ctx.bookUrl || meta.title))
-    if (blockId) await updateMarkBlockId(item, blockId, ctx)
+    await recordInsertedBlocks(item, await (await import('@/utils/noteInsert')).insertNote(md, settings, meta.title, ctx.bookUrl || meta.title), ctx)
   } catch {}
+  finally { syncKey && syncingMarks.delete(syncKey) }
 }
 
 export const syncMarkOnDelete = async (item: any) => {
-  const blockId = typeof item === 'string' ? item : item?.blockId
-  if (!blockId || !await shouldSyncOnDelete()) return false
-  await (await import('@/api')).deleteBlock(blockId)
+  const blockIds = typeof item === 'string' ? [item] : Array.from(new Set([...(Array.isArray(item?.blockIds) ? item.blockIds : []), item?.blockId].filter(Boolean)))
+  if (!blockIds.length || !await shouldSyncOnDelete()) return false
+  const { deleteBlock } = await import('@/api')
+  for (const id of blockIds) await deleteBlock(id as string).catch(() => {})
   return true
 }
 
