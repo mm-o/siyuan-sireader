@@ -7,7 +7,7 @@
 Transform SiYuan Notes into a professional eBook reader  
 Professional eBook reader for EPUB/PDF/MOBI/TXT/online novels. PDFs support highlights, ink, shapes, forms, stamps, signatures, images, screenshots, search, printing, export, and backlinks, with annotation notes, dictionary, translation, themes, and bookshelf management.
 
-[![Version](https://img.shields.io/badge/version-2.2.2-blue.svg)](https://github.com/your-repo/siyuan-sireader)
+[![Version](https://img.shields.io/badge/version-2.2.3-blue.svg)](https://github.com/your-repo/siyuan-sireader)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![SiYuan](https://img.shields.io/badge/SiYuan-3.0+-orange.svg)](https://github.com/siyuan-note/siyuan)
 
@@ -18,6 +18,15 @@ Professional eBook reader for EPUB/PDF/MOBI/TXT/online novels. PDFs support high
 ---
 
 ## 📝 Latest Updates
+
+### v2.2.3 (2026.7.27)
+
+### Fixed
+
+- Fixed plugin update, cloud sync, or reload causing duplicate Foliate custom-element registration, plugin startup failure, and missing SiReader sidebar icons.
+- Fixed EPUB reader iframe sandbox missing `allow-scripts`, which could trigger `about:srcdoc` blocked-script errors and cause page-turn, selection, or layout event issues.
+- Restored mobile PDF double-tap zoom with current-page/landscape half-page targeting and second-tap zoom restore.
+- Fixed EPUB/PDF annotation copy, quick-send, import, and edit-sync paths not consistently using the custom link template; PDF annotation comment updates now refresh the inserted document block.
 
 ### v2.2.2 (2026.7.25)
 
@@ -696,7 +705,7 @@ Professional eBook reader for EPUB/PDF/MOBI/TXT/online novels. PDFs support high
 | | Quick Send | Configure quick document list (max 5), One-click send annotations |
 | | Auto Sync | Auto-sync annotations to bound SiYuan documents (Add/Delete/Modify) |
 | | Undo Annotation | Ctrl+Z to undo recent annotation |
-| | Copy Settings | Custom link format, Variables: Title/Author/Chapter/Position/Link/Text/Note/Screenshot |
+| | Copy Settings | Custom link format, Variables: Title/Author/Chapter/Position/Link/Text/Note/Image |
 | | Precise Location | Use CFI/Page number for precise positioning, Jump to original text |
 | **🔊 TTS** | TTS Mode | Edge TTS (Online free), Local browser (Offline) |
 | | Multi-voice | Hundreds of online and local voices, Favorite commonly used voices |

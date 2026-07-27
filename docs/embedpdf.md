@@ -200,12 +200,15 @@ Current helper split:
 - [`src/utils/dictionary.ts`](../src/utils/dictionary.ts): dictionary popup.
 - [`src/components/Translate.vue`](../src/components/Translate.vue): translation dialog content.
 
+Annotation copy, quick-send, import, auto-sync, and edit-sync must all generate Markdown through [`src/utils/copy.ts`](../src/utils/copy.ts). Keep custom `linkFormat` handling there; do not capture clipboard output or rebuild annotation templates in PDF components.
+
 Quick send uses EmbedPDF's native UI model:
 
 - selection and annotation menus get one first-level `发送到` command button
 - that button opens a native EmbedPDF `menus` entry with the configured quick-send documents
 - document rows call the shared `sendMarkToDoc()` path through `sendPdfMarkToDoc()`
 - valid quick-send documents must have an `id`; the PDF menu only shows up to five
+- when an annotation already has a bound `blockId`, comment or note edits should update that block instead of inserting a duplicate
 
 Do not build custom floating quick-send menus. EmbedPDF `selectionMenus` do not expose a stable submenu item shape; use `menus + openMenu()` instead.
 

@@ -5,16 +5,22 @@ type ExportCtx = {
   bookInfo?: any
   settings?: any
   reader?: any
+  isPdf?: boolean
+  marks?: any
+  i18n?: any
   showMsg: (msg: string, type?: string) => void
 }
 
 type ExportItem = {
-  chapter: string
-  cfi: string
+  chapter?: string
+  cfi?: string
   text?: string
   note?: string
   image?: string
+  src?: string | Blob
   id?: string
+  page?: number
+  format?: 'pdf' | 'epub'
 }
 
 const DEFAULT_LINK_FORMAT = '> [!NOTE] 📑 {{title}}\n> [{{chapter}}]({{url}}) {{text}}\n> {{image}}\n> {{note}}'
@@ -22,6 +28,12 @@ export const inlineLinkText = (text = '') => text.replace(/\s+/g, ' ').replace(/
 
 const getShelfBook = async (bookUrl: string) => bookUrl ? (await import('@/core/bookshelf')).bookshelfManager.getBook(bookUrl) : null
 const getGlobalSettings = async () => (window as any).__sireader_settings || await (await import('@/composables/useSetting')).settingsManager.get().catch(() => null)
+const resolveSettings = async (settings?: any) => {
+  const globalSettings = await getGlobalSettings()
+  return settings ? { ...(globalSettings || {}), ...settings } : globalSettings
+}
+const asClipboardCtx = (ctx: ExportCtx | any) => ({ ...ctx, settings: { ...(ctx.settings || {}), noteInsertTarget: 'clipboard' } })
+const shouldInsert = (settings: any) => settings?.noteInsertTarget && settings.noteInsertTarget !== 'clipboard'
 const shouldSyncOnAdd = async () => !!(await getGlobalSettings())?.annotationSyncOnAdd
 const shouldSyncOnDelete = async () => !!(await getGlobalSettings())?.annotationSyncOnDelete
 const getBoundDocId = async (bookUrl: string) => {
@@ -56,7 +68,7 @@ const resolveExportMeta = async (ctx: ExportCtx | any) => {
   const book = shelfBook || ctx.bookInfo
   const readerBook = ctx.reader?.getBook?.()
   return {
-    settings: ctx.settings || (window as any).__sireader_settings,
+    settings: await resolveSettings(ctx.settings),
     book,
     title: shelfBook?.title || ctx.bookInfo?.title || ctx.bookInfo?.name || readerBook?.metadata?.title || '读书',
     author: shelfBook?.author || ctx.bookInfo?.author || readerBook?.metadata?.author || '',
@@ -70,7 +82,7 @@ const writeClipboard = async (text: string, showMsg: ExportCtx['showMsg'], messa
 
 const writeExport = async (text: string, ctx: ExportCtx, meta: Awaited<ReturnType<typeof resolveExportMeta>>, message = '已复制') => {
   const { settings, book, title } = meta
-  if (settings?.noteInsertTarget && settings.noteInsertTarget !== 'clipboard') {
+  if (shouldInsert(settings)) {
     const docId = book?.bindDocId ? await getBoundDocId(ctx.bookUrl) : ''
     if (docId) {
       await (await import('@/utils/noteInsert')).insertToDoc(text, docId)
@@ -81,59 +93,69 @@ const writeExport = async (text: string, ctx: ExportCtx, meta: Awaited<ReturnTyp
   }
   await writeClipboard(text, ctx.showMsg, message)
 }
+const insertGeneratedNote = async (item: any, md: string, settings: any, meta: Awaited<ReturnType<typeof resolveExportMeta>>, ctx: any) =>
+  recordInsertedBlocks(item, await (await import('@/utils/noteInsert')).insertNote(md, settings, meta.title, ctx.bookUrl || meta.title), ctx)
 
-export const exportBookLink = async (item: ExportItem, ctx: ExportCtx) => {
-  const chapter = item.chapter || item.text || '璇讳功'
+const buildBookMarkdown = async (item: ExportItem, ctx: ExportCtx | any, meta?: Awaited<ReturnType<typeof resolveExportMeta>>) => {
+  meta ||= await resolveExportMeta(ctx)
   const fallback = item.text || item.chapter || ''
-  if (!ctx.bookUrl) return writeExport(fallback, ctx, await resolveExportMeta(ctx), '仅复制文本')
-  const meta = await resolveExportMeta(ctx)
+  if (!ctx.bookUrl || !item.cfi) return fallback
   const { formatBookLink } = await import('@/composables/useSetting')
   const { formatAuthor } = await import('@/core/MarkManager')
-  const author = formatAuthor(meta.author)
-  await writeExport(
-    formatBookLink(ctx.bookUrl, meta.title, author, chapter, item.cfi, inlineLinkText(item.text || ''), meta.settings?.linkFormat || DEFAULT_LINK_FORMAT, item.note || '', item.image || '', item.id || ''),
-    ctx,
-    meta
+  return formatBookLink(
+    ctx.bookUrl,
+    meta.title,
+    formatAuthor(meta.author),
+    item.chapter || item.text || '读书',
+    item.cfi,
+    inlineLinkText(item.text || ''),
+    meta.settings?.linkFormat || DEFAULT_LINK_FORMAT,
+    item.note || '',
+    item.image || '',
+    item.id || '',
   )
 }
 
-export const copyMark = async (item: any, ctx: { bookUrl: string; bookInfo?: any; settings?: any; reader?: any; isPdf?: boolean; showMsg: (msg: string, type?: string) => void }) => {
-  const { bookUrl, reader } = ctx
-  const fallback = item.text || item.note || ''
-  if (!bookUrl) return writeExport(fallback, ctx, await resolveExportMeta(ctx), '仅复制文本')
+export const exportBookLink = async (item: ExportItem, ctx: ExportCtx) => {
+  const meta = await resolveExportMeta(ctx)
+  await writeExport(await buildBookMarkdown(item, ctx, meta), ctx, meta, !ctx.bookUrl || !item.cfi ? '仅复制文本' : '已复制')
+}
+
+const markToExportItem = async (item: ExportItem | any, ctx: ExportCtx | any): Promise<ExportItem> => {
+  item = await ctx.marks?.imageMark?.(item).catch(() => item) || item
   const isPdf = !!ctx.isPdf || item.format === 'pdf' || !!item.page
   const page = item.page || null
   const cfi = item.cfi || (isPdf && page ? `#page-${page}` : '')
-  if (!cfi) return writeExport(fallback, ctx, await resolveExportMeta(ctx), '仅复制文本')
+  if (!cfi) return { text: item.text || item.note || '' }
   const { getChapterName } = await import('@/core/MarkManager')
-  const book = isPdf ? null : reader?.getBook?.()
+  const book = isPdf ? null : ctx.reader?.getBook?.()
   const toc = isPdf ? null : book?.toc
-  const tocItem = !isPdf && cfi ? await Promise.resolve(reader?.getView?.()?.getTOCItemOf?.(cfi)).catch(() => null) : null
-  const chapter = item.chapter || tocItem?.label || tocItem?.title || getChapterName({ cfi, page, isPdf, toc, location: reader?.getLocation?.() }) || '📍'
-  let img = ''
-  if (item.image || item.src) {
-    img = await imageSrcToMarkdown(item.image || item.src || '', 'mark')
+  const tocItem = !isPdf ? await Promise.resolve(ctx.reader?.getView?.()?.getTOCItemOf?.(cfi)).catch(() => null) : null
+  const chapter = item.chapter || tocItem?.label || tocItem?.title || getChapterName({ cfi, page, isPdf, toc, location: ctx.reader?.getLocation?.() }) || '📍'
+  return {
+    chapter,
+    cfi,
+    text: item.text || '',
+    note: item.note || '',
+    image: item.image || item.src ? await imageSrcToMarkdown(item.image || item.src || '', 'mark') : '',
+    id: item.id || '',
+    page,
+    format: isPdf ? 'pdf' : 'epub',
   }
-  await exportBookLink({ chapter, cfi, text: item.text || '', note: item.note || '', image: img, id: item.id || '' }, { ...ctx, settings: { ...(ctx.settings || {}), noteInsertTarget: 'clipboard' } })
 }
 
-const genMarkdown = async (item: any, ctx: any): Promise<string> => {
-  let md = ''
-  item = await ctx.marks?.imageMark?.(item).catch(() => item) || item
-  const originalWriteText = navigator.clipboard.writeText
-  navigator.clipboard.writeText = async (text: string) => (md = text, Promise.resolve())
-  try {
-    await copyMark(item, { ...ctx, settings: { ...(ctx.settings || (window as any).__sireader_settings), noteInsertTarget: 'clipboard' }, showMsg: () => {} })
-  } finally {
-    navigator.clipboard.writeText = originalWriteText
-  }
-  return md
+export const buildMarkMarkdown = async (item: any, ctx: ExportCtx | any) => {
+  return buildBookMarkdown(await markToExportItem(item, ctx), ctx)
+}
+
+export const copyMark = async (item: any, ctx: { bookUrl: string; bookInfo?: any; settings?: any; reader?: any; isPdf?: boolean; showMsg: (msg: string, type?: string) => void }) => {
+  await writeClipboard(await buildMarkMarkdown(item, asClipboardCtx(ctx)), ctx.showMsg)
 }
 
 const appendMarkToDoc = async (item: any, docId: string, ctx: any, markdown?: string) => {
   if (!docId) return ctx.showMsg?.(ctx.i18n?.noBindDoc || '未绑定文档', 'error')
   try {
-    const content = markdown || await genMarkdown(item, ctx)
+    const content = markdown || await buildMarkMarkdown(item, ctx)
     if (!content) return ctx.showMsg?.('生成失败', 'error')
     const blockId = await recordInsertedBlocks(item, await (await import('@/api')).appendBlock('markdown', content, docId), ctx)
     ctx.showMsg?.(blockId ? ctx.i18n?.imported || '已导入' : ctx.i18n?.importFailed || '导入失败', blockId ? 'info' : 'error')
@@ -146,14 +168,14 @@ const appendMarkToDoc = async (item: any, docId: string, ctx: any, markdown?: st
 }
 
 export const importMark = async (item: any, ctx: any) => {
-  const settings = ctx.settings || await getGlobalSettings()
+  const settings = await resolveSettings(ctx.settings)
   const meta = await resolveExportMeta({ ...ctx, settings })
   const docId = await getBoundDocId(ctx.bookUrl)
-  const md = await genMarkdown(item, { ...ctx, settings, showMsg: () => {} })
+  const md = await buildMarkMarkdown(item, { ...ctx, settings })
   if (!md) return ctx.showMsg?.('生成失败', 'error')
   if (docId) return await appendMarkToDoc(item, docId, ctx, md)
-  if (!settings?.noteInsertTarget || settings.noteInsertTarget === 'clipboard') return ctx.showMsg?.(ctx.i18n?.noBindDoc || '未绑定文档', 'error')
-  const blockId = await recordInsertedBlocks(item, await (await import('@/utils/noteInsert')).insertNote(md, settings, meta.title, ctx.bookUrl || meta.title), ctx)
+  if (!shouldInsert(settings)) return ctx.showMsg?.(ctx.i18n?.noBindDoc || '未绑定文档', 'error')
+  const blockId = await insertGeneratedNote(item, md, settings, meta, ctx)
   if (!blockId) return ctx.showMsg?.(ctx.i18n?.importFailed || '导入失败', 'error')
   ctx.showMsg?.(ctx.i18n?.imported || '已导入')
   return blockId
@@ -163,8 +185,8 @@ export const sendMarkToDoc = async (item: any, docId: string, ctx: any) => appen
 
 export const updateMarkInDoc = async (item: any, ctx: any) => {
   try {
-    if (!item.blockId || !await getBoundDocId(ctx.bookUrl)) return
-    const md = await genMarkdown(item, ctx)
+    if (!item.blockId) return
+    const md = await buildMarkMarkdown(item, ctx)
     if (!md) return
     const { updateBlock } = await import('@/api')
     try { await updateBlock('markdown', md, item.blockId) } catch {}
@@ -176,17 +198,16 @@ export const syncMarkOnCreate = async (item: any, ctx: any) => {
   try {
     if (item?.blockId || item?.type === 'bookmark' || item?.readOnly || syncingMarks.has(syncKey) || (ctx.maxAgeMs && item?.timestamp && Date.now() - item.timestamp > ctx.maxAgeMs) || !await shouldSyncOnAdd()) return
     syncingMarks.add(syncKey)
-    const settings = await getGlobalSettings()
+    const settings = await resolveSettings(ctx.settings)
     const meta = await resolveExportMeta({ ...ctx, settings })
     const docId = await getBoundDocId(ctx.bookUrl)
-    const md = await genMarkdown(item, { ...ctx, settings, showMsg: () => {} })
+    const md = await buildMarkMarkdown(item, { ...ctx, settings })
     if (!md) return
     if (docId) {
       await appendMarkToDoc(item, docId, { ...ctx, showMsg: () => {} }, md)
       return
     }
-    if (!settings?.noteInsertTarget || settings.noteInsertTarget === 'clipboard') return
-    await recordInsertedBlocks(item, await (await import('@/utils/noteInsert')).insertNote(md, settings, meta.title, ctx.bookUrl || meta.title), ctx)
+    if (shouldInsert(settings)) await insertGeneratedNote(item, md, settings, meta, ctx)
   } catch {}
   finally { syncKey && syncingMarks.delete(syncKey) }
 }
@@ -204,7 +225,8 @@ export const saveMarkEdit = async (mark: any, updates: any, ctx: any) => {
   await ctx.marks.updateMark(mark, updates)
   updates.tags?.length && await (await import('@/composables/useSetting')).collectAnnotationTagPresets(updates.tags).catch(() => {})
   try {
-    if (await getBoundDocId(ctx.bookUrl)) await updateMarkInDoc({ ...mark, ...updates }, ctx)
+    const next = { ...mark, ...updates }
+    next.blockId ? await updateMarkInDoc(next, ctx) : await syncMarkOnCreate(next, ctx)
   } catch {}
 }
 

@@ -66,6 +66,8 @@ let cleanupZoomEvents: (() => void) | null = null
 let cleanupCaptureEvents: (() => void) | null = null
 let cleanupTooltipEvents: (() => void) | null = null
 let cleanupMigrationEvents: (() => void) | null = null
+let cleanupPdfDoubleTapZoom: (() => void) | null = null
+let pdfZoomRestore: any = null
 let activeViewer: any = null
 let viewerToken = 0
 let copyNextCapture = false
@@ -193,6 +195,7 @@ const quickDocs = () => ((props.settings ? props.settings.quickSendDocs : (windo
 const sendPdfMark = async (mark: any, docId: string, registry: PluginRegistry) => {
   await sendPdfMarkToDoc(mark, docId, {
     bookUrl: props.bookUrl || '',
+    settings: props.settings,
     marks: { updateMark: updateSelectedPdfBlockId(registry) },
     showMsg: (msg: string, type?: string) => showMessage(msg, 1500, type as any),
     i18n: props.i18n,
@@ -293,6 +296,59 @@ const setupPdfBottomButtons = (registry: PluginRegistry) => {
   observer.observe(shadow, { childList: true, subtree: true })
   setTimeout(() => observer.disconnect(), 3000)
 }
+const setupPdfDoubleTapZoom = (registry: PluginRegistry) => {
+  if (!isMobile()) return
+  const zoom = getCapability<any>(registry, 'zoom')?.forDocument(documentId)
+  const scroll = getCapability<any>(registry, 'scroll')?.forDocument(documentId)
+  const viewport = getCapability<any>(registry, 'viewport')?.forDocument?.(documentId)
+  const documents = getCapability<any>(registry, 'document-manager')
+  const shadow = pdfShadowRoot()
+  if (!shadow || !zoom || !scroll) return
+  let last = { t: 0, x: 0, y: 0 }
+  const zoomAt = (clientX: number, clientY: number) => {
+    const vp = viewport?.getMetrics?.()
+    const box = rootRef.value?.getBoundingClientRect()
+    const x = clientX - (vp?.relativePosition?.x ?? box?.left ?? 0)
+    const y = clientY - (vp?.relativePosition?.y ?? box?.top ?? 0)
+    const hit = scroll.getMetrics(vp).pageVisibilityMetrics.find((m: any) => x >= m.viewportX && x <= m.viewportX + m.scaled.visibleWidth && y >= m.viewportY && y <= m.viewportY + m.scaled.visibleHeight)
+    if (!hit) return
+    if (pdfZoomRestore) {
+      zoom.requestZoom?.(pdfZoomRestore, { vx: (vp?.clientWidth || box?.width || innerWidth) / 2, vy: (vp?.clientHeight || box?.height || innerHeight) / 2 })
+      pdfZoomRestore = null
+      return
+    }
+    const page = documents?.getDocumentState(documentId)?.document?.pages?.[hit.pageNumber - 1]
+    if (!page?.size) return
+    pdfZoomRestore = zoom.getState?.().zoomLevel
+    const half = page.size.width > page.size.height
+    zoom.zoomToArea(hit.pageNumber - 1, {
+      origin: {
+        x: half && x > hit.viewportX + hit.scaled.visibleWidth / 2 ? page.size.width / 2 : 0,
+        y: 0,
+      },
+      size: {
+        width: half ? page.size.width / 2 : page.size.width,
+        height: page.size.height,
+      },
+    })
+  }
+  const onPointerUp = (event: PointerEvent) => {
+    if (event.isPrimary === false) return
+    const now = performance.now()
+    const dx = event.clientX - last.x
+    const dy = event.clientY - last.y
+    if (now - last.t > 300 || dx * dx + dy * dy > 324) {
+      last = { t: now, x: event.clientX, y: event.clientY }
+      return
+    }
+    last.t = 0
+    event.preventDefault()
+    event.stopPropagation()
+    zoomAt(event.clientX, event.clientY)
+  }
+  shadow.addEventListener('pointerup', onPointerUp, true)
+  cleanupPdfDoubleTapZoom = () => shadow.removeEventListener('pointerup', onPointerUp, true)
+}
 const copyCaptureBlob = async (blob: Blob) => {
   await writeBlobToClipboard(blob)
   showMessage(props.i18n?.copied || '已复制', 1200)
@@ -332,7 +388,7 @@ const setupPdfCommands = (registry: PluginRegistry) => {
       const selected = selectedPdfAnnotation()
       if (!selected) return
       const mark = await pdfMarkWithImage(registry, selected)
-      await copyMark(mark, { bookUrl: props.bookUrl || '', isPdf: true, showMsg: (msg: string, type?: string) => showMessage(msg, 1500, type as any) })
+      await copyMark(mark, { bookUrl: props.bookUrl || '', settings: props.settings, isPdf: true, showMsg: (msg: string, type?: string) => showMessage(msg, 1500, type as any) })
     },
     visible: () => !!selectedPdfAnnotation(),
   })
@@ -579,8 +635,9 @@ const handleReady = async (registry: PluginRegistry) => {
   nativePdfAnnotationIds = new Set()
   emit('ready', registry)
   setupPdfMigration()
-  ;[cleanupDocumentEvents, cleanupAnnotationEvents, cleanupScrollEvents, cleanupZoomEvents].forEach(cleanup => cleanup?.())
-  cleanupDocumentEvents = cleanupAnnotationEvents = cleanupScrollEvents = cleanupZoomEvents = null
+  ;[cleanupDocumentEvents, cleanupAnnotationEvents, cleanupScrollEvents, cleanupZoomEvents, cleanupPdfDoubleTapZoom].forEach(cleanup => cleanup?.())
+  pdfZoomRestore = null
+  cleanupDocumentEvents = cleanupAnnotationEvents = cleanupScrollEvents = cleanupZoomEvents = cleanupPdfDoubleTapZoom = null
   const scroll = getCapability<any>(registry, 'scroll')
   const zoom = getCapability<any>(registry, 'zoom')?.forDocument?.(documentId)
   const savedZoomLevel = pdfZoomLevel()
@@ -652,6 +709,7 @@ const handleReady = async (registry: PluginRegistry) => {
   if (outline && tabs[0]?.id !== 'outline') ui?.mergeSchema?.({ sidebars: { 'sidebar-panel': { ...sidebarPanel, content: { ...sidebarPanel.content, tabs: [outline, ...tabs.filter((tab: any) => tab.id !== 'outline')] } } } as any })
   setupPdfCommands(registry)
   setupPdfBottomButtons(registry)
+  setupPdfDoubleTapZoom(registry)
   setupPdfCapture(registry)
   let annotationsLoaded = false
   const annotation = activeAnnotationScope
@@ -788,6 +846,8 @@ onBeforeUnmount(() => {
   cleanupCaptureEvents?.()
   cleanupTooltipEvents?.()
   cleanupMigrationEvents?.()
+  cleanupPdfDoubleTapZoom?.()
+  pdfZoomRestore = null
   themeObserver.disconnect()
   activeAnnotationScope = null
   activeScrollScope = null

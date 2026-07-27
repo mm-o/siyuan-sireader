@@ -206,6 +206,7 @@ const markData = (mark: any, extra: Record<string, any> = {}) => ({
   style: mark.style || 'highlight',
   ...extra,
 })
+const markExportCtx = () => ({ bookUrl: getBookUrl(), isPdf: isPdf.value, showMsg: (msg: string, type?: string) => showMessage(msg, type === 'error' ? 2000 : 1500, type as any), i18n: props.i18n, marks: props.manager })
 const selectionArgs = () => {
   const loc = state.selection?.location
   const pos = loc?.cfi || loc?.page || loc?.section
@@ -382,8 +383,8 @@ const handleSendToDoc = async (docId: string) => {
   if (readOnly.value) return
   if (props.can && !props.can('quick-send')) return props.showUpgrade?.('快捷发送')
   if (!docId) return
-  const mark = state.selection ? await addSelectionMark(state.selection.text, props.quickMarkColor || 'blue', props.quickMarkStyle || 'highlight') : null
-  if (mark) await (await import('@/utils/copy')).sendMarkToDoc(mark, docId, { bookUrl: getBookUrl(), isPdf: isPdf.value, showMsg: (msg: string, type?: string) => showMessage(msg, type === 'error' ? 2000 : 1500, type as any), i18n: props.i18n, marks: props.manager })
+  const mark = state.selection ? await addSelectionMark(state.selection.text, props.quickMarkColor || 'blue', props.quickMarkStyle || 'highlight') : state.currentMark
+  if (mark) await (await import('@/utils/copy')).sendMarkToDoc(mark, docId, markExportCtx())
   closeAll()
 }
 const handleCopyText = () => {
@@ -428,7 +429,7 @@ const handleSave = async () => {
       const updates: any = { note: state.note.trim() || undefined, color: state.color, tags: parseMarkTags(state.tags) }
       Object.assign(updates, { text: state.text.trim(), style: state.style })
       const { saveMarkEdit } = await import('@/utils/copy')
-      await saveMarkEdit(state.currentMark, updates, { marks: props.manager, bookUrl: getBookUrl(), isPdf: isPdf.value, reader: props.reader })
+      await saveMarkEdit(state.currentMark, updates, { ...markExportCtx(), reader: props.reader })
       Object.assign(state.currentMark, updates)
       showMessage(props.i18n?.saved || '已保存', 1000)
       state.isEditing = false
@@ -462,7 +463,7 @@ const handleImport = async () => {
   if (readOnly.value) return
   if (!state.currentMark) return
   const { importMark } = await import('@/utils/copy')
-  await importMark(state.currentMark, { bookUrl: getBookUrl(), isPdf: isPdf.value, showMsg: (msg: string, type?: string) => showMessage(msg, type === 'error' ? 2000 : 1500, type as any), i18n: props.i18n, marks: props.manager })
+  await importMark(state.currentMark, markExportCtx())
 }
 </script>
 

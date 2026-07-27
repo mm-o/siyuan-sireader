@@ -7,7 +7,7 @@
 让思源笔记变身专业阅读器，支持 EPUB/PDF/TXT/在线小说  
 专业电子书阅读器，支持 EPUB/PDF/MOBI/TXT/在线小说；PDF 支持高亮、墨迹、形状、表单、印章、签名、图片、截图、搜索、打印、导出和回链，并提供标注笔记、词典、翻译、主题与书架管理
 
-[![Version](https://img.shields.io/badge/version-2.2.2-blue.svg)](https://github.com/your-repo/siyuan-sireader)
+[![Version](https://img.shields.io/badge/version-2.2.3-blue.svg)](https://github.com/your-repo/siyuan-sireader)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![SiYuan](https://img.shields.io/badge/SiYuan-3.0+-orange.svg)](https://github.com/siyuan-note/siyuan)
 
@@ -18,6 +18,15 @@
 ---
 
 ## 📝 最新更新
+
+### v2.2.3（2026.7.27）
+
+### 修复
+
+- 修复插件更新、云同步或重载后 Foliate 自定义元素重复注册导致插件启动中断、思阅侧边栏图标消失的问题。
+- 修复 EPUB 阅读 iframe sandbox 缺少 `allow-scripts` 触发 `about:srcdoc` 脚本拦截报错，可能导致翻页、选区或排版事件异常的问题。
+- 恢复移动端 PDF 双击放大功能，支持命中当前页/横向半页区域放大，并可再次双击恢复原缩放。
+- 修复 EPUB/PDF 标注复制、快捷发送、导入和编辑同步没有统一使用自定义链接模板的问题；PDF 标注评论更新后会同步更新已插入的文档块。
 
 ### v2.2.2（2026.7.25）
 
@@ -696,7 +705,7 @@
 | | 快捷发送 | 配置快捷文档列表（最多5个），一键发送标注 |
 | | 自动同步 | 标注自动同步到绑定的思源文档（添加/删除/修改） |
 | | 撤销标注 | Ctrl+Z 撤销最近的标注 |
-| | 复制设置 | 自定义链接格式，可用变量：书名/作者/章节/位置/链接/文本/笔记/截图 |
+| | 复制设置 | 自定义链接格式，可用变量：书名/作者/章节/位置/链接/文本/笔记/图片 |
 | | 精准定位 | 使用 CFI/页码精确定位，支持跳转到原文 |
 | **🔊 朗读** | TTS模式 | Edge TTS（在线免费）、本地浏览器（离线） |
 | | 多语音支持 | 数百种在线语音和本地语音，支持收藏常用语音 |

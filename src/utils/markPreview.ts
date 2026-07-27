@@ -228,7 +228,7 @@ export const getPreviewAround = (text: string, needle = '') => {
 }
 const renderContext = (mark: any, text: string, title: string) => {
   const { before, hit, after } = getPreviewAround(text, mark?.text || mark?.title || '')
-  const note = mark?.note ? `<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--b3-border-color);color:var(--b3-theme-on-surface);line-height:1.6">${esc(mark.note)}</div>` : ''
+  const note = mark?.note ? `<blockquote class="bq" data-subtype="note" style="margin:10px 0 0;padding:8px 10px;border-left:4px solid var(--b3-theme-primary);border-radius:6px;background:var(--b3-theme-primary-lightest);color:var(--b3-theme-on-surface);line-height:1.6"><div style="font-weight:600;margin-bottom:4px">NOTE</div><div>${esc(mark.note)}</div></blockquote>` : ''
   const meta = [mark?.bookTitle, mark?.chapter, mark?.page ? `Page ${mark.page}` : ''].filter(Boolean).join(' - ')
   const body = `
     <div class="protyle-wysiwyg" style="padding:12px 14px;max-height:320px;overflow:auto;font-size:13px;line-height:1.75;color:var(--b3-theme-on-surface);user-select:text;word-break:break-word">

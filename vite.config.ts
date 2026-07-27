@@ -16,6 +16,11 @@ const pluginInfo = require("./plugin.json")
 const PRIVATE_SOURCES_ID = "@private-sources"
 const VIRTUAL_PRIVATE_SOURCES_ID = "\0@private-sources"
 const FOLIATE_PDF_STUB_ID = "\0foliate-pdf-stub"
+const FOLIATE_CUSTOM_ELEMENTS = {
+  view: ["foliate-view", "View"],
+  "fixed-layout": ["foliate-fxl", "FixedLayout"],
+  paginator: ["foliate-paginator", "Paginator"],
+} as const
 const PUBLIC_PRIVATE_SOURCES_STUB = `
 export const registerPrivateSources = () => {}
 export const createPrivateSearchAccess = () => ({
@@ -27,6 +32,15 @@ export const createWereadOnlineBookInfo = () => { throw new Error('微信读书�
 export const getWereadReadUrl = bookId => bookId ? 'https://weread.qq.com/web/reader/' + encodeURIComponent(bookId) : ''
 export const testWereadAgentKey = async () => { throw new Error('微信读书私密模块未安装') }
 `
+
+export const guardFoliateCustomElements = (code: string, id: string) => {
+  const matched = id.replace(/\\/g, "/").match(/\/foliate-js\/(view|fixed-layout|paginator)\.js(?:\?.*)?$/)
+  if (!matched) return code
+  const [tag, constructor] = FOLIATE_CUSTOM_ELEMENTS[matched[1] as keyof typeof FOLIATE_CUSTOM_ELEMENTS]
+  const original = `customElements.define('${tag}', ${constructor})`
+  if (!code.includes(original)) throw new Error(`Expected Foliate custom-element registration in ${id}: ${original}`)
+  return code.replace(original, `if (!customElements.get('${tag}')) ${original}`)
+}
 
 export default defineConfig(({
   mode,
@@ -63,15 +77,7 @@ export default defineConfig(({
         transform(code, id) {
           const matched = id.replace(/\\/g, "/").match(/\/foliate-js\/(view|fixed-layout|paginator)\.js(?:\?.*)?$/)
           if (!matched) return null
-          let next = code.replace(/((?:this\.#)?iframe)\.setAttribute\('sandbox', 'allow-same-origin allow-scripts'\)/g, "$1.setAttribute('sandbox', 'allow-same-origin')")
-          const [tag, constructor] = ({
-            view: ["foliate-view", "View"],
-            "fixed-layout": ["foliate-fxl", "FixedLayout"],
-            paginator: ["foliate-paginator", "Paginator"],
-          } as Record<string, string[]>)[matched[1]]
-          const original = `customElements.define('${tag}', ${constructor})`
-          if (!next.includes(original)) throw new Error(`Expected Foliate custom-element registration in ${id}: ${original}`)
-          next = next.replace(original, `if (!customElements.get('${tag}')) ${original}`)
+          const next = guardFoliateCustomElements(code, id)
           return next === code ? null : { code: next, map: null }
         },
         resolveId(id, importer) {

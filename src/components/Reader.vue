@@ -204,9 +204,9 @@ const imageEmbedPdfMark=async(item:any)=>{
   return item
 }
 const syncEmbedPdfEvent=async(event:any)=>{
-  const a=event?.annotation, mark=a&&(embedPdfMarks.value.find((item:any)=>item.id===a.id)||embedPdfMark({annotation:a}))
+  const a=event?.annotation, mark=a&&embedPdfMark({annotation:a})
   if(!mark)return
-  try{const m=await import('@/utils/copy');event?.type==='delete'?await m.syncMarkOnDelete(mark):await m.syncMarkOnCreate(await imageEmbedPdfMark(mark),{bookUrl:getBookUrl(),isPdf:true,marks:currentView.value?.marks,maxAgeMs:15000})}catch(e){console.error('[PdfSync]',e)}
+  try{const m=await import('@/utils/copy'),ctx={bookUrl:getBookUrl(),isPdf:true,marks:currentView.value?.marks},next=event?.type==='delete'?mark:await imageEmbedPdfMark(mark);event?.type==='delete'?await m.syncMarkOnDelete(next):event?.type==='update'&&next.blockId?await m.updateMarkInDoc(next,ctx):await m.syncMarkOnCreate(next,ctx)}catch(e){console.error('[PdfSync]',e)}
 }
 const updateEmbedPdfMark=async(item:any,updates:any)=>{
   const a=item.annotation||item
@@ -248,7 +248,7 @@ const handleEmbedPdfReady=(registry:any)=>{
   const emitPage=(page:number)=>window.dispatchEvent(new CustomEvent('sireader:pdf-page',{detail:{bookUrl:getBookUrl(),page}}))
   const offPage=scroll.onPageChange?.((event:any)=>event.documentId===documentId&&emitPage(event.pageNumber))
   const rememberNative=()=>embedPdfNativeIds=new Set(embedPdfAnnotations.value?.getAnnotations?.().map((item:any)=>item.object?.id).filter(Boolean)||[])
-  const offAnno=embedPdfAnnotations.value.onAnnotationEvent?.((event:any)=>{if(event?.type==='loaded')rememberNative();if(event?.type==='create'||event?.type==='delete')void syncEmbedPdfEvent(event);if(['loaded','create','update','delete'].includes(event?.type))void loadEmbedPdfMarks()})
+  const offAnno=embedPdfAnnotations.value.onAnnotationEvent?.((event:any)=>{if(event?.type==='loaded')rememberNative();if(['create','update','delete'].includes(event?.type))void syncEmbedPdfEvent(event);if(['loaded','create','update','delete'].includes(event?.type))void loadEmbedPdfMarks()})
   cleanupEmbedPdfEvents?.()
   cleanupEmbedPdfEvents=()=>{offPage?.();offAnno?.()}
   emitPage(embedPdfPages.value?.getCurrentPage?.()||1)
