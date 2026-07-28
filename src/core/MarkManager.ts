@@ -304,7 +304,7 @@ export class MarkManager{
     return m
   }
 
-  async addNote(loc:string|number,note:string,text:string,color:HighlightColor='blue',style:MarkStyle='outline',rects?:any[],textOffset?:number,tags?:string[]):Promise<Mark>{
+  async addNote(loc:string|number,note:string,text:string,color:HighlightColor,style:MarkStyle,rects?:any[],textOffset?:number,tags?:string[]):Promise<Mark>{
     const m=this.add({type:'note',...(typeof loc==='string'?await this.locMeta(loc):{}),[typeof loc==='string'?'cfi':'section']:loc,text,note,color,style,rects,textOffset,tags})
     this.undoStack.push({...m})
     if(this.undoStack.length>10)this.undoStack.shift()

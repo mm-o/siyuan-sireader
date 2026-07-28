@@ -212,7 +212,7 @@ const selectionArgs = () => {
   const pos = loc?.cfi || loc?.page || loc?.section
   return pos && loc ? [pos, state.text.trim(), state.color, state.style, loc.rects, (loc as any).textOffset] as const : null
 }
-const addSelectionMark = async (text: string, color: HighlightColor, style: typeof state.style) => {
+const addSelectionMark = async (text: string, color: HighlightColor = state.color, style: typeof state.style = state.style) => {
   const args = selectionArgs()
   return args && props.manager ? await props.manager.addHighlight(args[0], text.trim(), color, style, args[4], args[5]) : null
 }
@@ -360,7 +360,7 @@ defineExpose({
 const handleCopy = async (color?: HighlightColor, style?: typeof state.style) => {
   if (readOnly.value) return
   if (!state.selection) return
-  await addSelectionMark(state.selection.text, color || 'blue', style || 'highlight')
+  await addSelectionMark(state.selection.text, color, style)
   if (!props.quickMarkMode) return closeAll()
   quickMarkCooldown = true
   setTimeout(() => { quickMarkCooldown = false }, 300)
@@ -383,7 +383,7 @@ const handleSendToDoc = async (docId: string) => {
   if (readOnly.value) return
   if (props.can && !props.can('quick-send')) return props.showUpgrade?.('快捷发送')
   if (!docId) return
-  const mark = state.selection ? await addSelectionMark(state.selection.text, props.quickMarkColor || 'blue', props.quickMarkStyle || 'highlight') : state.currentMark
+  const mark = state.selection ? await addSelectionMark(state.selection.text, props.quickMarkColor, props.quickMarkStyle) : state.currentMark
   if (mark) await (await import('@/utils/copy')).sendMarkToDoc(mark, docId, markExportCtx())
   closeAll()
 }

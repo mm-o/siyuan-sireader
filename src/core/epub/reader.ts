@@ -31,8 +31,12 @@ const getTheme = (settings: ReaderSettings) =>
 const getViewBackground = (theme: any) => theme.bgImg ? `${theme.bg} url("${theme.bgImg}") center/cover no-repeat` : theme.bg
 const isDark = (c = '') => { const m = c.match(/\d+(\.\d+)?/g)?.slice(0, 3).map(Number); return !!m && (m[0] * 299 + m[1] * 587 + m[2] * 114) / 1000 < 128 }
 const watchTheme = (cb: () => void) => {
-  const observer = new MutationObserver(() => requestAnimationFrame(cb))
+  const refresh = () => requestAnimationFrame(cb), observer = new MutationObserver(refresh)
+  const onLoad = ({ target }: Event) => target instanceof HTMLLinkElement && (['themeDefaultStyle', 'themeStyle'].includes(target.id) || target.href.includes('/appearance/themes/')) && refresh()
+  const disconnect = observer.disconnect.bind(observer)
   observer.observe(document.documentElement, { attributeFilter: ['data-theme-mode', 'class'] })
+  document.addEventListener('load', onLoad, true)
+  observer.disconnect = () => (disconnect(), document.removeEventListener('load', onLoad, true))
   return observer
 }
 
@@ -147,11 +151,13 @@ function getLayoutMetrics(settings: ReaderSettings) {
 function configureView(view: FoliateView, settings: ReaderSettings) {
   const renderer = view.renderer
   if (!renderer) return
-  const { pageAnimation = 'slide', visualSettings } = settings
+  const { pageAnimation = 'push', visualSettings } = settings
+  const pageTurnStyle = pageAnimation === 'slide' || pageAnimation === 'curl' ? pageAnimation : 'push'
   const { scroll, columns, gap, margins } = getLayoutMetrics(settings)
   setAttr(renderer, 'flow', scroll ? 'scrolled' : 'paginated')
   setAttr(renderer, 'max-column-count', String(columns))
-  setAttr(renderer, 'animated', '', !scroll && pageAnimation === 'slide')
+  setAttr(renderer, 'animated', '', !scroll)
+  setAttr(renderer, 'turn-style', pageTurnStyle, !scroll && pageTurnStyle !== 'push')
   setAttr(renderer, 'gap', `${gap}%`)
   for (const side of ['top', 'right', 'bottom', 'left'] as const) setAttr(renderer, `margin-${side}`, `${margins[side]}px`)
   applyVisualFilter(visualSettings)
@@ -189,7 +195,8 @@ function applyCustomCSS(view: FoliateView, settings: ReaderSettings) {
   } = settings
   const theme = getTheme(settings)
   const mobile = isMobile()
-  const forceColor = isDark(theme.bg) ? `p,li,dd,blockquote{color:${theme.color}!important}` : ''
+  const dark = isDark(theme.bg)
+  const forceColor = dark ? `p,li,dd,blockquote{color:${theme.color}!important}` : ''
   const transparentContent = theme.bgImg ? 'html,body,section,article,main,div,p,blockquote,ul,ol,li,table,thead,tbody,tr,td,th{background-color:transparent!important}' : ''
   const darkText = ['#000', '#000000', 'black', 'rgb(0,0,0)', 'rgb(0, 0, 0)'].map(c => `font[color="${c}"],[style*="color:${c}"],[style*="color: ${c}"]`).join(',')
   const customFont = text.fontFamily === 'custom' ? text.customFont?.fontFamily : ''
@@ -201,17 +208,23 @@ function applyCustomCSS(view: FoliateView, settings: ReaderSettings) {
     fontFace,
     `
     html{
-      background:transparent!important;
-      color:${theme.color}!important;
-      ${mobile ? '' : 'color-scheme:light dark'}
+      --bg-texture-id:${theme.bgImg ? 'sireader' : 'none'};
+      --theme-bg-color:${theme.bg};
+      --theme-fg-color:${theme.color};
+      --theme-primary-color:var(--b3-theme-primary);
+      --override-color:${dark && !theme.bgImg};
+      color-scheme:${dark ? 'dark' : 'light'};
+      background-color:var(--theme-bg-color,transparent)!important;
+      background:var(--background-set,none)!important;
       box-sizing:border-box!important;
       scrollbar-width:none!important;
       -ms-overflow-style:none!important;
       ${mobile ? '-webkit-touch-callout:none!important;' : ''}
     }
+    html,body{color:${theme.color}!important}
+    html[has-background],body[has-background]{--background-set:var(--theme-bg-color)}
     html::-webkit-scrollbar{display:none!important;width:0!important;height:0!important}
     body{
-      background-color:transparent!important;
       color:${theme.color}!important;
       font-family:${font}!important;
       font-size:${text.fontSize}px!important;

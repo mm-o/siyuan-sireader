@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "space": {
+    "name": "思阅文档",
+    "description": "思阅 SiReader 插件文档，由本地 Markdown 同步生成。",
+    "id": "7667233858865105900"
+  },
+  "docs": {
+    "readme.zh_CN": {
+      "title": "使用文档",
+      "source": "README_zh_CN.md",
+      "nodeToken": "IzvVwQEhriAIIok57SQcYmfhnwm",
+      "documentId": "D7J1dGzYAonmq9xSDNkcNfmfn7g",
+      "url": "https://my.feishu.cn/wiki/IzvVwQEhriAIIok57SQcYmfhnwm",
+      "contentHash": "afec1f5c69e17da3bf750e9bad1980a7aafabf675888c72bd043a2795cf4d16c"
+    },
+    "changelog.zh_CN": {
+      "title": "更新日志",
+      "source": "CHANGELOG.md",
+      "nodeToken": "LhITwVPHWiu7UMkqPUCcE84FnGh",
+      "documentId": "QtFkdtA5jo5E0lxh5qCc6Tfonzg",
+      "url": "https://my.feishu.cn/wiki/LhITwVPHWiu7UMkqPUCcE84FnGh",
+      "contentHash": "d250a5c5e43d3eb53e595a81ae1fdf63434b3db344d278a71cfcc14d63c2de71"
+    },
+    "readme.en_US": {
+      "title": "Documentation",
+      "source": "README.md",
+      "nodeToken": "C3ULw8pM6iY2qgk3aGVc5eManZe",
+      "documentId": "AZy7dG0bnoRbz7xTl81cWWANn1c",
+      "url": "https://my.feishu.cn/wiki/C3ULw8pM6iY2qgk3aGVc5eManZe",
+      "contentHash": "cf4beb20758425a8e14d2e1e9549fdecd2b02433d0f414c86e5848ab7afafa56"
+    },
+    "changelog.en_US": {
+      "title": "Changelog",
+      "source": "README.md",
+      "nodeToken": "ZD81wv7fAiFnLckWWBycdmoTn7s",
+      "documentId": "Vxn4dqEvNoNB6Exil7dcGkWsnug",
+      "url": "https://my.feishu.cn/wiki/ZD81wv7fAiFnLckWWBycdmoTn7s",
+      "contentHash": "a9b34fa0414bfcea07f94e145d815ed579152b8208922197bb9a0dbb5c8c152e"
+    }
+  }
+}
