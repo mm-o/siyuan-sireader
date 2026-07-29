@@ -1,3 +1,5 @@
+> [中文](https://my.feishu.cn/wiki/IzvVwQEhriAIIok57SQcYmfhnwm) | English
+
 <div align="center">
 
 # 📖 SiReader

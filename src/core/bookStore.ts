@@ -48,6 +48,7 @@ const isPublicPath = (path = '') => path.startsWith('/public/') || path.startsWi
 const getRecordKey = (url: string) => `${RECORDS_DIR}/${hash(url)}.json`
 const getLegacyEmbedPdfRecordKey = (url: string) => `${RECORDS_DIR}/embedpdf/${hash(url)}.bin`
 const bookRecordCache = new Map<string, BookRecord | null>()
+const writeQueues = new Map<string, Promise<void>>()
 const req = (id: string) => { try { return (window as any).require?.(id) } catch { return null } }
 const normalizeStoragePath = (storageName = '') => {
   const resolved: string[] = []
@@ -256,8 +257,15 @@ export const readBookRecord = async (url: string): Promise<BookRecord | null> =>
 }
 export const writeBookRecord = async (url: string, record: BookRecord) => {
   const key = getRecordKey(url)
-  bookRecordCache.set(key, record)
-  return saveData(key, record)
+  const task = (writeQueues.get(key) || Promise.resolve()).catch(() => {}).then(async () => {
+    bookRecordCache.set(key, record)
+    await saveData(key, record)
+  })
+  const queued = task.finally(() => {
+    if (writeQueues.get(key) === queued) writeQueues.delete(key)
+  })
+  writeQueues.set(key, queued)
+  return task
 }
 export const removeBookRecord = async (url: string) => {
   const key = getRecordKey(url)

@@ -42,7 +42,7 @@ lark-cli auth login --domain docs --domain drive --domain wiki
 ## 同步
 
 ```powershell
-npm run docs:feishu
+pnpm run docs:feishu
 ```
 
 同步流程：

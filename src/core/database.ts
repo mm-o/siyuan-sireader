@@ -387,34 +387,46 @@ export class ReaderDatabase {
       this.markDirty('daily')
       return
     }
-    const now = Date.now()
-    const book = await this.getBook(annotation.book)
+    await this.saveAnnotations(annotation.book, [annotation.type], [annotation])
+  }
+
+  async saveAnnotations(bookUrl: string, types: AnnotationType[], annotations: Array<Partial<Annotation> & Pick<Annotation, 'id' | 'type'>>) {
+    await this.init()
+    if (!bookUrl) throw new Error('book required')
+    const book = await this.getBook(bookUrl)
     if (!book) throw new Error('book not found')
     if (book.format === 'pdf') return
     const record = await this.readBookRecord(book)
-    const next = {
-      id: annotation.id,
-      book: annotation.book,
-      type: annotation.type,
-      loc: annotation.loc || '',
-      text: annotation.text || '',
-      note: annotation.note || '',
-      tags: Array.from(new Set((annotation.tags || []).map(tag => String(tag || '').trim()).filter(Boolean))),
-      color: annotation.color || '',
-      data: annotation.data || {},
-      created: annotation.created || now,
-      updated: now,
-      chapter: annotation.chapter || '',
-      block: annotation.block || '',
-    } as Annotation
-    const prevCount = record.annotations?.length || 0
-    const annotations = (record.annotations || []).filter(item => item.id !== annotation.id)
-    annotations.push(next)
-    annotations.sort((a, b) => (a.created || 0) - (b.created || 0))
-    const prev = (record.annotations || []).find(item => item.id === annotation.id)
-    if (same(prev, next)) return
-    await this.writeBookRecord(record.book ? { ...book, ...record.book } : book, annotations, record.progress)
-    this.bumpCachedAnnotationCount(annotations.length - prevCount)
+    const current = record.annotations || []
+    const allow = new Set(types)
+    const prev = new Map(current.map(item => [item.id, item]))
+    const now = Date.now()
+    const next = [
+      ...current.filter(item => !allow.has(item.type)),
+      ...annotations.map(annotation => {
+        if (!annotation.id) throw new Error('id required')
+        const old = prev.get(annotation.id)
+        const item = {
+          id: annotation.id,
+          book: bookUrl,
+          type: annotation.type,
+          loc: annotation.loc || '',
+          text: annotation.text || '',
+          note: annotation.note || '',
+          tags: Array.from(new Set((annotation.tags || []).map(tag => String(tag || '').trim()).filter(Boolean))),
+          color: annotation.color || '',
+          data: annotation.data || {},
+          created: annotation.created || old?.created || now,
+          updated: old?.updated || annotation.updated || now,
+          chapter: annotation.chapter || '',
+          block: annotation.block || '',
+        } as Annotation
+        return old && same({ ...old, updated: item.updated }, item) ? old : { ...item, updated: now }
+      }),
+    ].sort((a, b) => (a.created || 0) - (b.created || 0))
+    if (same(current, next)) return
+    await this.writeBookRecord(record.book ? { ...book, ...record.book } : book, next, record.progress)
+    this.bumpCachedAnnotationCount(next.length - current.length)
   }
 
   async deleteAnnotation(id: string) {

@@ -1,3 +1,7 @@
+> [中文](https://my.feishu.cn/wiki/LhITwVPHWiu7UMkqPUCcE84FnGh) | English
+
+# SiReader - Changelog
+
 <div align="center">
 
 # 📖 SiReader

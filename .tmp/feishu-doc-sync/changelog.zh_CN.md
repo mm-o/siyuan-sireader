@@ -1,3 +1,5 @@
+> 中文 | [English](https://my.feishu.cn/wiki/ZD81wv7fAiFnLckWWBycdmoTn7s)
+
 # 思阅 SiReader - 更新日志
 
 ## v2.2.6（2026.7.29）
