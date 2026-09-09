@@ -7,7 +7,7 @@
 让思源笔记变身专业阅读器，支持 EPUB/PDF/TXT/在线小说  
 专业电子书阅读器，支持 EPUB/PDF/MOBI/TXT/在线小说；PDF 支持高亮、墨迹、形状、表单、印章、签名、图片、截图、搜索、打印、导出和回链，并提供标注笔记、词典、翻译、主题与书架管理
 
-[![Version](https://img.shields.io/badge/version-2.2.5-blue.svg)](https://github.com/your-repo/siyuan-sireader)
+[![Version](https://img.shields.io/badge/version-2.2.7-blue.svg)](https://github.com/your-repo/siyuan-sireader)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![SiYuan](https://img.shields.io/badge/SiYuan-3.0+-orange.svg)](https://github.com/siyuan-note/siyuan)
 
@@ -18,6 +18,28 @@
 ---
 
 ## 📝 最新更新
+
+### v2.2.7（2026.9.9）
+
+### 修复
+
+- 修复思源新版本文件写入通知导致插件重复加载、界面卡顿的问题。
+- 修复 PDF 阅读引擎加载不稳定的问题，PDF 核心资源现已直接内置于插件。
+- 修复连续滚动模式滚动条位置异常的问题，恢复原生滚动条并将其对齐到阅读区域最右侧。
+
+### 新增
+
+- 背景图片、字体和离线词典支持统一导入、导出与删除管理。
+- 支持直接显示背景图片，并提供字体样式预览和背景图片缩略图预览。
+
+### 优化
+
+- 优化连续滚动模式的内容布局，正文宽度随阅读区域扩展，减少不必要的左右留白。
+- 优化连续滚动模式的键盘导航，方向键统一使用 Foliate 原生滚动与翻页行为，并保留少量阅读余量。
+
+### 说明
+
+- 暂不增加阅读字数统计：当前 EPUB/PDF 引擎没有低成本的原始字数 API，完整统计可能影响打开和阅读性能。
 
 ### v2.2.6（2026.7.29）
 

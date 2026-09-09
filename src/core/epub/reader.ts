@@ -6,7 +6,7 @@
 import type { Plugin } from 'siyuan'
 import type { FoliateView, Location } from './types'
 import type { ReaderSettings } from '@/composables/useSetting'
-import { PRESET_THEMES } from '@/composables/useSetting'
+import { getReaderTheme } from '@/composables/useSetting'
 import { createTooltip, hideTooltip, showTooltip } from '@/core/MarkManager'
 import { EPUBSearch } from './search'
 import { createTxtBook, isTxtSource } from '@/core/txt/book'
@@ -27,7 +27,7 @@ const resolveColor = (color: string) =>
 
 const resolveTheme = (theme: any) => ({ ...theme, bg: resolveColor(theme.bg), color: resolveColor(theme.color) })
 const getTheme = (settings: ReaderSettings) =>
-  resolveTheme(settings.theme === 'custom' ? settings.customTheme : PRESET_THEMES[settings.theme] || PRESET_THEMES.default)
+  resolveTheme(getReaderTheme(settings))
 const getViewBackground = (theme: any) => theme.bgImg ? `${theme.bg} url("${theme.bgImg}") center/cover no-repeat` : theme.bg
 const isDark = (c = '') => { const m = c.match(/\d+(\.\d+)?/g)?.slice(0, 3).map(Number); return !!m && (m[0] * 299 + m[1] * 587 + m[2] * 114) / 1000 < 128 }
 const watchTheme = (cb: () => void) => {
@@ -154,7 +154,9 @@ function configureView(view: FoliateView, settings: ReaderSettings) {
   const { pageAnimation = 'push', visualSettings } = settings
   const pageTurnStyle = pageAnimation === 'slide' || pageAnimation === 'curl' ? pageAnimation : 'push'
   const { scroll, columns, gap, margins } = getLayoutMetrics(settings)
+  setAttr(view, 'flow', scroll ? 'scrolled' : 'paginated')
   setAttr(renderer, 'flow', scroll ? 'scrolled' : 'paginated')
+  setAttr(renderer, 'max-inline-size', `${Math.max(0, view.clientWidth - margins.left - margins.right)}px`, scroll)
   setAttr(renderer, 'max-column-count', String(columns))
   setAttr(renderer, 'animated', '', !scroll)
   setAttr(renderer, 'turn-style', pageTurnStyle, !scroll && pageTurnStyle !== 'push')
@@ -174,6 +176,7 @@ function applyVisualFilter(visual: any = {}) {
   ].filter(Boolean)
   getStyleTag('sireader-visual-filter').textContent = `
     foliate-view::part(container){background:transparent!important}
+    foliate-view[flow="scrolled"]::part(container){grid-column:1/-1!important}
     foliate-view::part(filter){${filters.length ? `filter:${filters.join(' ')}` : ''}}
   `
 }
@@ -201,7 +204,7 @@ function applyCustomCSS(view: FoliateView, settings: ReaderSettings) {
   const darkText = ['#000', '#000000', 'black', 'rgb(0,0,0)', 'rgb(0, 0, 0)'].map(c => `font[color="${c}"],[style*="color:${c}"],[style*="color: ${c}"]`).join(',')
   const customFont = text.fontFamily === 'custom' ? text.customFont?.fontFamily : ''
   const font = customFont ? `"${customFont}", sans-serif` : text.fontFamily || 'inherit'
-  const fontUrl = customFont ? `${location.origin}/plugins/custom-fonts/${encodeURI(text.customFont.fontFile)}` : ''
+  const fontUrl = customFont ? `${location.origin}/public/siyuan-sireader/fonts/${encodeURIComponent(text.customFont.fontFile)}` : ''
   const fontFace = customFont ? `@font-face{font-family:"${customFont}";src:url("${fontUrl}");font-display:swap}` : ''
   const css = [
     `@namespace epub "http://www.idpf.org/2007/ops";`,
@@ -217,13 +220,10 @@ function applyCustomCSS(view: FoliateView, settings: ReaderSettings) {
       background-color:var(--theme-bg-color,transparent)!important;
       background:var(--background-set,none)!important;
       box-sizing:border-box!important;
-      scrollbar-width:none!important;
-      -ms-overflow-style:none!important;
       ${mobile ? '-webkit-touch-callout:none!important;' : ''}
     }
     html,body{color:${theme.color}!important}
     html[has-background],body[has-background]{--background-set:var(--theme-bg-color)}
-    html::-webkit-scrollbar{display:none!important;width:0!important;height:0!important}
     body{
       color:${theme.color}!important;
       font-family:${font}!important;
@@ -232,11 +232,8 @@ function applyCustomCSS(view: FoliateView, settings: ReaderSettings) {
       letter-spacing:${text.letterSpacing}em!important;
       margin:0!important;
       box-sizing:border-box!important;
-      scrollbar-width:none!important;
-      -ms-overflow-style:none!important;
       ${mobile ? 'width:100%!important;min-width:100%!important;max-width:none!important;display:block!important;' : ''}
     }
-    body::-webkit-scrollbar{display:none!important;width:0!important;height:0!important}
     body,body>*{background-size:cover!important;background-position:center!important;background-repeat:no-repeat!important}
     ${transparentContent}
     body,body *{font-family:${font}!important}
@@ -268,7 +265,6 @@ function applyCustomCSS(view: FoliateView, settings: ReaderSettings) {
     renderer?.setStyles?.(css)
     renderer && (renderer.__sireaderStyleSig = css)
   }
-  Object.assign((view.renderer as HTMLElement | undefined)?.style || {}, { scrollbarWidth: 'none', msOverflowStyle: 'none' })
 }
 
 function getCurrentLocation(view: FoliateView): Location | null {
@@ -401,6 +397,7 @@ export class FoliateReader {
 
   resize = () => {
     if (!this.container.isConnected) return
+    configureView(this.view, this.settings)
     ;(this.view.renderer as any)?.render?.()
     refreshMarginals(this.view, this.settings)
   }
@@ -553,8 +550,8 @@ export class FoliateReader {
   async goToTextStart() { this.check() && await this.view.goToTextStart?.() }
   async goLeft() { this.check() && await this.view.goLeft() }
   async goRight() { this.check() && await this.view.goRight() }
-  async prev() { this.check() && await this.view.prev() }
-  async next() { this.check() && await this.view.next() }
+  async prev(distance?: number) { this.check() && await this.view.prev(distance) }
+  async next(distance?: number) { this.check() && await this.view.next(distance) }
   async goToFraction(fraction: number) { this.check() && await this.view.goToFraction(fraction) }
 
   getLocation = () => getCurrentLocation(this.view)

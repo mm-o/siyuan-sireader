@@ -2,7 +2,7 @@
 import { defineComponent, h, ref, toRaw } from 'vue'
 import { showMessage, fetchSyncPost } from 'siyuan'
 import type { Plugin } from 'siyuan'
-import { putFile, readDir, searchDocs as apiSearchDocs } from '@/api'
+import { putFile, readDir, removeFile, searchDocs as apiSearchDocs } from '@/api'
 import { bookshelfManager } from '@/core/bookshelf'
 
 export type PageTurnStyle = 'push' | 'slide' | 'curl'
@@ -22,7 +22,7 @@ export interface VisualSettings { brightness: number; contrast: number; sepia: n
 export interface TTSVoice { name: string; displayName: string; locale: string; isLocal?: boolean }
 export interface TTSSettings { enabled: boolean; voice: string; rate: number; pitch: number; sentenceGap: number; paragraphGap: number; autoTurnPage: boolean; highlightText: boolean; favoriteVoices: TTSVoice[] }
 export interface TranslationSettings { autoOnSelection: boolean; engine: 'google' | 'azure' | 'yandex' | 'ai-free' | 'ai' }
-export interface ReaderSettings { enabled: boolean; openMode: 'newTab' | 'rightTab' | 'bottomTab' | 'newWindow'; navPosition: NavPosition; pageAnimation: PageTurnStyle; viewMode: ViewMode; theme: string; customTheme: ReadTheme; notebookId?: string; parentDoc?: DocInfo; noteInsertTarget: NoteInsertTarget; noteInsertMode: NoteInsertMode; linkFormat: string; annotationTagPresets: string; annotationSyncOnAdd: boolean; annotationSyncOnDelete: boolean; bookshelfCoverSize: number; bookshelfHiddenItems: string[]; openDocAssets: boolean; docAssetExcludeRegex: string; showWereadTopBar: boolean; epubOpeningSplash: boolean; toolbarOpacity: number; pdfZoomLevel?: 'automatic' | 'fit-page' | 'fit-width' | number; pdfAnnotationToolDefaults?: Record<string, Record<string, any>>; quickSendDocs?: DocInfo[]; navItems?: NavItem[]; textSettings: TextSettings; paragraphSettings: ParagraphSettings; layoutSettings: LayoutSettings; visualSettings: VisualSettings; translation: TranslationSettings; tts?: TTSSettings }
+export interface ReaderSettings { enabled: boolean; openMode: 'newTab' | 'rightTab' | 'bottomTab' | 'newWindow'; navPosition: NavPosition; pageAnimation: PageTurnStyle; viewMode: ViewMode; theme: string; customTheme: ReadTheme; backgroundImage?: string; notebookId?: string; parentDoc?: DocInfo; noteInsertTarget: NoteInsertTarget; noteInsertMode: NoteInsertMode; linkFormat: string; annotationTagPresets: string; annotationSyncOnAdd: boolean; annotationSyncOnDelete: boolean; bookshelfCoverSize: number; bookshelfHiddenItems: string[]; openDocAssets: boolean; docAssetExcludeRegex: string; showWereadTopBar: boolean; epubOpeningSplash: boolean; toolbarOpacity: number; pdfZoomLevel?: 'automatic' | 'fit-page' | 'fit-width' | number; pdfAnnotationToolDefaults?: Record<string, Record<string, any>>; quickSendDocs?: DocInfo[]; navItems?: NavItem[]; textSettings: TextSettings; paragraphSettings: ParagraphSettings; layoutSettings: LayoutSettings; visualSettings: VisualSettings; translation: TranslationSettings; tts?: TTSSettings }
 
 // ===== 预设主题 =====
 export const PRESET_THEMES: Record<string, ReadTheme> = { default: { name: 'themeDefault', color: '#202124', bg: '#ffffff' }, auto: { name: 'themeAuto', color: 'var(--b3-theme-on-background)', bg: 'var(--b3-theme-background)' }, almond: { name: 'themeAlmond', color: '#414441', bg: '#FAF9DE' }, autumn: { name: 'themeAutumn', color: '#414441', bg: '#FFF2E2' }, green: { name: 'themeGreen', color: '#414441', bg: '#E3EDCD' }, blue: { name: 'themeBlue', color: '#414441', bg: '#DCE2F1' }, night: { name: 'themeNight', color: '#fff6e6', bg: '#415062' }, dark: { name: 'themeDark', color: '#d5cecd', bg: '#414441' }, gold: { name: 'themeGold', color: '#b58931', bg: '#081010' } }
@@ -30,16 +30,17 @@ export const PRESET_THEMES: Record<string, ReadTheme> = { default: { name: 'them
 // ===== 工具 =====
 const fixUrl = (u: string) => !u || u[0] === '/' || u.startsWith('http') ? u : `/${u}`;
 const msg = { success: (m: string) => showMessage(m, 2000, 'info'), error: (m: string) => showMessage(m, 3000, 'error') };
-const getTheme = (s: ReaderSettings) => s.theme === 'custom' ? s.customTheme : PRESET_THEMES[s.theme];
-const fontFileUrl = (file = '') => `/plugins/custom-fonts/${encodeURI(file)}`
-const getFont = (t: TextSettings) => { const c = t.fontFamily === 'custom' && t.customFont.fontFamily; return { font: c ? `"${t.customFont.fontFamily}", sans-serif` : t.fontFamily || 'inherit', fontFace: c ? `@font-face{font-family:"${t.customFont.fontFamily}";src:url("${fontFileUrl(t.customFont.fontFile)}");font-display:swap}` : '' }; };
+export const getReaderTheme = (s: ReaderSettings) => ({ ...(s.theme === 'custom' ? s.customTheme : PRESET_THEMES[s.theme] || PRESET_THEMES.default), bgImg: s.backgroundImage || '' });
+export const CUSTOM_FONT_DIR = '/data/public/siyuan-sireader/fonts'
+export const customFontUrl = (file = '') => `/public/siyuan-sireader/fonts/${encodeURIComponent(file)}`
+const getFont = (t: TextSettings) => { const c = t.fontFamily === 'custom' && t.customFont.fontFamily; return { font: c ? `"${t.customFont.fontFamily}", sans-serif` : t.fontFamily || 'inherit', fontFace: c ? `@font-face{font-family:"${t.customFont.fontFamily}";src:url("${customFontUrl(t.customFont.fontFile)}");font-display:swap}` : '' }; };
 
-export const applyTheme = (el: HTMLElement, s: ReaderSettings) => { const t = getTheme(s); if (!t) return; const img = t.bgImg; Object.assign(el.style, { color: t.color, backgroundColor: img ? 'transparent' : t.bg, backgroundImage: img ? `url("${fixUrl(img)}")` : '', backgroundSize: img ? 'cover' : '', backgroundPosition: img ? 'center' : '', backgroundRepeat: img ? 'no-repeat' : '' }); };
+export const applyTheme = (el: HTMLElement, s: ReaderSettings) => { const t = getReaderTheme(s); const img = t.bgImg; Object.assign(el.style, { color: t.color, backgroundColor: img ? 'transparent' : t.bg, backgroundImage: img ? `url("${fixUrl(img)}")` : '', backgroundSize: img ? 'cover' : '', backgroundPosition: img ? 'center' : '', backgroundRepeat: img ? 'no-repeat' : '' }); };
 
 export const applyPageStyles = (iframe: HTMLIFrameElement, s: ReaderSettings) => { const doc = iframe.contentDocument; if (!doc?.body) return; const { textSettings: t, paragraphSettings: p } = s; const { font, fontFace } = getFont(t), css = `${fontFace}body{font-family:${font}!important;font-size:${t.fontSize}px!important;font-weight:${t.fontWeight}!important;letter-spacing:${t.letterSpacing}em!important}p,div{line-height:${p.lineHeight}!important;margin:${p.paragraphSpacing}em 0!important}p{text-indent:${p.textIndent}em!important}`; const style = doc.querySelector('style[data-sireader-page]') || doc.head.appendChild(Object.assign(doc.createElement('style'), { textContent: '' })); style.setAttribute('data-sireader-page', 'true'); if (style.textContent !== css) style.textContent = css; };
 
 // ===== 默认配置 =====
-const DEFAULT_SETTINGS: ReaderSettings = { enabled: true, openMode: 'newTab', navPosition: 'top', pageAnimation: 'push', viewMode: 'single', theme: 'auto', customTheme: { name: 'custom', color: '#202124', bg: '#ffffff' }, notebookId: '', parentDoc: undefined, noteInsertTarget: 'clipboard', noteInsertMode: 'insertBlock', linkFormat: '> [!NOTE] 📑 书名\n> [章节](链接) 文本\n> 图片\n> 笔记', annotationTagPresets: '未分组:', annotationSyncOnAdd: false, annotationSyncOnDelete: false, bookshelfCoverSize: 120, bookshelfHiddenItems: [], openDocAssets: true, docAssetExcludeRegex: '', showWereadTopBar: true, epubOpeningSplash: false, toolbarOpacity: 70, pdfAnnotationToolDefaults: {}, quickSendDocs: [], textSettings: { fontFamily: 'inherit', fontSize: 16, fontWeight: 400, letterSpacing: 0, customFont: { fontFamily: '', fontFile: '' } }, paragraphSettings: { lineHeight: 1.6, paragraphSpacing: 0.8, textIndent: 0 }, layoutSettings: { marginTopPx: 44, marginBottomPx: 44, marginLeftPx: 16, marginRightPx: 16, gapPercent: 5, showHeader: true, showFooter: true, showProgressInfo: true, progressStyle: 'fraction', referencePageCount: 0, showCurrentTime: false, use24HourClock: false }, visualSettings: { brightness: 1, contrast: 1, sepia: 0, saturate: 1, invert: false }, translation: { autoOnSelection: false, engine: 'azure' }, tts: { enabled: false, voice: 'zh-CN-XiaoxiaoNeural', rate: 1.0, pitch: 1.0, sentenceGap: 0, paragraphGap: 0.3, autoTurnPage: true, highlightText: true, favoriteVoices: [] } }
+const DEFAULT_SETTINGS: ReaderSettings = { enabled: true, openMode: 'newTab', navPosition: 'top', pageAnimation: 'push', viewMode: 'single', theme: 'auto', customTheme: { name: 'custom', color: '#202124', bg: '#ffffff' }, backgroundImage: '', notebookId: '', parentDoc: undefined, noteInsertTarget: 'clipboard', noteInsertMode: 'insertBlock', linkFormat: '> [!NOTE] 📑 书名\n> [章节](链接) 文本\n> 图片\n> 笔记', annotationTagPresets: '未分组:', annotationSyncOnAdd: false, annotationSyncOnDelete: false, bookshelfCoverSize: 120, bookshelfHiddenItems: [], openDocAssets: true, docAssetExcludeRegex: '', showWereadTopBar: true, epubOpeningSplash: false, toolbarOpacity: 70, pdfAnnotationToolDefaults: {}, quickSendDocs: [], textSettings: { fontFamily: 'inherit', fontSize: 16, fontWeight: 400, letterSpacing: 0, customFont: { fontFamily: '', fontFile: '' } }, paragraphSettings: { lineHeight: 1.6, paragraphSpacing: 0.8, textIndent: 0 }, layoutSettings: { marginTopPx: 44, marginBottomPx: 44, marginLeftPx: 16, marginRightPx: 16, gapPercent: 5, showHeader: true, showFooter: true, showProgressInfo: true, progressStyle: 'fraction', referencePageCount: 0, showCurrentTime: false, use24HourClock: false }, visualSettings: { brightness: 1, contrast: 1, sepia: 0, saturate: 1, invert: false }, translation: { autoOnSelection: false, engine: 'azure' }, tts: { enabled: false, voice: 'zh-CN-XiaoxiaoNeural', rate: 1.0, pitch: 1.0, sentenceGap: 0, paragraphGap: 0.3, autoTurnPage: true, highlightText: true }, }
 export const LINK_FORMAT_PRESETS: Record<LinkFormatPreset, string> = {
   simple: '[书名](链接) 文本',
   heading: '## 书名\n- [章节](链接) 文本\n- 位置\n- 笔记\n- 图片',
@@ -125,6 +126,10 @@ export const SettingRows = defineComponent({
         props.loadLabel && !props.loading ? h('span', { class: 'fn__space' }) : null,
         props.loadLabel && !props.loading ? h('span', { class: 'b3-list-item__action b3-tooltips b3-tooltips__w', 'aria-label': props.loadLabel, onClick: (e: MouseEvent) => stop(e, () => emit('load')) }, [h('svg', [h('use', { 'xlink:href': '#iconRefresh' })])]) : null
       ])
+      if (rows[0]?.layout === 'grid') return h('li', { class: 'sr-resource-grid' }, rows.map((row: any) => h('div', { key: row.key, class: ['sr-resource-tile', { 'sr-resource-tile--active': row.active }], title: row.text, 'aria-label': row.text, onClick: (e: MouseEvent) => stop(e, row.pick) }, [
+        row.graphic,
+        h('span', { class: 'sr-resource-actions' }, (row.actions || []).map(actionButton))
+      ])))
       return rows.map((row: any) => h('li', { key: row.key, class: ['b3-list-item', { 'b3-list-item--hide-action': !row.alwaysShowActions, 'b3-list-item--focus': row.active }], draggable: row.draggable, onClick: (e: MouseEvent) => stop(e, row.pick), onDragstart: row.dragstart, onDragend: row.dragend, onDragover: row.dragover, onDrop: row.drop }, [
         h('span', { class: 'b3-list-item__toggle fn__hidden' }),
         row.graphic ? h('span', { class: 'b3-list-item__graphic' }, row.graphic) : null,
@@ -144,8 +149,29 @@ export const savePublicImage = async (file: File, folder = 'backgrounds') => {
   await putFile(`${dir}/${name}`, false, file)
   return `/public/siyuan-sireader/${folder}/${name}`
 }
+export interface PublicImageInfo { name: string; url: string }
+let publicImages: PublicImageInfo[] = [], publicImageTask: Promise<PublicImageInfo[]> | null = null
+export const scanPublicImages = async (force = false): Promise<PublicImageInfo[]> => {
+  if (!force && publicImages.length) return publicImages
+  if (!force && publicImageTask) return publicImageTask
+  publicImageTask = (async () => {
+    const result = await readDir('/data/public/siyuan-sireader/backgrounds').catch(() => null) as any
+    const list = Array.isArray(result?.data) ? result.data : Array.isArray(result) ? result : []
+    return publicImages = list.filter((f: any) => !f.isDir && /\.(png|jpe?g|gif|webp|avif)$/i.test(f.name)).map((f: any) => ({ name: f.name, url: `/public/siyuan-sireader/backgrounds/${encodeURIComponent(f.name)}` }))
+  })().finally(() => publicImageTask = null)
+  return publicImageTask
+}
+export const deletePublicImage = async (name: string) => {
+  await removeFile(`/data/public/siyuan-sireader/backgrounds/${name}`)
+  publicImages = publicImages.filter(image => image.name !== name)
+}
+export const uploadPublicImage = async (file: File) => {
+  const url = await savePublicImage(file, 'backgrounds')
+  await scanPublicImages(true)
+  return url
+}
 export const setCustomBackgroundImage = async (settings: ReaderSettings, file: File) => {
-  settings.customTheme.bgImg = await savePublicImage(file, 'backgrounds')
+  settings.backgroundImage = await uploadPublicImage(file)
 }
 export const setCustomBackgroundFromInput = async (settings: ReaderSettings, e: Event) => {
   const input = e.target as HTMLInputElement, file = input.files?.[0]
@@ -170,7 +196,7 @@ export const scanCustomFonts = async (force = false): Promise<FontFileInfo[]> =>
   if (!force && cachedFonts) return cachedFonts
   if (!force && fontScanTask) return fontScanTask
   fontScanTask = (async () => {
-  const files = await readDir('/data/plugins/custom-fonts').catch(() => null) as any
+  const files = await readDir(CUSTOM_FONT_DIR).catch(() => null) as any
   const list = Array.isArray(files?.data) ? files.data : Array.isArray(files) ? files : []
   return cachedFonts = list.filter((f: any) => !f.isDir && /\.(ttf|otf|woff2?)$/i.test(f.name)).map((f: any) => ({ name: f.name, displayName: f.name.replace(/\.(ttf|otf|woff2?)$/i, '') }))
   })().finally(() => fontScanTask = null)
@@ -182,8 +208,9 @@ export const loadFonts = (fonts: FontFileInfo[]) => {
   loadedFontKey = key
   const s = document.getElementById('sr-fonts') || Object.assign(document.createElement('style'), { id: 'sr-fonts' })
   s.parentNode || document.head.appendChild(s)
-  s.textContent = fonts.map(f => `@font-face{font-family:"${f.displayName}";src:url("${fontFileUrl(f.name)}");font-display:swap}`).join('')
+  s.textContent = fonts.map(f => `@font-face{font-family:"${f.displayName}";src:url("${customFontUrl(f.name)}");font-display:swap}`).join('')
 };
+export const preloadFont = (font?: FontFileInfo) => font && document.fonts?.load(`16px "${font.displayName}"`)
 export const resetToDefaults = (s: any) => Object.assign(s, { textSettings: DEFAULT_SETTINGS.textSettings, paragraphSettings: DEFAULT_SETTINGS.paragraphSettings, layoutSettings: DEFAULT_SETTINGS.layoutSettings, visualSettings: DEFAULT_SETTINGS.visualSettings });
 
 // ===== 链接格式化 =====
@@ -207,7 +234,7 @@ export const useConfirm = (f: () => void) => { const c = ref(false); return { co
 // ===== 设置管理 =====
 const merge = (d: any, s: any): any => { const r = { ...d }; for (const k in s) if (s[k] !== undefined && s[k] !== null) r[k] = typeof s[k] === 'object' && !Array.isArray(s[k]) && d[k] ? merge(d[k], s[k]) : s[k]; return r; };
 export const settingsManager = {
-  get: async (): Promise<ReaderSettings> => { const s = await bookshelfManager.getSetting('reader_settings'); const v = s ? merge(DEFAULT_SETTINGS, s) : { ...DEFAULT_SETTINGS }; const old = s?.layoutSettings?.headerFooterMargin; if (old > 0 && s.layoutSettings?.marginTopPx == null) Object.assign(v.layoutSettings, { marginTopPx: old, marginBottomPx: old, marginLeftPx: old, marginRightPx: old }); if (v.layoutSettings.gapPercent == null) v.layoutSettings.gapPercent = v.layoutSettings.gap || 5; if (v.layoutSettings.showHeader && v.layoutSettings.marginTopPx <= 0) v.layoutSettings.marginTopPx = 44; if (v.layoutSettings.showFooter && v.layoutSettings.marginBottomPx <= 0) v.layoutSettings.marginBottomPx = 44; v.linkFormat = normalizeLinkFormat(v.linkFormat); return (window as any).__sireader_settings = v; },
+  get: async (): Promise<ReaderSettings> => { const s = await bookshelfManager.getSetting('reader_settings'); const v = s ? merge(DEFAULT_SETTINGS, s) : { ...DEFAULT_SETTINGS }; if (!v.backgroundImage && v.customTheme?.bgImg) v.backgroundImage = v.customTheme.bgImg; const old = s?.layoutSettings?.headerFooterMargin; if (old > 0 && s.layoutSettings?.marginTopPx == null) Object.assign(v.layoutSettings, { marginTopPx: old, marginBottomPx: old, marginLeftPx: old, marginRightPx: old }); if (v.layoutSettings.gapPercent == null) v.layoutSettings.gapPercent = v.layoutSettings.gap || 5; if (v.layoutSettings.showHeader && v.layoutSettings.marginTopPx <= 0) v.layoutSettings.marginTopPx = 44; if (v.layoutSettings.showFooter && v.layoutSettings.marginBottomPx <= 0) v.layoutSettings.marginBottomPx = 44; v.linkFormat = normalizeLinkFormat(v.linkFormat); return (window as any).__sireader_settings = v; },
   save: async (settings: ReaderSettings) => { const v = JSON.parse(JSON.stringify(toRaw(settings))); await bookshelfManager.saveSetting('reader_settings', v); (window as any).__sireader_settings = v; window.dispatchEvent(new CustomEvent('sireaderSettingsUpdated', { detail: v })); }
 };
 export const collectAnnotationTagPresets = async (tags: unknown[] = []) => {
@@ -230,6 +257,8 @@ const settings = ref<ReaderSettings>({ ...DEFAULT_SETTINGS })
 const isLoaded = ref(false)
 const customFonts = ref<FontFileInfo[]>([])
 const isLoadingFonts = ref(false)
+const backgroundImages = ref<PublicImageInfo[]>([])
+const isLoadingBackgrounds = ref(false)
 let loadTask: Promise<void> | null = null
 let fontLoadTask: Promise<void> | null = null
 typeof window !== 'undefined' && window.addEventListener('sireaderSettingsUpdated', (e: Event) => { settings.value = (e as CustomEvent).detail || settings.value })
@@ -244,7 +273,38 @@ export function useSetting(plugin: Plugin) {
     fontLoadTask = (async () => { customFonts.value = await scanCustomFonts(force); loadFonts(customFonts.value) })().finally(() => (isLoadingFonts.value = false, fontLoadTask = null))
     return fontLoadTask
   };
+  const uploadCustomFonts = async (files: FileList | File[]) => {
+    const fonts = Array.from(files).filter(file => /\.(ttf|otf|woff2?)$/i.test(file.name))
+    if (!fonts.length) return 0
+    await putFile(CUSTOM_FONT_DIR, true, new File([], ''))
+    await Promise.all(fonts.map(file => putFile(`${CUSTOM_FONT_DIR}/${file.name}`, false, file)))
+    cachedFonts = null
+    await loadCustomFonts(true)
+    return fonts.length
+  }
+  const deleteCustomFont = async (name: string) => {
+    await removeFile(`${CUSTOM_FONT_DIR}/${name}`)
+    cachedFonts = null
+    await loadCustomFonts(true)
+  }
+  const loadFont = (font?: FontFileInfo) => { void preloadFont(font) }
+  const uploadBackground = async (file: File) => {
+    const previous = settings.value.backgroundImage
+    settings.value.backgroundImage = await uploadPublicImage(file)
+    if (previous?.startsWith('/public/siyuan-sireader/backgrounds/')) await deletePublicImage(decodeURIComponent(previous.split('/').pop() || '')).catch(() => {})
+    await loadBackgrounds(true)
+    return settings.value.backgroundImage
+  }
+  const deleteBackground = async (name: string) => {
+    await deletePublicImage(name)
+    if (settings.value.backgroundImage?.endsWith(`/${name}`)) { settings.value.backgroundImage = ''; await save() }
+    await loadBackgrounds(true)
+  }
+  const loadBackgrounds = async (force = false) => {
+    isLoadingBackgrounds.value = true
+    try { backgroundImages.value = await scanPublicImages(force) } finally { isLoadingBackgrounds.value = false }
+  }
   const resetStyles = () => resetToDefaults(settings.value);
-  load(); 
-  return { settings, isLoaded, save, customFonts, isLoadingFonts, loadCustomFonts, resetStyles };
+  load().then(() => Promise.all([loadCustomFonts(), loadBackgrounds()])).catch(() => {})
+  return { settings, isLoaded, save, customFonts, isLoadingFonts, loadCustomFonts, loadFont, uploadCustomFonts, deleteCustomFont, backgroundImages, isLoadingBackgrounds, loadBackgrounds, uploadBackground, deleteBackground, resetStyles };
 }

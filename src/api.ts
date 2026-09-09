@@ -373,12 +373,14 @@ export async function putFile(path: string, isDir: boolean, file: any) {
   form.append("isDir", isDir.toString());
   form.append("modTime", Math.floor(Date.now() / 1000).toString());
   form.append("file", file);
+  form.append("app", (window as any).siyuan?.appId || "");
   return request("/api/file/putFile", form);
 }
 
 export async function removeFile(path: string) {
   let data = {
     path: path,
+    app: (window as any).siyuan?.appId || '',
   };
   let url = "/api/file/removeFile";
   return request(url, data);

@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, h, onMounted, onUnmounted, ref, watch } from 'vue'
 import { showMessage } from 'siyuan'
 import type { ReaderSettings, FontFileInfo } from '@/composables/useSetting'
-import { DEFAULT_NAV_ITEMS, LINK_FORMAT_PRESETS, NOTE_MODE_LABELS, NOTE_MODE_OPTIONS, NOTE_TARGET_OPTIONS, PRESET_THEMES, SectionTitle, SettingItem, SettingRows, SettingSection, UI_CONFIG, getLicenseMedia, setCustomBackgroundFromInput, settingSectionIcon, useSetting, useConfirm, useDocSearch, useNotebooks } from '@/composables/useSetting'
+import { DEFAULT_NAV_ITEMS, LINK_FORMAT_PRESETS, NOTE_MODE_LABELS, NOTE_MODE_OPTIONS, NOTE_TARGET_OPTIONS, PRESET_THEMES, SectionTitle, SettingItem, SettingRows, SettingSection, UI_CONFIG, getLicenseMedia, settingSectionIcon, useSetting, useConfirm, useDocSearch, useNotebooks } from '@/composables/useSetting'
 import { bookshelfManager } from '@/core/bookshelf'
 import { offlineDictManager, onlineDictManager } from '@/utils/dictionary'
 import { usePlugin } from '@/main'
@@ -18,7 +18,7 @@ const settings = ref<ReaderSettings>(props.modelValue),
   openSubs = ref<Record<string, boolean>>({}),
   licenseRef = ref<HTMLElement>()
 const plugin = usePlugin()
-const {customFonts,isLoadingFonts,loadCustomFonts,resetStyles:resetStylesRaw} = useSetting(plugin)
+const {customFonts,isLoadingFonts,loadCustomFonts,loadFont,uploadCustomFonts,deleteCustomFont,backgroundImages,uploadBackground,deleteBackground,resetStyles:resetStylesRaw} = useSetting(plugin)
 const {interfaceItems,customThemeItems,appearanceGroups,ttsItems,ttsOptions} = UI_CONFIG
 const {confirming:resetConfirm,handleClick:handleReset} = useConfirm(() => {resetStylesRaw();save()})
 
@@ -63,10 +63,13 @@ const offlineDicts = ref<any[]>([]),
   fileInput = ref<HTMLInputElement>(),
   folderInput = ref<HTMLInputElement>(),
   bgInput = ref<HTMLInputElement>(),
+  fontInput = ref<HTMLInputElement>(),
   uploading = ref(false),
   loadingDict = ref(true),
   fontsLoaded = ref(false),
   removingDict = ref<string|null>(null)
+const removingFont = ref<string|null>(null)
+const removingBackground = ref<string|null>(null)
 const quickDoc = useDocSearch(), insertDoc = useDocSearch()
 const {notebooks,load:loadNotebooks} = useNotebooks()
 const {license,userAvatar,code:activationCode,loading:loadingLicense,processing,load:loadLicense,activate:activateLicense,recover:recoverLicense,clear:clearLicense,can,showUpgrade} = useLicense(props.i18n)
@@ -176,20 +179,67 @@ const selectInsertDoc = (doc:any) => { settings.value.parentDoc = doc; settings.
 const clearInsertDoc = () => { settings.value.parentDoc = undefined; insertDoc.reset(); save() }
 const uploadBgImage = async (e:Event) => {
   if (!can.value('reader-theme')) return showUpgrade('reader-theme')
-  try { await setCustomBackgroundFromInput(settings.value, e) && save() }
+  try {
+    const file = (e.target as HTMLInputElement).files?.[0]
+    if (file) { await uploadBackground(file); await save() }
+  }
   catch (e:any) { showMessage(e.message || props.i18n.uploadFailed || '上传失败', 3000, 'error') }
 }
-const clearBgImage = () => (settings.value.customTheme.bgImg = '', save())
-const bgImageRows = computed(() => [{
-  key: 'bgImg',
-  text: props.i18n.bgImage || '背景图片',
-  hint: settings.value.customTheme.bgImg || props.i18n.bgImageDesc || '',
-  checkbox: !!settings.value.customTheme.bgImg,
-  onCheck: (value:boolean) => value ? bgInput.value?.click() : clearBgImage(),
-  action: () => bgInput.value?.click(),
-  actionTitle: props.i18n.select || props.i18n.upload || '选择',
+const exportFile = (url:string, name:string) => { const link = document.createElement('a'); link.href = url; link.download = name; link.click() }
+const openFile = (id:string) => (document.getElementById(id) as HTMLInputElement | null)?.click()
+const removeBackground = async (name:string) => {
+  if (removingBackground.value !== name) return (removingBackground.value = name)
+  await deleteBackground(name)
+  backgroundImages.value = backgroundImages.value.filter(image => image.name !== name)
+  removingBackground.value = null
+}
+const handleFontUpload = async (e:Event) => {
+  const input = e.target as HTMLInputElement
+  if (!input.files?.length) return
+  try {
+    const count = await uploadCustomFonts(input.files)
+    showMessage(`${props.i18n.added || '已导入'} ${count} ${props.i18n.fonts || '个字体'}`, 2000, 'info')
+  } catch (e:any) { showMessage(e.message || props.i18n.uploadFailed || '上传失败', 3000, 'error') }
+  finally { input.value = '' }
+}
+const exportFont = (name:string) => {
+  exportFile(`/public/siyuan-sireader/fonts/${encodeURIComponent(name)}`, name)
+}
+const removeFont = async (font:FontFileInfo) => {
+  if (removingFont.value !== font.name) return (removingFont.value = font.name)
+  await deleteCustomFont(font.name)
+  if (settings.value.textSettings.customFont.fontFile === font.name) { settings.value.textSettings.customFont = { fontFamily: '', fontFile: '' }; settings.value.textSettings.fontFamily = 'inherit'; await save() }
+  removingFont.value = null
+}
+const clearBgImage = async () => {
+  settings.value.backgroundImage = ''
+  await save()
+}
+const bgNoneRows = computed(() => [{
+  key: 'bg-none',
+  text: props.i18n.none || '无',
+  hint: props.i18n.bgImageDesc || '',
+  active: !settings.value.backgroundImage,
+  pick: clearBgImage,
+  alwaysShowActions: true,
+  action: () => openFile('sr-bg-input'),
+  actionTitle: props.i18n.upload || '上传',
   actionIcon: '#iconUpload'
 }])
+const bgImageRows = computed(() => backgroundImages.value.map(image => ({
+  key: `background:${image.name}`,
+  text: image.name,
+  hint: image.url,
+  graphic: h('img', { class: 'sr-resource-preview', src: image.url, loading: 'lazy', decoding: 'async' }),
+  active: settings.value.backgroundImage === image.url,
+  pick: () => (settings.value.backgroundImage = image.url, save()),
+  alwaysShowActions: true,
+  layout: 'grid',
+  actions: [
+    { key: 'export', title: props.i18n.export || '导出', icon: '#iconDownload', onClick: () => exportFile(image.url, image.name) },
+    { key: 'delete', title: removingBackground.value === image.name ? (props.i18n.confirm || '确认') : (props.i18n.delete || '删除'), icon: '#lucide-trash-2', onClick: () => removeBackground(image.name) }
+  ]
+})))
 const applyLinkFormatPreset = (format:string) => {
   if (!format) return
   settings.value.linkFormat = format
@@ -245,22 +295,28 @@ const bookshelfRows = computed(() => bookshelfHiddenFields.map(item => ({
 })))
 const fontGuideRows = computed(() => [{
   key: 'custom-fonts',
-  text: 'data/plugins/custom-fonts/',
+  text: 'data/public/siyuan-sireader/fonts/',
   hint: isLoadingFonts.value ? (props.i18n.loadingFonts || '正在加载字体') : '',
   alwaysShowActions: true,
-  action: () => loadCustomFonts(true),
-  actionTitle: props.i18n.refresh || '刷新',
-  actionIcon: '#lucide-refresh-cw'
+  actions: [
+    { key: 'upload', title: props.i18n.import || '导入', icon: '#iconUpload', onClick: () => openFile('sr-font-input') },
+    { key: 'refresh', title: props.i18n.refresh || '刷新', icon: '#lucide-refresh-cw', onClick: () => loadCustomFonts(true) }
+  ]
 }])
 const fontRows = computed(() => customFonts.value.map(f => ({
   key: f.name,
   text: f.displayName,
   hint: f.name,
-  textStyle: { fontFamily: f.displayName },
+  textStyle: settings.value.textSettings.customFont.fontFile === f.name ? { fontFamily: f.displayName } : undefined,
   active: settings.value.textSettings.customFont.fontFile === f.name,
-  pick: () => setFont(f),
+  pick: () => pickFont(f),
   checkbox: settings.value.textSettings.customFont.fontFile === f.name,
-  onCheck: (value:boolean) => value ? setFont(f) : setFont()
+  onCheck: (value:boolean) => value ? pickFont(f) : setFont(),
+  alwaysShowActions: true,
+  actions: [
+    { key: 'export', title: props.i18n.export || '导出', icon: '#iconDownload', onClick: () => exportFont(f.name) },
+    { key: 'delete', title: removingFont.value === f.name ? (props.i18n.confirm || '确认') : (props.i18n.delete || '删除'), icon: '#lucide-trash-2', onClick: () => removeFont(f) }
+  ]
 })))
 const dictAddRows = computed(() => [{
   key: 'add-dict',
@@ -287,12 +343,14 @@ const dictRows = (section:any) => section.items.map((d:any, idx:number) => ({
   onCheck: () => toggleDict(section.manager, d.id),
   action: section.extra ? () => removingDict.value === d.id ? removeDict(d.id) : (removingDict.value = d.id) : undefined,
   actionTitle: removingDict.value === d.id ? (props.i18n.confirm || '确认') : (props.i18n.delete || '删除'),
-  actionIcon: removingDict.value === d.id ? '#lucide-trash-2' : '#iconTrashcan'
+  actionIcon: removingDict.value === d.id ? '#lucide-trash-2' : '#iconTrashcan',
+  actions: section.extra ? [{ key: 'export', title: props.i18n.export || '导出', icon: '#iconDownload', onClick: () => Object.values(d.files || {}).forEach((path:any) => exportFile(path, path.split('/').pop() || 'dictionary')) }] : undefined
 }))
 // 保存
 const save = async () => (emit('update:modelValue',settings.value),await props.onSave())
 const debouncedSave = (() => {let t:any;return () => (clearTimeout(t),t=setTimeout(save,300))})()
 const setFont = (f?:FontFileInfo) => (settings.value.textSettings.fontFamily=f?'custom':'inherit',settings.value.textSettings.customFont=f?{fontFamily:f.displayName,fontFile:f.name}:{fontFamily:'',fontFile:''},f?debouncedSave():save())
+const pickFont = (f:FontFileInfo) => { loadFont(f); setFont(f) }
 const saveTheme = () => { if (!can.value('reader-theme')) return settings.value.theme='default', showUpgrade('主题配色'); save() }
 const openPage = (url:string) => window.open(url,'_blank')
 const dictHelpUrl = `https://github.com/mm-o/siyuan-sireader/blob/main/docs/${encodeURIComponent('离线词典使用说明.md')}`
@@ -409,7 +467,11 @@ onUnmounted(() => window.removeEventListener('sireaderSettingsUpdated', syncAnno
                 :i18n="i18n"
                 @change="value => (settings.customTheme[item.key] = value, can('reader-theme') ? save() : showUpgrade('reader-theme'))"
               />
-              <input ref="bgInput" type="file" accept="image/*" class="fn__none" @change="uploadBgImage">
+            </template>
+            <SectionTitle :title="i18n.bgImage || '背景图片'" icon="#lucide-image" :open="isSubOpen('backgroundImage')" @toggle="toggleSub('backgroundImage')" />
+            <template v-if="isSubOpen('backgroundImage')">
+              <input id="sr-bg-input" ref="bgInput" type="file" accept="image/*" class="fn__none" @change="uploadBgImage">
+              <SettingRows :rows="bgNoneRows" :i18n="i18n" />
               <SettingRows :rows="bgImageRows" :i18n="i18n" />
             </template>
         </SettingSection>
@@ -429,6 +491,7 @@ onUnmounted(() => window.removeEventListener('sireaderSettingsUpdated', syncAnno
             <template v-if="group.title === 'textSettings'">
               <SectionTitle :title="i18n.customFont || '自定义字体'" :icon="settingSectionIcon('sub', 'customFont')" :open="isSubOpen('customFont')" @toggle="toggleSub('customFont')" />
               <template v-if="isSubOpen('customFont')">
+                <input id="sr-font-input" ref="fontInput" type="file" multiple accept=".ttf,.otf,.woff,.woff2" class="fn__none" @change="handleFontUpload">
                 <SettingRows :rows="fontGuideRows" :i18n="i18n" />
                 <SettingRows :rows="fontRows" :loading="isLoadingFonts" :empty="i18n.noCustomFonts || '暂无自定义字体'" :i18n="i18n" />
               </template>
@@ -523,6 +586,12 @@ onUnmounted(() => window.removeEventListener('sireaderSettingsUpdated', syncAnno
 .bs-tree :deep(.b3-list-item--hide-action:last-child){padding-bottom:6px}
 .bs-tree :deep(.b3-list-item__text),.bs-tree :deep(.b3-text-field){min-width:0}
 .bs-tree :deep(.b3-list-item__meta){min-width:0;max-width:42%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bs-tree :deep(.sr-resource-grid){display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;padding:8px}
+.bs-tree :deep(.sr-resource-tile){position:relative;aspect-ratio:4/3;min-width:0;overflow:hidden;border:1px solid var(--b3-border-color);border-radius:var(--b3-border-radius);background:var(--b3-theme-surface);cursor:pointer}
+.bs-tree :deep(.sr-resource-tile--active){border-color:var(--b3-theme-primary);box-shadow:0 0 0 1px var(--b3-theme-primary)}
+.bs-tree :deep(.sr-resource-preview){display:block;width:100%;height:100%;object-fit:cover}
+.bs-tree :deep(.sr-resource-actions){position:absolute;right:4px;bottom:4px;display:flex;gap:2px;padding:2px;border-radius:4px;background:color-mix(in srgb,var(--b3-theme-background) 80%,transparent)}
+.bs-tree :deep(.sr-resource-actions .b3-list-item__action){display:flex;margin:0}
 .bs-tree :deep(.b3-text-field){width:100%;max-width:100%;box-sizing:border-box}
 .sr-textarea-control{width:100%;min-height:96px;margin-top:6px;resize:vertical}
 .bs-tree :deep(ul.b3-list.b3-list--background){border:1px solid var(--bs-tree-border);border-radius:var(--b3-border-radius)}

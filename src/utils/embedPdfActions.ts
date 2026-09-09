@@ -4,47 +4,17 @@ import { inlineLinkText, sendMarkToDoc } from '@/utils/copy'
 
 const PDF_PLUGIN_DIR = `/plugins/${pluginInfo.name}/embedpdf`
 const PDF_PLUGIN_WASM_URL = `${PDF_PLUGIN_DIR}/pdfium.wasm`
-const PDF_WASM_PUBLIC_URL = '/public/siyuan-sireader/embedpdf/pdfium.wasm'
 const PDF_PLUGIN_RUNTIME_URL = `${PDF_PLUGIN_DIR}/snippet/embedpdf.js`
-const PDF_RUNTIME_PUBLIC_DIR = '/public/siyuan-sireader/embedpdf/snippet'
-const PDF_RUNTIME_PUBLIC_URL = `${PDF_RUNTIME_PUBLIC_DIR}/embedpdf.js`
-const PDF_RUNTIME_FILES = ['embedpdf.js', 'embedpdf-7TNsu-EA.js', 'worker-engine-BkD2-rJn.js', 'direct-engine-BA2WfEti.js', 'browser-BKLM0ThC-CkSOgtCM.js']
-const STAMP_LOCALES = ['zh-CN', 'en']
 const STAMP_PLUGIN_MANIFEST = `${PDF_PLUGIN_DIR}/stamps/{locale}/manifest.json`
-const STAMP_PUBLIC_MANIFEST = '/public/siyuan-sireader/embedpdf/stamps/{locale}/manifest.json'
-let pdfWasmUrlPromise: Promise<string> | undefined
 let pdfRuntimePromise: Promise<any> | undefined
-let stampManifestsPromise: Promise<any[]> | undefined
 
 const absoluteUrl = (path: string) => typeof location === 'undefined' ? path : new URL(path, location.origin).href
 const dynamicImport = (url: string) => new Function('url', 'return import(url)')(url)
 
-const publicReady = async (path: string) =>
-  await fetch(absoluteUrl(path), { method: 'HEAD', cache: 'no-store' }).then(res => res.ok).catch(() => false)
-const readyUrl = async (path: string) => await publicReady(path) ? absoluteUrl(path) : ''
-const firstReady = async (paths: string[], error: string) => {
-  for (const path of paths) if (await publicReady(path)) return absoluteUrl(path)
-  throw new Error(error)
-}
-const stampReady = (manifest: string, locale: string) =>
-  Promise.all(['manifest.json', 'stamps.pdf'].map(file => publicReady(manifest.replace('{locale}', locale).replace('manifest.json', file))))
-    .then(items => items.every(Boolean))
-
-export const ensureEmbedPdfWasmUrl = () =>
-  pdfWasmUrlPromise ||= firstReady([PDF_PLUGIN_WASM_URL, PDF_WASM_PUBLIC_URL], 'PDFium wasm is not available').catch((error) => {
-    pdfWasmUrlPromise = undefined
-    throw error
-  })
+export const ensureEmbedPdfWasmUrl = async () => absoluteUrl(PDF_PLUGIN_WASM_URL)
 
 export const ensureEmbedPdfRuntime = () =>
-  pdfRuntimePromise ||= (async () => {
-    const pluginRuntime = await readyUrl(PDF_PLUGIN_RUNTIME_URL)
-    if (pluginRuntime) return await dynamicImport(pluginRuntime)
-    if (await Promise.all(PDF_RUNTIME_FILES.map(file => publicReady(`${PDF_RUNTIME_PUBLIC_DIR}/${file}`))).then(items => items.every(Boolean))) {
-      return await dynamicImport(absoluteUrl(PDF_RUNTIME_PUBLIC_URL))
-    }
-    throw new Error('EmbedPDF runtime is not available')
-  })().catch((error) => {
+  pdfRuntimePromise ||= dynamicImport(absoluteUrl(PDF_PLUGIN_RUNTIME_URL)).catch((error: any) => {
     pdfRuntimePromise = undefined
     throw error
   })
@@ -52,17 +22,8 @@ export const ensureEmbedPdfRuntime = () =>
 export const initEmbedPdfViewer = async (target: HTMLElement, config: Record<string, any>) =>
   (await ensureEmbedPdfRuntime()).default.init({ type: 'container', target, ...config })
 
-export const ensureEmbedPdfStampManifests = () =>
-  stampManifestsPromise ||= (async () => {
-    const pluginReady = await Promise.all(STAMP_LOCALES.map(locale => stampReady(STAMP_PLUGIN_MANIFEST, locale)))
-    if (pluginReady.every(Boolean)) return [{ url: STAMP_PLUGIN_MANIFEST, fallbackLocale: 'en' }]
-    const publicReadyItems = await Promise.all(STAMP_LOCALES.map(locale => stampReady(STAMP_PUBLIC_MANIFEST, locale)))
-    if (publicReadyItems.every(Boolean)) return [{ url: STAMP_PUBLIC_MANIFEST, fallbackLocale: 'en' }]
-    throw new Error('PDF stamp assets are not available')
-  })().catch((error) => {
-    stampManifestsPromise = undefined
-    throw error
-  })
+export const ensureEmbedPdfStampManifests = async () =>
+  [{ url: STAMP_PLUGIN_MANIFEST, fallbackLocale: 'en' }]
 
 export const createEmbedPdfDocumentSource = async (documentId: string, source: File | Blob | string, fallbackName = 'document.pdf') => {
   const name = typeof source === 'string'

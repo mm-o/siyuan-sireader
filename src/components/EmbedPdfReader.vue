@@ -114,6 +114,8 @@ const syncPdfAnnotationsHidden = (hidden: boolean) => {
 const applyPdfTheme = () => {
   activeContainer?.setTheme(pdfTheme())
   activeContainer?.setAttribute('data-sireader-page-mode', pdfThemePreference())
+  const image = props.settings?.backgroundImage || ''
+  if (rootRef.value) Object.assign(rootRef.value.style, { backgroundImage: image ? `url("${image}")` : '', backgroundSize: image ? 'cover' : '', backgroundPosition: image ? 'center' : '' })
   syncPdfAnnotationsHidden(!!props.hideAnnotations)
   ensurePageThemeStyle()
 }
@@ -804,26 +806,44 @@ const config = computed(() => ({
   theme: pdfTheme(),
 }))
 
+const waitForRegistry = (viewer: any, timeout = 15000) => new Promise<PluginRegistry>((resolve, reject) => {
+  const timer = setTimeout(() => reject(new Error('PDF engine initialization timed out')), timeout)
+  viewer.registry.then((registry: PluginRegistry) => { clearTimeout(timer); resolve(registry) }, (error: any) => { clearTimeout(timer); reject(error) })
+})
+
 const mountPdfViewer = async () => {
   const host = viewerHostRef.value
   if (!host || !documentSource.value || !pdfAssets.value || activeViewer) return
   const token = ++viewerToken
+  let viewer: any
   try {
-    host.replaceChildren()
-    const viewer = await initEmbedPdfViewer(host, config.value)
+    const start = async (worker: boolean) => {
+      host.replaceChildren()
+      viewer = await initEmbedPdfViewer(host, { ...config.value, worker })
+      if (!viewer) throw new Error(pdfLoadFailedMessage())
+      return waitForRegistry(viewer)
+    }
+    let registry: PluginRegistry
+    try {
+      registry = await start(true)
+    } catch {
+      viewer?.remove?.()
+      if (token !== viewerToken) return
+      registry = await start(false)
+    }
     if (token !== viewerToken || viewerHostRef.value !== host) return void viewer?.remove?.()
-    if (!viewer) throw new Error(pdfLoadFailedMessage())
     activeViewer = viewer
     handleInit(activeViewer)
     pdfPreparing.value = ''
-    activeViewer.registry?.then((registry: PluginRegistry) => token === viewerToken && handleReady(registry))
+    void handleReady(registry)
   } catch (error: any) {
+    viewer?.remove?.()
     if (token === viewerToken) failPdfLoad(error)
   }
 }
 
 watch(() => [documentSource.value, pdfAssets.value, viewerHostRef.value], () => nextTick(mountPdfViewer), { flush: 'post' })
-watch(() => [props.theme, props.customTheme?.color, props.customTheme?.bg, props.customTheme?.bgImg], () => nextTick(applyPdfTheme))
+watch(() => [props.theme, props.customTheme?.color, props.customTheme?.bg, props.settings?.backgroundImage], () => nextTick(applyPdfTheme))
 watch(() => props.hideAnnotations, hidden => syncPdfAnnotationsHidden(!!hidden))
 watch(() => props.settings?.quickSendDocs, () => activeRegistry && setupPdfCommands(activeRegistry), { deep: true })
 const themeObserver = new MutationObserver(() => requestAnimationFrame(applyPdfTheme))

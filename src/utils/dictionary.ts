@@ -4,8 +4,7 @@ import { getFile, putFile, removeFile } from '@/api'
 const BASE_URL='https://dictionary.cambridge.org'
 const MXNZP_ID='guuhjloujpkfenn1',MXNZP_SECRET='izYrfPlqfRMxrXHUCf5vEbD4WSxnjSow'
 const DICT_PUBLIC_ROOT='/public/siyuan-sireader/dictionaries'
-const DICT_DATA_ROOT='/data/public/siyuan-sireader/dictionaries'
-const CONFIG_PATH=`${DICT_DATA_ROOT}/config.json`
+const CONFIG_PATH=`${DICT_PUBLIC_ROOT}/config.json`
 
 // ===== 类型定义 =====
 export interface DictResult{word:string;phonetics:{ipa:string;audio:string;region:'us'|'uk'}[];parts:{part:string;means:string[]}[];examples:{en:string;zh:string}[]}
@@ -23,7 +22,7 @@ export const POS_MAP:Record<string,{name:string;color:string}>={n:{name:'n.',col
 export const ONLINE_DICTS:OnlineDict[]=[{id:'youdao',name:'有道',icon:'https://shared.ydstatic.com/images/favicon.ico',enabled:true,desc:'英汉词典，简洁快速'},{id:'bing',name:'必应',icon:'https://cn.bing.com/favicon.ico',enabled:true,url:'https://cn.bing.com/dict/search?q={{word}}',desc:'必应词典网页版'},{id:'cambridge',name:'剑桥',icon:'#iconLanguage',enabled:true,desc:'英汉双解，支持发音'},{id:'haici',name:'海词',icon:'https://dict.cn/favicon.ico',enabled:true,desc:'英汉词典，例句丰富'},{id:'mxnzp',name:'汉字',icon:'#iconA',enabled:true,desc:'汉字字典，详细解释'},{id:'ciyu',name:'词语',icon:'#iconFont',enabled:true,desc:'汉语词语，成语典故'},{id:'zdic',name:'汉典',icon:'https://www.zdic.net/favicon.ico',enabled:true,desc:'汉字词语查询'}]
 
 let plugin:Plugin|null=null,onlineDicts=[...ONLINE_DICTS]
-const publicToDataPath=(path='')=>path.startsWith('/public/')?path.replace('/public/','/data/public/'):path
+const apiPath=(path='')=>path.startsWith('/public/')?path.replace('/public/','/data/public/'):path
 const safePathPart=(name='dict')=>name.replace(/[\\/:*?"<>|#%{}^~[\]`]/g,'_').replace(/\s+/g,'_').replace(/^_+|_+$/g,'')||'dict'
 const getRelativePath=(file:File)=>((file as any).webkitRelativePath||file.name).replace(/\\/g,'/')
 const getDictFileKey=(name:string):OfflineDictFileKey|null=>{
@@ -83,8 +82,8 @@ const decompressFile=async(file:File,format='gzip')=>{
   return new File([await new Response(stream).blob()],file.name.replace(/\.gz$/i,''),{type:'application/octet-stream'})
 }
 const readIfoName=async(file?:File)=>file?extractIfoName(await readDictionaryFileText(file).catch(()=>'')):''
-const readDictConfig=async():Promise<DictConfig>=>await getFile(CONFIG_PATH).catch(()=>null)||{dicts:[]}
-const writeDictConfig=(config:DictConfig)=>putFile(CONFIG_PATH,false,new File([JSON.stringify(config,null,2)],'config.json',{type:'application/json'}))
+const readDictConfig=async():Promise<DictConfig>=>await getFile(apiPath(CONFIG_PATH)).catch(()=>null)||{dicts:[]}
+const writeDictConfig=(config:DictConfig)=>putFile(apiPath(CONFIG_PATH),false,new File([JSON.stringify(config,null,2)],'config.json',{type:'application/json'}))
 
 // ===== 离线词典管理器 =====
 class OfflineDictManager{
@@ -98,8 +97,8 @@ class OfflineDictManager{
     plugin=p
     this.initialized=true
     try{
-      await putFile(DICT_DATA_ROOT,true,new File([],''))
-      const config=await getFile(CONFIG_PATH)
+      await putFile(apiPath(DICT_PUBLIC_ROOT),true,new File([],''))
+      const config=await getFile(apiPath(CONFIG_PATH))
       if(config?.dicts?.length){
         this.dicts=config.dicts.map(cfg=>({id:cfg.id,name:cfg.name,type:cfg.type as any,enabled:cfg.enabled,files:cfg.files||{}}))
         await this.refreshNames()
@@ -201,12 +200,12 @@ class OfflineDictManager{
     for(const[groupKey,group]of groups){
       if(!isUsableDictGroup(group))continue
       try{
-        const id=`dict_${Date.now()}_${Math.random().toString(36).slice(2,9)}`,dictPath=`${DICT_PUBLIC_ROOT}/${id}`,dataDir=publicToDataPath(dictPath),savedFiles:OfflineDict['files']={}
-        await putFile(dataDir,true,new File([],''))
+        const id=`dict_${Date.now()}_${Math.random().toString(36).slice(2,9)}`,dictPath=`${DICT_PUBLIC_ROOT}/${id}`,savedFiles:OfflineDict['files']={}
+        await putFile(apiPath(dictPath),true,new File([],''))
         for(const[key,file]of Object.entries(group)){
           if(file){
             const publicPath=`${dictPath}/${safePathPart(file.name)}`
-            await putFile(publicToDataPath(publicPath),false,file)
+            await putFile(apiPath(publicPath),false,file)
             savedFiles[key as OfflineDictFileKey]=publicPath
           }
         }
@@ -222,7 +221,7 @@ class OfflineDictManager{
   async removeDict(id:string){
     const idx=this.dicts.findIndex(d=>d.id===id)
     if(idx>=0){
-      await removeFile(`${DICT_DATA_ROOT}/${id}`).catch(()=>{})
+      await removeFile(apiPath(`${DICT_PUBLIC_ROOT}/${id}`)).catch(()=>{})
       this.dicts.splice(idx,1)
       this.loaded.delete(id)
       this.dictDataLoaded.delete(id)

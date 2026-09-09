@@ -118,7 +118,7 @@ const handleSettingsUpdate=async(e:Event)=>{
   const s=(e as CustomEvent).detail
   const prev=currentSettings.value
   updateSettingsState(s)
-  hasSettingChanged(prev,s,['theme','customTheme','textSettings','paragraphSettings','layoutSettings','visualSettings','viewMode','pageAnimation'])&&reader?.updateSettings?.(s)
+  hasSettingChanged(prev,s,['theme','customTheme','backgroundImage','textSettings','paragraphSettings','layoutSettings','visualSettings','viewMode','pageAnimation'])&&reader?.updateSettings?.(s)
     JSON.stringify(prev?.tts)!==JSON.stringify(s?.tts)&&await syncTTS()
 }
 const containerRef = ref<HTMLElement>()
@@ -338,8 +338,8 @@ const init=async()=>{
         handleKeydown,
         (doc,e)=>markPanelRef.value?.checkSelection(doc,e),
         x=>handleTapZone(x),
-        ()=>reader?.goLeft(),
-        ()=>reader?.goRight()
+        distance=>isEpubScrollMode()?reader?.prev(distance):reader?.goLeft(),
+        distance=>isEpubScrollMode()?reader?.next(distance):reader?.goRight()
       )
       currentView.value=view
       syncReadingProgress()
@@ -366,15 +366,15 @@ const handleCopy=(item:any)=>copyReaderMark(item)
 const handleCopyToClipboard=(item:any)=>copyReaderMark(item,true)
 const handleOpenDict=(text:string,x:number,y:number,selection:any)=>selection&&openDictDialog(text,x,y,selection)
 const isEpubScrollMode=()=>getSettings()?.viewMode==='scroll'
-const flipPage=async(dir:'prev'|'next')=>{
+const flipPage=async(dir:'prev'|'next',distance?:number)=>{
   if(dir==='next'&&readerSplashRef.value?.isVisible())return readerSplashRef.value.dismiss()
   if(props.bookInfo?.temporary&&typeof props.bookInfo?.webpageTurn==='function')return props.bookInfo.webpageTurn(dir)
   if(isEmbedPdfMode.value)return embedPdfPages.value?.[dir==='prev'?'scrollToPreviousPage':'scrollToNextPage']('smooth')
-    if(reader)return isEpubScrollMode() ? reader[dir]() : reader[dir==='prev'?'goLeft':'goRight']()
+    if(reader)return isEpubScrollMode() ? reader[dir](distance) : reader[dir==='prev'?'goLeft':'goRight']()
   return currentView.value?.[dir]?.()||currentView.value?.[dir==='prev'?'goLeft':'goRight']?.()
 }
-const handlePrev=()=>flipPage('prev')
-const handleNext=()=>flipPage('next')
+const handlePrev=(distance?:number)=>flipPage('prev',distance)
+const handleNext=(distance?:number)=>flipPage('next',distance)
 const searchInputRef=ref<HTMLInputElement>()
 const toggleSearch=()=>{showSearch.value=!showSearch.value;showSearch.value&&(showQuickMark.value=quickMarkMode.value=false,setTimeout(()=>searchInputRef.value?.focus(),100))}
 const toggleQuickMark=()=>{if(!can.value('quick-mark'))return showUpgrade('快速标注');showQuickMark.value=!showQuickMark.value;showQuickMark.value&&(showSearch.value=false);quickMarkMode.value=showQuickMark.value}
@@ -419,7 +419,12 @@ const handleGoto=(e:CustomEvent)=>{
 }
 const handleUndo=()=>markManager.value?.undo?.()
 const refreshEmbedPdfMarks=()=>{if(isEmbedPdfMode.value)void loadEmbedPdfMarks()}
-const keyboardHandler=createKeyboardHandler({handlePrev,handleNext,handleUndo})
+const getScrollStep=()=>{
+  if(!isEpubScrollMode())return undefined
+  const size=Number(reader?.getView?.()?.renderer?.size)
+  return Number.isFinite(size)&&size>0?size*.9:undefined
+}
+const keyboardHandler=createKeyboardHandler({handlePrev,handleNext,handleUndo,getScrollStep})
 const handleKeydown=(e:KeyboardEvent)=>shouldHandleReaderKeydown(isEmbedPdfMode.value,isThisActiveReader())&&keyboardHandler(e)
 const events=[
   ['sireaderSettingsUpdated',handleSettingsUpdate],
@@ -450,7 +455,7 @@ onUnmounted(async()=>{
 <style scoped lang="scss">
 .reader-container{position:relative;width:100%;height:100%;outline:none;user-select:text;-webkit-user-select:text;isolation:isolate;display:flex;flex-direction:column;background:var(--b3-theme-background)}
 .reader-overlay{position:absolute;inset:0;z-index:999;background:transparent}
-.viewer-container{flex:1;position:relative;overflow:auto;background:var(--b3-theme-background)}
+.viewer-container{flex:1;position:relative;overflow:hidden;background:var(--b3-theme-background)}
 .reader-progress{position:absolute;left:0;right:0;bottom:0;height:2px;z-index:1000;pointer-events:none;background:color-mix(in srgb,var(--b3-theme-primary) 14%,transparent);overflow:hidden;span{display:block;width:100%;height:100%;transform-origin:left center;background:var(--b3-theme-primary);transition:transform .18s ease-out}}
 .reader-loading{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:16px;color:var(--b3-theme-on-background);z-index:10;pointer-events:none}
 .spinner{width:48px;height:48px;border:4px solid var(--b3-theme-primary-lighter);border-top-color:var(--b3-theme-primary);border-radius:50%;animation:spin 1s linear infinite}

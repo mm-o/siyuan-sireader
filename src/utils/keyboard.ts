@@ -1,8 +1,9 @@
 ﻿// 阅读器快捷键处理
 export interface KeyboardHandlers {
-  handlePrev: () => void
-  handleNext: () => void
+  handlePrev: (distance?: number) => void
+  handleNext: (distance?: number) => void
   handleUndo?: () => void
+  getScrollStep?: () => number | undefined
 }
 
 export const shouldHandleReaderKeydown = (isPdfMode: boolean, isActiveReader: boolean) => isActiveReader && !isPdfMode
@@ -25,8 +26,9 @@ export const createKeyboardHandler = (handlers: KeyboardHandlers) => {
     if (c && k === 'z') return handlers.handleUndo?.(), consume()
 
     // 通用导航
-    if (['ArrowLeft', 'ArrowUp'].includes(k) || (k === ' ' && e.shiftKey)) return handlers.handlePrev(), consume()
-    if (['ArrowRight', 'ArrowDown', ' '].includes(k)) return handlers.handleNext(), consume()
+    const distance = handlers.getScrollStep?.()
+    if (['ArrowLeft', 'ArrowUp'].includes(k) || (k === ' ' && e.shiftKey)) return handlers.handlePrev(distance), consume()
+    if (['ArrowRight', 'ArrowDown', ' '].includes(k)) return handlers.handleNext(distance), consume()
   }
 }
 
@@ -36,8 +38,8 @@ export const setupEpubKeyboard = (
   handler: (e: KeyboardEvent) => void,
   onSelectionChange?: (doc: Document, e?: Event) => void,
   onTapZone?: (x: number, doc: Document, target: EventTarget | null) => void,
-  prev?: () => void,
-  next?: () => void
+  prev?: (distance?: number) => void,
+  next?: (distance?: number) => void
 ) => {
   const setup = (doc: Document) => {
     if (!doc || (doc as any).__sireaderKeyboardSetup) return
@@ -80,6 +82,19 @@ export const setupEpubKeyboard = (
     })
     doc.addEventListener('keydown', e => {
       if (e.ctrlKey || e.altKey || e.metaKey) return handler(e)
+      const scroll = reader?.getView?.()?.renderer?.getAttribute?.('flow') === 'scrolled'
+      if (scroll) {
+        const backward = ['ArrowLeft', 'ArrowUp', 'PageUp'].includes(e.key) || (e.key === ' ' && e.shiftKey)
+        const forward = ['ArrowRight', 'ArrowDown', 'PageDown', ' '].includes(e.key)
+        if (backward || forward) {
+          e.preventDefault()
+          e.stopPropagation()
+          const size = Number(reader?.getView?.()?.renderer?.size)
+          const distance = Number.isFinite(size) && size > 0 ? size * 0.9 : undefined
+          void (backward ? prev?.(distance) : next?.(distance))
+          return
+        }
+      }
       if (['ArrowLeft', 'ArrowUp'].includes(e.key) || (e.key === ' ' && e.shiftKey)) return turn('prev', e) || handler(e)
       if (['ArrowRight', 'ArrowDown', ' '].includes(e.key)) return turn('next', e) || handler(e)
       return handler(e)

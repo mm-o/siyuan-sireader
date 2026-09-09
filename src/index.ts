@@ -39,6 +39,8 @@ export default class PluginSample extends Plugin {
     this.addHotkeys()
   }
 
+  onDataChanged() {}
+
   private handleWsMain = (event: CustomEvent) => {
     const cmd = event.detail?.cmd
     if (cmd === 'syncMergeResult' || cmd === 'reloadPlugin') this.handleStorageChanged()
