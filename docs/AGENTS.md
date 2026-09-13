@@ -148,7 +148,7 @@ Notes:
 - `pnpm dev` runs `vite build --watch`.
 - In watch mode, output targets `./dev` unless `VITE_SIYUAN_WORKSPACE_PATH` is set in `.env`, then it writes to `<workspace>/data/plugins/siyuan-sireader`.
 - Production build outputs to `dist/` and packs `package.zip`.
-- This repo uses pnpm patched dependencies. The active foliate patch is configured in [`pnpm-workspace.yaml`](../pnpm-workspace.yaml), not `package.json`; keep [`patches/foliate-js@1.0.1.patch`](../patches/foliate-js@1.0.1.patch) when updating EPUB dependencies.
+- This repo uses pnpm patched dependencies. The active foliate patch is configured in [`pnpm-workspace.yaml`](../pnpm-workspace.yaml), not `package.json`; keep [`patches/foliate-js@0.0.0.patch`](../patches/foliate-js@0.0.0.patch) when updating EPUB dependencies.
 
 ## Files Usually Safe to Ignore
 

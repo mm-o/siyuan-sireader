@@ -212,7 +212,7 @@ Quick send uses EmbedPDF's native UI model:
 
 Do not build custom floating quick-send menus. EmbedPDF `selectionMenus` do not expose a stable submenu item shape; use `menus + openMenu()` instead.
 
-Keyboard shortcuts should stay on EmbedPDF's native commands path. If SiReader adds shortcuts for PDF-only actions, register them through EmbedPDF command `shortcuts` instead of adding a SiReader-owned PDF `keydown` listener. The outer reader keyboard handler should not consume keys while the active reader is EmbedPDF.
+PDF actions stay on EmbedPDF's command path, while customizable shortcuts are registered through SiYuan's native `Plugin.addCommand()` API. SiYuan command callbacks dispatch the command ID to the active `Reader.vue`; only the active PDF executes it through EmbedPDF. Keep command metadata in [`src/utils/keyboard.ts`](../src/utils/keyboard.ts), prefix displayed names with `PDF`, and do not add a plugin-settings shortcut editor or a PDF-owned `keydown` listener.
 
 Screenshot copy uses EmbedPDF capture state:
 
@@ -279,9 +279,10 @@ If EmbedPDF does not expose a stable capability, SiReader leaves that PDF featur
 - Keep migration logic in `dataMigration.ts`; keep `bookStore.ts` as a thin read/write layer.
 - Keep completed migration guarded by `migration.pdfAnnotations` so opening a PDF does not migrate every time.
 - Keep PDF backlinks as `sireader://open?...&cfi=%23page-N&id=...`.
+- Encode every backlink query value with `encodeURIComponent`; when parsing legacy links, preserve literal `+` as a plus sign.
 - Keep PDF click navigation on EmbedPDF page anchors, not EPUB CFI navigation.
 - Keep PDF search on EmbedPDF native search/highlight; do not add a custom PDF search renderer.
-- Keep PDF keyboard shortcuts on EmbedPDF native commands/`shortcuts`; do not add an outer PDF keydown layer.
+- Keep PDF shortcuts in SiYuan's native command/shortcut center and route them to the active EmbedPDF command registry; do not add a plugin-settings shortcut editor or a PDF-owned keydown layer.
 - Keep PDF page theme support to default/light and dark inversion only.
 - Keep custom theme background in the PDF light/dark preference decision.
 - Keep EmbedPDF UI theme mapping small; use the reader background for sidebars/comments and avoid unused full-token color maps.

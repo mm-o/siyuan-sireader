@@ -215,10 +215,27 @@ export const resetToDefaults = (s: any) => Object.assign(s, { textSettings: DEFA
 
 // ===== 链接格式化 =====
 const applyTpl=(t:string,v:Record<string,string>)=>{const ph:Record<string,string>={};let i=0;Object.entries(v).forEach(([k,val])=>{const p=`\x00${i++}\x00`;ph[p]=val;k.split('|').forEach(s=>t=t.replace(new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'g'),p))});return Object.entries(ph).reduce((r,[p,val])=>r.replace(new RegExp(p,'g'),val),t)}
-const encodeReadableParam=(v:string)=>{try{v=decodeURI(`${v}`)}catch{v=`${v}`}return v.replace(/&/g,'%26').replace(/ /g,'%20').replace(/\(/g,'%28').replace(/\)/g,'%29').replace(/</g,'%3C').replace(/>/g,'%3E')}
+const encodeReadableParam=(v:string)=>{try{return encodeURIComponent(decodeURIComponent(`${v}`))}catch{return encodeURIComponent(`${v}`)}}
 export const buildSireaderLink=(bookUrl:string,cfi:string,id='')=>/^https?:\/\//i.test(cfi)?cfi:`sireader://open?url=${encodeReadableParam(bookUrl)}&cfi=${encodeReadableParam(cfi)}${id?`&id=${encodeReadableParam(id)}`:''}`
 export const formatBookLink=(u:string,t:string,a:string,c:string,f:string,x:string,fmt:string,n='',i='',id='')=>applyTpl(fmt,{'书名|{{title}}':t,'作者|{{author}}':a,'章节|{{chapter}}':c,'位置|{{location}}':f,'链接|{{url}}':buildSireaderLink(u,f,id),'文本|{{text}}':x,'笔记|{{note}}':n,'图片|{{image}}':i}).replace(/> \n/g,'').replace(/\n\n+/g,'\n')
-export const parseBookLink=(u:string):{bookUrl:string;cfi:string;id?:string}|null=>{try{u=u.replace(/^<|>$/g,'');const m=u.match(/^sireader:\/\/open\?(.+)$/);if(!m)return null;const p=new URLSearchParams(m[1].replace(/&amp;/g,'&'));let url=p.get('url'),c=p.get('cfi'),id=p.get('id')||undefined;if(!url||!c)return null;const e=url.indexOf('://');if(!id&&e!==-1){const pt=url.slice(e+3);for(const r of[/_(highlight-[^_&]+)$/,/_(note-[^_&]+)$/,/_(bookmark-[^_&]+)$/,/_(vocab-[^_&]+)$/]){const mt=pt.match(r);if(mt){id=mt[1];url=url.slice(0,-(id.length+1));break}}}return{bookUrl:url,cfi:c,id}}catch{return null}}
+export const parseBookLink=(u:string):{bookUrl:string;cfi:string;id?:string}|null=>{
+  try {
+    const match=u.replace(/^<|>$/g,'').match(/^sireader:\/\/open\?(.+)$/)
+    if (!match) return null
+    const params=new URLSearchParams(match[1].replace(/&amp;/g,'&').replace(/\+/g,'%2B'))
+    let url=params.get('url'), cfi=params.get('cfi'), id=params.get('id')||undefined
+    if (!url||!cfi) return null
+    const e=url.indexOf('://')
+    if (!id&&e!==-1) {
+      const path=url.slice(e+3)
+      for (const pattern of [/_((?:highlight|note|bookmark|vocab)-[^_&]+)$/]) {
+        const found=path.match(pattern)
+        if (found) { id=found[1]; url=url.slice(0,-(id.length+1)); break }
+      }
+    }
+    return {bookUrl:url,cfi,id}
+  } catch { return null }
+}
 
 // ===== 笔记本和文档管理 =====
 export const loadNotebooks = async () => { const r = await fetchSyncPost('/api/notebook/lsNotebooks', {}); return r?.code === 0 ? r.data?.notebooks || [] : [] }

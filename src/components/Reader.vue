@@ -264,6 +264,11 @@ const handleEmbedPdfReady=(registry:any)=>{
     return pageTextCache.get(pageNumber)!
   }
   currentView.value.getBookmarks=()=>taskToPromise<any>(registry.getPlugin('bookmark')?.provides?.()?.forDocument?.(documentId)?.getBookmarks?.()).then((result:any)=>result?.bookmarks||[])
+  currentView.value.executePdfCommand=(id:string)=>{
+    if (!id || !isThisActiveReader()) return
+    try { registry.getPlugin('commands')?.provides?.()?.execute?.(id, documentId, 'siyuan') }
+    catch (error:any) { showMessage(error?.message || 'PDF 操作失败', 2000, 'error') }
+  }
   window.dispatchEvent(new CustomEvent('sireader:tab-switched'))
 }
 const loadViewer=()=>document.getElementById('protyleViewerScript')?Promise.resolve():new Promise<void>((resolve,reject)=>{
@@ -436,6 +441,7 @@ const events=[
   ['sireader:quickNote',async()=>{try{if(isEmbedPdfMode.value||!currentView.value||!containerRef.value?.isConnected||!isThisActiveReader())return;const { openNoteTargetFloat } = await import('@/utils/copy');await openNoteTargetFloat(getBookUrl(),getSettings(),containerRef.value!)}catch(e:any){showMessage(e?.message||'Failed',2000,'error')}}],
   ['sireader:prevPage',activeOnly(handlePrev)],
   ['sireader:nextPage',activeOnly(handleNext)],
+  ['sireader:pdf-command',activeOnly((event:CustomEvent)=>{if(isEmbedPdfMode.value)currentView.value?.executePdfCommand?.(event.detail)})],
 ]as const
 const suppressError=(e:PromiseRejectionEvent)=>/createTreeWalker|destroy/.test(e.reason?.message||'')&&e.preventDefault()
 const setupTabObserver=()=>{if(isMobile())return;let el=containerRef.value?.parentElement;while(el){if(el.hasAttribute('data-id')){const h=document.querySelector(`li[data-type="tab-header"][data-id="${el.getAttribute('data-id')}"]`);if(h){const obs=new MutationObserver(ms=>ms.forEach(m=>{if(m.type!=='attributes'||m.attributeName!=='class')return;const focused=(m.target as HTMLElement).classList.contains('item--focus');focused&&setActiveReader(currentView.value,reader,getSettings());focused&&window.dispatchEvent(new CustomEvent('sireader:tab-switched'));syncReaderFocus(focused&&hasReaderFocus())}));obs.observe(h,{attributes:true,attributeFilter:['class']});(containerRef.value as any).__observer=obs;break}}el=el.parentElement}}

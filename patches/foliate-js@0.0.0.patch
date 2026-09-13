@@ -1,0 +1,14 @@
+diff --git a/paginator.js b/paginator.js
+index 8c3f99c855e50cbe81238e36258c3fe4d5e4ab28..cd5931bf4714cae7fae5d193ce50305b235a442e 100644
+--- a/paginator.js
++++ b/paginator.js
+@@ -1486,8 +1486,7 @@ export class Paginator extends HTMLElement {
+                 if (!range) return
+                 const sel = doc.getSelection()
+                 if (!sel.rangeCount) return
+-                // FIXME: this won't work on Android WebView, disable for now
+-                if (!isPointerSelecting && isPointerSelecting && sel.type === 'Range')
++                if (isPointerSelecting && sel.type === 'Range')
+                     checkPointerSelection(range, sel)
+                 else if (isKeyboardSelecting) {
+                     const selRange = sel.getRangeAt(0).cloneRange()

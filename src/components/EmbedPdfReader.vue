@@ -19,10 +19,12 @@ import { addMissingPdfMenuItemsAfterFirst, capturePdfAnnotationImage, createEmbe
 import { settingsManager, type ReaderSettings, type ReadTheme } from '@/composables/useSetting'
 import { isMobile } from '@/utils/mobile'
 import Translate from './Translate.vue'
+import { pdfQuickSendCommandId } from '@/utils/keyboard'
 
 type EmbedPdfContainer = any
 type PluginRegistry = any
 type PdfAssets = { wasmUrl: string; stampManifests: any[] }
+type PdfCommandDefinition = { id: string; label: string; icon?: string; categories?: string[]; action: (context?: any) => void | Promise<void>; visible?: (context?: any) => boolean; disabled?: (context?: any) => boolean }
 const props = defineProps<{ source: File | string | null; settings?: ReaderSettings; theme?: string; customTheme?: ReadTheme; bookUrl?: string; storageKey?: string; hideAnnotations?: boolean; i18n?: any }>()
 const storageKey = () => props.storageKey || props.bookUrl || ''
 const emit = defineEmits<{ ready: [registry: PluginRegistry] }>()
@@ -69,6 +71,7 @@ let cleanupMigrationEvents: (() => void) | null = null
 let cleanupPdfDoubleTapZoom: (() => void) | null = null
 let pdfZoomRestore: any = null
 let activeViewer: any = null
+let pdfCommandIds: string[] = []
 let viewerToken = 0
 let copyNextCapture = false
 let lastCaptureBlob: Blob | null = null
@@ -91,6 +94,17 @@ const pdfIcon = (body: string) => `<svg viewBox="0 0 24 24" style="width:16px;he
 const PDF_BOTTOM_ICONS = { toc: pdfIcon('<path d="M4 7h16M4 12h16M4 17h16"/>'), show: pdfIcon('<path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>'), hide: pdfIcon('<path d="m2 2 20 20M10.6 10.6a2 2 0 0 0 2.8 2.8M7.4 7.4C3.8 9.2 2 12 2 12s3 7 10 7c1.6 0 3-.4 4.2-1M14.1 5.2C13.4 5.1 12.7 5 12 5 5 5 2 12 2 12c.8 1.8 2 3.3 3.5 4.4M17.7 17.7C20.5 15.9 22 12 22 12s-3-7-10-7"/>'), close: pdfIcon('<path d="M18 6 6 18M6 6l12 12"/>') }
 const getCapability = <T = any>(registry: PluginRegistry, pluginId: string): T | null =>
   (registry.getPlugin(pluginId) as any)?.provides?.() || null
+const disposePdfCommands = (commands: any) => { for (const id of pdfCommandIds) { try { commands?.unregisterCommand?.(id) } catch {} }; pdfCommandIds = [] }
+const installPdfCommands = (commands: any, definitions: PdfCommandDefinition[], onError: (error: unknown) => void) => {
+  disposePdfCommands(commands)
+  if (!commands?.registerCommand || !commands?.resolve) return []
+  const installed: PdfCommandDefinition[] = []
+  for (const definition of definitions) try {
+    commands.registerCommand({ ...definition, action: (context: any) => Promise.resolve().then(() => definition.action(context)).catch(onError), visible: definition.visible ? (context: any) => { try { return definition.visible!(context) } catch (error) { onError(error); return false } } : undefined, disabled: definition.disabled ? (context: any) => { try { return definition.disabled!(context) } catch (error) { onError(error); return true } } : undefined })
+    commands.resolve(definition.id); installed.push(definition); pdfCommandIds.push(definition.id)
+  } catch (error) { onError(error); try { commands.unregisterCommand?.(definition.id) } catch {} }
+  return installed
+}
 const pdfShadowRoot = () => rootRef.value?.querySelector('embedpdf-container')?.shadowRoot || null
 const pdfTheme = () => buildEmbedPdfTheme(props.theme, rootRef.value || undefined, props.customTheme)
 const pdfThemePreference = () => embedPdfThemePreference(props.theme, rootRef.value || undefined, props.customTheme)
@@ -370,8 +384,21 @@ const openPdfTranslate = (text: string) => {
   app.mount(dialog.element.querySelector('.sireader-pdf-translate') as HTMLElement)
 }
 const setupPdfCommands = (registry: PluginRegistry) => {
-  const commands = getCapability<any>(registry, 'commands')
+  const rawCommands = getCapability<any>(registry, 'commands')
   const ui = getCapability<any>(registry, 'ui')
+  if (!rawCommands?.registerCommand || !rawCommands?.resolve || !ui?.getSchema || !ui?.mergeSchema) return
+  const clearStalePdfSchema = () => {
+    const schema = ui.getSchema?.()
+    if (!schema) return
+    const isSireader = (item: any) => String(item?.commandId || '').startsWith('sireader:') || String(item?.id || '').startsWith('sireader-')
+    const selectionMenus = Object.fromEntries(Object.entries(schema.selectionMenus || {}).map(([key, menu]: any) => [key, { ...menu, items: (menu.items || []).filter((item: any) => !isSireader(item)) }]))
+    const menus = Object.fromEntries(Object.entries(schema.menus || {}).map(([key, menu]: any) => [key, { ...menu, items: (menu.items || []).filter((item: any) => !isSireader(item)) }]))
+    ui.mergeSchema?.({ selectionMenus, menus })
+  }
+  clearStalePdfSchema()
+  disposePdfCommands(rawCommands)
+  const definitions: PdfCommandDefinition[] = []
+  const commands = { registerCommand: (definition: PdfCommandDefinition) => definitions.push(definition) }
   const uiDoc = ui?.forDocument(documentId)
   const selection = getCapability<any>(registry, 'selection')?.forDocument(documentId)
   const capture = getCapability<any>(registry, 'capture')?.forDocument(documentId)
@@ -434,8 +461,8 @@ const setupPdfCommands = (registry: PluginRegistry) => {
     ['dict', props.i18n?.dict || '词典', 'book', async (mark: any) => (await import('@/utils/dictionary')).openDict(mark.text, innerWidth / 2, innerHeight / 2, mark)],
     ['translate', props.i18n?.translate || '翻译', 'text', (mark: any) => openPdfTranslate(mark.text)],
   ].forEach(([id, label, icon, run]: any) => commands?.registerCommand?.({ id: `sireader:${id}-selection`, label, icon, action: async () => { const mark = await selectedMark(); if (mark?.text) run(mark) } }))
-  docs.forEach((doc: any, index: number) => commands?.registerCommand?.({
-    id: `sireader:send-selection:${index}`,
+  docs.forEach((doc: any) => commands?.registerCommand?.({
+    id: pdfQuickSendCommandId('selection', doc.id),
     label: doc.name || props.i18n?.sendTo || 'Send to',
     icon: 'fileImport',
     categories: ['selection', 'sireader-send'],
@@ -453,8 +480,8 @@ const setupPdfCommands = (registry: PluginRegistry) => {
     categories: ['annotation', 'sireader-send'],
     action: () => openSendMenu('annotation'),
   })
-  docs.forEach((doc: any, index: number) => commands?.registerCommand?.({
-    id: `sireader:send-annotation:${index}`,
+  docs.forEach((doc: any) => commands?.registerCommand?.({
+    id: pdfQuickSendCommandId('annotation', doc.id),
     label: doc.name || props.i18n?.sendTo || 'Send to',
     icon: 'fileImport',
     categories: ['annotation', 'sireader-send'],
@@ -479,11 +506,14 @@ const setupPdfCommands = (registry: PluginRegistry) => {
       showMessage(props.i18n?.capture || '拖选截图区域', 1500)
     },
   })
+  const installed = installPdfCommands(rawCommands, definitions, (error: any) => showMessage(error?.message || 'PDF 操作失败', 2500, 'error'))
   const schema = ui?.getSchema?.()
   const annotationMenu = schema?.selectionMenus?.annotation
   const selectionMenu = schema?.selectionMenus?.selection
   const documentMenu = schema?.menus?.document
   if (!annotationMenu && !selectionMenu && !documentMenu) return
+  const requiredIds = ['sireader:copy-annotation-link', 'sireader:dict-annotation', 'sireader:translate-annotation', 'sireader:create-hole', 'sireader:dict-selection', 'sireader:translate-selection', 'sireader:capture-copy', ...docs.flatMap((doc: any) => [pdfQuickSendCommandId('selection', doc.id), pdfQuickSendCommandId('annotation', doc.id)])]
+  if (requiredIds.some(id => !installed.some(command => command.id === id))) return disposePdfCommands(rawCommands)
   if (annotationMenu) {
     const items = annotationMenu.items.filter((item: any) => !['sireader-send-annotation-list', 'sireader-send-annotation-divider', 'sireader-send-annotation-menu'].includes(item.id))
     annotationMenu.items = addMissingPdfMenuItemsAfterFirst(items, [
@@ -510,7 +540,7 @@ const setupPdfCommands = (registry: PluginRegistry) => {
   }
   const sendMenu = (type: 'selection' | 'annotation') => ({
     id: `sireader-pdf-send-${type}`,
-    items: docs.map((_doc: any, index: number) => ({ type: 'command', id: `sireader-send-${type}-${index}`, commandId: `sireader:send-${type}:${index}`, categories: [type, 'sireader-send'] })),
+    items: docs.map((doc: any) => ({ type: 'command', id: 'sireader-send-' + type + '-' + encodeURIComponent(doc.id), commandId: pdfQuickSendCommandId(type, doc.id), categories: [type, 'sireader-send'] })),
     categories: [type, 'sireader-send'],
   })
   const sendMenus = { 'sireader-pdf-send-annotation': sendMenu('annotation'), 'sireader-pdf-send-selection': sendMenu('selection') }
@@ -867,6 +897,7 @@ onBeforeUnmount(() => {
   cleanupTooltipEvents?.()
   cleanupMigrationEvents?.()
   cleanupPdfDoubleTapZoom?.()
+  disposePdfCommands(activeRegistry && getCapability<any>(activeRegistry, 'commands'))
   pdfZoomRestore = null
   themeObserver.disconnect()
   activeAnnotationScope = null

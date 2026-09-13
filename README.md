@@ -19,27 +19,17 @@ Professional eBook reader for EPUB/PDF/MOBI/TXT/online novels. PDFs support high
 
 ## 📝 Latest Updates
 
-### v2.2.7 (2026.9.9)
+### v2.2.7 (2026.9.13)
 
 ### Fixed
 
-- Fixed repeated plugin reloads and UI stalls caused by file-change notifications in newer SiYuan versions.
-- Fixed unstable PDF engine loading by bundling the PDF core resources directly in the plugin.
-- Fixed the continuous-scroll scrollbar position and restored the native scrollbar at the far right of the reading area.
+- Fixed the PDF menu freeze caused by missing SiReader commands such as `sireader:copy-annotation-link`. Commands are now registered and validated before menu insertion, with isolated failures and stale-menu cleanup.
+- Fixed PDF annotation backlinks failing to open or preview with “book not found” when filenames contain parentheses, spaces, URLs, `+`, `#`, or other reserved characters, while retaining compatibility with existing links.
+- Fixed EPUB mouse selection not turning pages at the page edge in paginated mode. Text can now be selected continuously across pages without holding Shift.
 
 ### Added
 
-- Added unified import, export, and deletion management for background images, fonts, and offline dictionaries.
-- Added direct background image display, font style previews, and background image thumbnail previews.
-
-### Improved
-
-- Expanded continuous-scroll content to the available reading width, reducing unnecessary side margins.
-- Improved continuous-scroll keyboard navigation with Foliate's native scrolling and page-turn behavior, retaining a small reading overlap.
-
-### Note
-
-- Word-count statistics are not added for now because the EPUB/PDF engines lack a low-cost raw word-count API, and full extraction could affect opening and reading performance.
+- Added native SiYuan shortcut commands for all PDF functions. Configure them in **Settings → Shortcuts**; each name uses a `PDF` prefix, such as “PDF Zoom In” and “PDF Zoom Out”, to distinguish it from EPUB commands.
 
 ### v2.2.6 (2026.7.29)
 

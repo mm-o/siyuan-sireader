@@ -2,6 +2,7 @@ import { Plugin, getFrontend } from 'siyuan'
 import '@/index.scss'
 import PluginInfoString from '@/../plugin.json'
 import { destroy, init, usePlugin } from '@/main'
+import { PDF_SHORTCUT_COMMANDS } from '@/utils/keyboard'
 
 const { version } = PluginInfoString
 
@@ -57,6 +58,12 @@ export default class PluginSample extends Plugin {
     Object.entries(cmds).forEach(([k, { text, hotkey, callback }]) =>
       this.addCommand({ langKey: k, langText: (this.i18n as any)?.[k] || text, hotkey, callback }),
     )
+    PDF_SHORTCUT_COMMANDS.forEach(([id, text]) => this.addCommand({
+      langKey: 'pdf-' + id.replaceAll(':', '-'),
+      langText: 'PDF ' + text,
+      hotkey: '',
+      callback: () => window.dispatchEvent(new CustomEvent('sireader:pdf-command', { detail: id })),
+    }))
   }
 
   async onunload() {
