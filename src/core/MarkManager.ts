@@ -422,8 +422,8 @@ export class MarkManager{
   getAnnotations=(color?:HighlightColor)=>{const m=this.marks.filter(m=>m.type==='highlight'||m.type==='note');return color?m.filter(m=>m.color===color):m}
   getNotes=()=>this.marks.filter(m=>m.type==='note')
   getAll=()=>[...this.marks]
-  async addImageMark(src:string,text:string,cfi?:string,note='',tags?:string[]):Promise<Mark>{
-    const loc=this.view?.lastLocation||this.reader?.getLocation?.(),useCfi=cfi||loc?.cfi||'',m=this.add({type:'note',format:'epub',...(await this.locMeta(useCfi)),cfi:useCfi,text:text||'图片标注',note,image:src,tags},true)
+  async addImageMark(src:string,_text:string,cfi?:string,note='',tags?:string[]):Promise<Mark>{
+    const loc=this.view?.lastLocation||this.reader?.getLocation?.(),useCfi=cfi||loc?.cfi||'',m=this.add({type:'note',format:'epub',...(await this.locMeta(useCfi)),cfi:useCfi,text:'',note,image:src,tags},true)
     this.undoStack.push({...m});this.undoStack.length>10&&this.undoStack.shift();this.save();window.dispatchEvent(new Event('sireader:marks-updated'));this.tryAutoSync(m);return m
   }
   undo=async()=>{

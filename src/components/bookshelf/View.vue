@@ -9,7 +9,7 @@
           data-playlist-item
           :class="{ dragover: isGroupDropTarget(root), 'b3-list-item--focus': isSelected(root.item) }"
           :style="compactItemStyle(root)"
-          :draggable="root.kind === 'book'"
+          :draggable="canDragBook(dragEnabled, root.item.type)"
           @click="handleCompactClick(root, $event)"
           @contextmenu.prevent.stop="handleCompactContextMenu(root, $event)"
           @dragstart="root.kind === 'book' && isBook(root.item) ? handleBookDragStart(root.item.data, $event) : undefined"
@@ -21,11 +21,13 @@
           <span v-if="isSelectable(root.item)" class="b3-list-item__toggle b3-list-item__toggle--hl" :style="compactToggleStyle(root)" @click.stop="toggleSelected(root.item)">
             <svg class="b3-list-item__arrow"><use :xlink:href="isSelected(root.item) ? '#iconCheck' : '#iconUncheck'" /></svg>
           </span>
-          <span v-else class="b3-list-item__toggle b3-list-item__toggle--hl" :class="{ fn__hidden: root.kind !== 'group' }" :style="compactToggleStyle(root)">
-            <svg class="b3-list-item__arrow" :class="{ 'b3-list-item__arrow--open': root.kind === 'group' && isCompactExpanded(root.item.data.id) }"><use xlink:href="#iconRight" /></svg>
+          <span v-else class="b3-list-item__toggle b3-list-item__toggle--hl" :style="compactToggleStyle(root)">
+            <svg v-if="root.kind === 'group'" class="b3-list-item__arrow" :class="{ 'b3-list-item__arrow--open': isCompactExpanded(root.item.data.id) }"><use xlink:href="#iconRight" /></svg>
+            <svg v-else class="b3-list-item__arrow bs-tree-leaf-mark" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3" /></svg>
           </span>
           <span class="b3-list-item__text ariaLabel" data-position="parentE" :aria-label="mainText(root.item)" data-playlist-item>{{ mainText(root.item) }}</span>
-          <span v-if="compactMeta(root.item)" class="b3-list-item__meta" data-playlist-item>{{ compactMeta(root.item) }}</span>
+          <span v-if="compactStatusLabel(root.item)" class="bs-status-dot b3-tooltips b3-tooltips__w" :class="compactStatusClass(root.item)" :aria-label="compactStatusLabel(root.item)" data-playlist-item></span>
+          <span v-if="compactMeta(root.item)" class="b3-list-item__meta" :class="{ 'bs-compact-progress': isBook(root.item) }" data-playlist-item>{{ compactMeta(root.item) }}</span>
         </li>
         <ul v-if="root.children.length" class="b3-list b3-list--background bs-tree-children">
           <li
@@ -37,7 +39,7 @@
             data-playlist-item
             :class="{ dragover: isGroupDropTarget(child), 'b3-list-item--focus': isSelected(child.item) }"
             :style="compactItemStyle(child)"
-            :draggable="child.kind === 'book'"
+            :draggable="canDragBook(dragEnabled, child.item.type)"
             @click="handleCompactClick(child, $event)"
             @contextmenu.prevent.stop="handleCompactContextMenu(child, $event)"
             @dragstart="child.kind === 'book' && isBook(child.item) ? handleBookDragStart(child.item.data, $event) : undefined"
@@ -49,11 +51,13 @@
             <span v-if="isSelectable(child.item)" class="b3-list-item__toggle b3-list-item__toggle--hl" :style="compactToggleStyle(child)" @click.stop="toggleSelected(child.item)">
               <svg class="b3-list-item__arrow"><use :xlink:href="isSelected(child.item) ? '#iconCheck' : '#iconUncheck'" /></svg>
             </span>
-            <span v-else class="b3-list-item__toggle b3-list-item__toggle--hl" :class="{ fn__hidden: child.kind !== 'group' }" :style="compactToggleStyle(child)">
-              <svg class="b3-list-item__arrow" :class="{ 'b3-list-item__arrow--open': child.kind === 'group' && isCompactExpanded(child.item.data.id) }"><use xlink:href="#iconRight" /></svg>
+            <span v-else class="b3-list-item__toggle b3-list-item__toggle--hl" :style="compactToggleStyle(child)">
+              <svg v-if="child.kind === 'group'" class="b3-list-item__arrow" :class="{ 'b3-list-item__arrow--open': isCompactExpanded(child.item.data.id) }"><use xlink:href="#iconRight" /></svg>
+              <svg v-else class="b3-list-item__arrow bs-tree-leaf-mark" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3" /></svg>
             </span>
             <span class="b3-list-item__text ariaLabel" data-position="parentE" :aria-label="mainText(child.item)" data-playlist-item>{{ mainText(child.item) }}</span>
-            <span v-if="compactMeta(child.item)" class="b3-list-item__meta" data-playlist-item>{{ compactMeta(child.item) }}</span>
+            <span v-if="compactStatusLabel(child.item)" class="bs-status-dot b3-tooltips b3-tooltips__w" :class="compactStatusClass(child.item)" :aria-label="compactStatusLabel(child.item)" data-playlist-item></span>
+            <span v-if="compactMeta(child.item)" class="b3-list-item__meta" :class="{ 'bs-compact-progress': isBook(child.item) }" data-playlist-item>{{ compactMeta(child.item) }}</span>
           </li>
         </ul>
       </ul>
@@ -69,7 +73,7 @@
         :key="itemKey(item)"
         class="bs-grid-item"
         :class="{ 'is-selected': isSelectableBook(item) && isBookSelected(item.data) }"
-        :draggable="isBook(item)"
+        :draggable="canDragBook(dragEnabled, item.type)"
         @click="handleClick(item, $event)"
         @contextmenu.prevent="handleContextMenu(item, $event)"
         @dragstart="handleItemDragStart(item, $event)"
@@ -112,7 +116,7 @@
         :key="itemKey(item)"
         class="b3-list-item b3-list-item--hide-action bs-row"
         :class="{ 'is-drop-target': isGroupDropTarget(item), 'is-selected': isSelectableBook(item) && isBookSelected(item.data) }"
-        :draggable="isBook(item)"
+        :draggable="canDragBook(dragEnabled, item.type)"
         @click="handleClick(item, $event)"
         @contextmenu.prevent="handleContextMenu(item, $event)"
         @dragstart="handleItemDragStart(item, $event)"
@@ -178,7 +182,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import type { BookImportItem } from '@/composables/useBookImport'
-import { bookInGroup, type Book, type BookStatus, type BookshelfViewMode, type GroupConfig } from '@/core/bookshelf'
+import { bookInGroup, canDragBook, type Book, type BookStatus, type BookshelfViewMode, type GroupConfig } from '@/core/bookshelf'
 
 type GroupItem = { type: 'group'; data: GroupConfig }
 type BookItem = { type: 'book'; data: Book }
@@ -205,7 +209,8 @@ const props = withDefaults(defineProps<{
   dense?: boolean
   showGroupMeta?: boolean
   hiddenItems?: string[]
-}>(), { gridStyle: () => ({}), groupCounts: () => ({}), currentGroup: null, currentGroupIsSmart: false, dense: false, showGroupMeta: true })
+  dragEnabled?: boolean
+}>(), { gridStyle: () => ({}), groupCounts: () => ({}), currentGroup: null, currentGroupIsSmart: false, dense: false, showGroupMeta: true, dragEnabled: true })
 
 const emit = defineEmits<{
   'select-group': [id: string]
@@ -296,7 +301,7 @@ const isGroupDropTarget = (row: CompactRow | Item) => {
   return !!groupId && dragTargetGroupId.value === groupId
 }
 const canDropToGroup = (groupId: string) => !draggedBookGroups.value.includes(groupId)
-const showHomeDrop = computed(() => !props.currentGroupIsSmart && !!draggedBookUrl.value && !!draggedBookGroups.value.length)
+const showHomeDrop = computed(() => props.dragEnabled && !props.currentGroupIsSmart && !!draggedBookUrl.value && !!draggedBookGroups.value.length)
 const resetDragState = () => {
   draggedBookUrl.value = ''
   draggedBookGroups.value = []
@@ -305,14 +310,16 @@ const resetDragState = () => {
 }
 const handleItemDragStart = (item: Item, event: DragEvent) => isBook(item) && handleBookDragStart(item.data, event)
 const handleBookDragStart = (book: Book, event: DragEvent) => {
+  if (!props.dragEnabled) return event.preventDefault()
   draggedBookUrl.value = book.url
   draggedBookGroups.value = [...book.groups]
   event.dataTransfer?.setData('text/plain', book.url)
   if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move'
 }
 const handleBookDragEnd = () => { resetDragState() }
-const dragBookUrl = (event?: DragEvent) => draggedBookUrl.value || event?.dataTransfer?.getData('text/plain') || ''
+const dragBookUrl = (event?: DragEvent) => props.dragEnabled ? draggedBookUrl.value || event?.dataTransfer?.getData('text/plain') || '' : ''
 const handleGroupDragOver = (row: CompactRow | Item, event: DragEvent) => {
+  if (!props.dragEnabled) return
   const groupId = getDropGroupId(row)
   if (!groupId || !canDropToGroup(groupId)) return
   event.preventDefault()
@@ -326,6 +333,7 @@ const handleGroupDragLeave = (row: CompactRow | Item) => {
   if (groupId && dragTargetGroupId.value === groupId) dragTargetGroupId.value = ''
 }
 const handleGroupDrop = (row: CompactRow | Item, event: DragEvent) => {
+  if (!props.dragEnabled) return
   const groupId = getDropGroupId(row)
   const url = dragBookUrl(event)
   if (!groupId) return
@@ -404,6 +412,8 @@ const groupChips = (group: GroupConfig) => [
 const authorText = (item: Item) => isGroup(item) ? (item.data.type === 'smart' ? '智能分组' : '分组') : isBook(item) ? item.data.author || '未知作者' : item.data.preview?.author || '未知作者'
 const onCompactHover = (event: MouseEvent) => (event.target as HTMLElement).hasAttribute('data-playlist-item') && event.stopPropagation()
 const compactMeta = (item: Item) => isGroup(item) ? (props.showGroupMeta ? countText(groupCount(item.data)) : '') : isBook(item) ? (hidden('progress') ? '' : props.getProgress(item.data)) : importStateText(item.data)
+const compactStatusLabel = (item: Item) => isBook(item) && !hidden('status') ? props.statusMap[item.data.status] : ''
+const compactStatusClass = (item: Item) => isBook(item) ? `bs-status-dot--${item.data.status}` : ''
 const sideTexts = (item: Item) => isGroup(item) ? [countText(groupCount(item.data))] : isBook(item) ? [] : [importStateText(item.data)]
 const groupCoverUrls = (item: Item) => isGroup(item) ? props.getGroupCoverUrls(item.data) : []
 const bookTags = (book: Book) => book.tags.slice(0, 4)
@@ -449,9 +459,15 @@ const tagStyle = (tag: string) => {
 .bs-view{min-height:0;height:100%;padding:0;box-sizing:border-box}
 .bs-tree-view{padding-top:8px}
 .bs-tree-view--dense{padding-top:2px}
-.bs-tree-view--dense .b3-list{padding:0;margin:0}
+.bs-tree-view .b3-list{padding:0;margin:0}
 .bs-tree-view--dense .b3-list-item{padding-right:4px}
 .bs-tree-children{padding:0;margin:0}
+.bs-tree-leaf-mark{fill:currentColor;opacity:.7}
+.bs-status-dot{flex:0 0 auto;width:7px;height:7px;margin:0 0 0 2px;border-radius:50%;box-shadow:0 0 0 1px color-mix(in srgb,currentColor 28%,transparent)}
+.bs-status-dot--unread{background:#f59e0b;color:#f59e0b}
+.bs-status-dot--reading{background:var(--b3-theme-primary);color:var(--b3-theme-primary)}
+.bs-status-dot--finished{background:var(--b3-card-success-color,#2aa775);color:var(--b3-card-success-color,#2aa775)}
+.bs-tree-view .bs-compact-progress{flex:0 0 4ch;width:4ch;margin-left:2px;overflow:hidden;text-align:right;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
 .bs-home-drop{display:none}
 .bs-list :deep(.b3-list-item){margin:0}
 .bs-grid{display:grid;gap:6px;overflow:auto;scrollbar-gutter:stable;align-content:start;padding:8px 0 8px 8px;box-sizing:border-box}

@@ -15,7 +15,7 @@ import { alignLegacyPdfAnnotations, needsLegacyPdfTextAlign } from '@/core/dataM
 import { createTooltip, showTooltip } from '@/core/MarkManager'
 import { copyMark } from '@/utils/copy'
 import { buildEmbedPdfTheme, embedPdfThemePreference } from '@/utils/embedPdfTheme'
-import { addMissingPdfMenuItemsAfterFirst, capturePdfAnnotationImage, createEmbedPdfDocumentSource, ensureEmbedPdfStampManifests, ensureEmbedPdfWasmUrl, getPdfSelectionMark, initEmbedPdfViewer, pdfAnnotationNote, pdfAnnotationText, pdfAnnotationWithReplies, pdfMarkFromAnnotation, pdfSelectionFromAnnotation, sendPdfMarkToDoc, taskToPromise, writeBlobToClipboard } from '@/utils/embedPdfActions'
+import { addMissingPdfMenuItemsAfterFirst, capturePdfAnnotationImage, createEmbedPdfDocumentSource, ensureEmbedPdfStampManifests, ensureEmbedPdfWasmUrl, filterPdfSelectionColumns, getPdfSelectionMark, initEmbedPdfViewer, pdfAnnotationNote, pdfAnnotationText, pdfAnnotationWithReplies, pdfMarkFromAnnotation, pdfSelectionFromAnnotation, restorePdfAnnotationTool, sendPdfMarkToDoc, taskToPromise, writeBlobToClipboard } from '@/utils/embedPdfActions'
 import { settingsManager, type ReaderSettings, type ReadTheme } from '@/composables/useSetting'
 import { isMobile } from '@/utils/mobile'
 import Translate from './Translate.vue'
@@ -24,7 +24,7 @@ import { pdfQuickSendCommandId } from '@/utils/keyboard'
 type EmbedPdfContainer = any
 type PluginRegistry = any
 type PdfAssets = { wasmUrl: string; stampManifests: any[] }
-type PdfCommandDefinition = { id: string; label: string; icon?: string; categories?: string[]; action: (context?: any) => void | Promise<void>; visible?: (context?: any) => boolean; disabled?: (context?: any) => boolean }
+type PdfCommandDefinition = { id: string; label: string; icon?: string; categories?: string[]; action: (context?: any) => void | Promise<void>; active?: (context?: any) => boolean; visible?: (context?: any) => boolean; disabled?: (context?: any) => boolean }
 const props = defineProps<{ source: File | string | null; settings?: ReaderSettings; theme?: string; customTheme?: ReadTheme; bookUrl?: string; storageKey?: string; hideAnnotations?: boolean; i18n?: any }>()
 const storageKey = () => props.storageKey || props.bookUrl || ''
 const emit = defineEmits<{ ready: [registry: PluginRegistry] }>()
@@ -76,8 +76,12 @@ let viewerToken = 0
 let copyNextCapture = false
 let lastCaptureBlob: Blob | null = null
 let zoomSaveTimer: any = null
+let pdfAnnotationToolLocked = false
+let lastPdfAnnotationToolId = ''
 const disposePdfViewer = () => {
   viewerToken++
+  pdfAnnotationToolLocked = false
+  lastPdfAnnotationToolId = ''
   activeViewer?.remove?.()
   activeViewer = null
   viewerHostRef.value?.replaceChildren()
@@ -111,6 +115,7 @@ const pdfThemePreference = () => embedPdfThemePreference(props.theme, rootRef.va
 const normalizePdfZoomLevel = (value: unknown) => value === 'automatic' || value === 'fit-page' || value === 'fit-width' || (typeof value === 'number' && Number.isFinite(value) && value > 0) ? value : undefined
 const pdfZoomLevel = () => normalizePdfZoomLevel(props.settings?.pdfZoomLevel)
 const pdfInitialZoomLevel = () => { const value = pdfZoomLevel(); return typeof value === 'number' ? undefined : value }
+const pdfPageBehavior = () => props.settings?.pageAnimation === 'push' ? 'instant' : 'smooth'
 const readerSettings = () => ((window as any).__sireader_settings || props.settings) as ReaderSettings | undefined
 const nextIdle = () => new Promise<void>(resolve => 'requestIdleCallback' in window ? requestIdleCallback(() => resolve(), { timeout: 800 }) : setTimeout(resolve))
 const ensurePageThemeStyle = () => {
@@ -237,6 +242,45 @@ const createPdfHoleFromSelection = async (registry: PluginRegistry) => {
   selection?.clear?.()
   queueAnnotationSave(registry)
   refreshPdfTooltipAnnotations()
+}
+const createPdfTranslationAnnotation = async (registry: PluginRegistry, text: string, translation: string) => {
+  const selection = getCapability<any>(registry, 'selection')?.forDocument(documentId)
+  try {
+    const formatted = filterPdfSelectionColumns(selection?.getFormattedSelection?.() || [])
+    const parentId = `translation-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+    for (const item of formatted) {
+      if (!item?.rect || !item.segmentRects?.length) continue
+      const itemParentId = `${parentId}-${item.pageIndex}`
+      activeAnnotationScope?.createAnnotation?.(item.pageIndex, {
+        id: itemParentId,
+        type: 9,
+        pageIndex: item.pageIndex,
+        rect: item.rect,
+        segmentRects: item.segmentRects,
+        color: '#FFCD45',
+        strokeColor: '#FFCD45',
+        opacity: 1,
+        blendMode: 1,
+        custom: { type: 'translation', text },
+      })
+      activeAnnotationScope?.createAnnotation?.(item.pageIndex, {
+        id: `${itemParentId}-reply`,
+        type: 0,
+        pageIndex: item.pageIndex,
+        rect: { origin: { x: item.rect.origin.x, y: item.rect.origin.y }, size: { width: 24, height: 24 } },
+        contents: translation,
+        inReplyToId: itemParentId,
+        replyType: 1,
+        custom: { type: 'translation-reply' },
+      })
+    }
+    selection?.clear?.()
+    queueAnnotationSave(registry)
+    refreshPdfTooltipAnnotations()
+    showMessage(props.i18n?.saved || '已添加翻译批注', 1200)
+  } catch (error: any) {
+    showMessage(error?.message || '翻译失败', 2000, 'error')
+  }
 }
 const updateSelectedPdfBlockId = (registry: PluginRegistry) => async (item: any, updates: any) => {
   const annotation = item?.annotation || selectedPdfAnnotation()
@@ -369,18 +413,17 @@ const copyCaptureBlob = async (blob: Blob) => {
   await writeBlobToClipboard(blob)
   showMessage(props.i18n?.copied || '已复制', 1200)
 }
-const openPdfTranslate = (text: string) => {
+const openPdfTranslate = (text: string, onAddToAnnotation?: (translation: string) => void | Promise<void>) => {
   text = text.trim()
   if (!text) return showMessage(props.i18n?.noContent || '无内容', 1200)
   let app: any
   const dialog = new Dialog({
     title: props.i18n?.translate || '翻译',
-    content: '<div class="b3-dialog__content sireader-pdf-translate" style="height:100%;overflow:auto;padding:16px"></div>',
+    content: '<div class="b3-dialog__content sireader-pdf-translate" style="padding:16px"></div>',
     width: '520px',
-    height: '520px',
     destroyCallback: () => app?.unmount(),
   })
-  app = createApp(Translate, { text })
+  app = createApp(Translate, { text, onAddToAnnotation })
   app.mount(dialog.element.querySelector('.sireader-pdf-translate') as HTMLElement)
 }
 const setupPdfCommands = (registry: PluginRegistry) => {
@@ -391,9 +434,11 @@ const setupPdfCommands = (registry: PluginRegistry) => {
     const schema = ui.getSchema?.()
     if (!schema) return
     const isSireader = (item: any) => String(item?.commandId || '').startsWith('sireader:') || String(item?.id || '').startsWith('sireader-')
+    const cleanItems = (items: any[] = []): any[] => items.filter(item => !isSireader(item)).map(item => item.items ? { ...item, items: cleanItems(item.items) } : item)
     const selectionMenus = Object.fromEntries(Object.entries(schema.selectionMenus || {}).map(([key, menu]: any) => [key, { ...menu, items: (menu.items || []).filter((item: any) => !isSireader(item)) }]))
     const menus = Object.fromEntries(Object.entries(schema.menus || {}).map(([key, menu]: any) => [key, { ...menu, items: (menu.items || []).filter((item: any) => !isSireader(item)) }]))
-    ui.mergeSchema?.({ selectionMenus, menus })
+    const toolbars = Object.fromEntries(Object.entries(schema.toolbars || {}).map(([key, toolbar]: any) => [key, { ...toolbar, items: cleanItems(toolbar.items) }]))
+    ui.mergeSchema?.({ selectionMenus, menus, toolbars })
   }
   clearStalePdfSchema()
   disposePdfCommands(rawCommands)
@@ -408,6 +453,16 @@ const setupPdfCommands = (registry: PluginRegistry) => {
     const commandId = `sireader:send-${type}-menu`
     uiDoc?.openMenu?.(`sireader-pdf-send-${type}`, commandId, commandId)
   }
+  commands?.registerCommand?.({
+    id: 'sireader:lock-annotation-tool',
+    label: '绘制后保持所选的工具栏状态',
+    icon: 'lock',
+    categories: ['tools'],
+    action: () => {
+      pdfAnnotationToolLocked = !pdfAnnotationToolLocked
+    },
+    active: () => pdfAnnotationToolLocked,
+  })
   commands?.registerCommand?.({
     id: 'sireader:copy-annotation-link',
     label: '复制回链',
@@ -459,7 +514,7 @@ const setupPdfCommands = (registry: PluginRegistry) => {
   })
   ;[
     ['dict', props.i18n?.dict || '词典', 'book', async (mark: any) => (await import('@/utils/dictionary')).openDict(mark.text, innerWidth / 2, innerHeight / 2, mark)],
-    ['translate', props.i18n?.translate || '翻译', 'text', (mark: any) => openPdfTranslate(mark.text)],
+    ['translate', props.i18n?.translate || '翻译', 'text', (mark: any) => openPdfTranslate(mark.text, translation => createPdfTranslationAnnotation(registry, mark.text, translation))],
   ].forEach(([id, label, icon, run]: any) => commands?.registerCommand?.({ id: `sireader:${id}-selection`, label, icon, action: async () => { const mark = await selectedMark(); if (mark?.text) run(mark) } }))
   docs.forEach((doc: any) => commands?.registerCommand?.({
     id: pdfQuickSendCommandId('selection', doc.id),
@@ -511,8 +566,20 @@ const setupPdfCommands = (registry: PluginRegistry) => {
   const annotationMenu = schema?.selectionMenus?.annotation
   const selectionMenu = schema?.selectionMenus?.selection
   const documentMenu = schema?.menus?.document
-  if (!annotationMenu && !selectionMenu && !documentMenu) return
-  const requiredIds = ['sireader:copy-annotation-link', 'sireader:dict-annotation', 'sireader:translate-annotation', 'sireader:create-hole', 'sireader:dict-selection', 'sireader:translate-selection', 'sireader:capture-copy', ...docs.flatMap((doc: any) => [pdfQuickSendCommandId('selection', doc.id), pdfQuickSendCommandId('annotation', doc.id)])]
+  const toolbars = { ...schema?.toolbars }
+  const mainToolbar = toolbars['main-toolbar']
+  const mainGroup = mainToolbar?.items?.find((item: any) => item.id === 'center-group')
+  if (mainToolbar && mainGroup && !mainGroup.items.some((item: any) => item.id === 'sireader-lock-annotation-tool')) {
+    const panIndex = mainGroup.items.findIndex((item: any) => item.id === 'pan-button')
+    const lockIndex = panIndex > 0 && mainGroup.items[panIndex - 1]?.type === 'divider' ? panIndex - 1 : panIndex
+    toolbars['main-toolbar'] = { ...mainToolbar, items: mainToolbar.items.map((item: any) => item.id === 'center-group' ? { ...item, items: [
+      ...item.items.slice(0, lockIndex),
+      { type: 'command-button', id: 'sireader-lock-annotation-tool', commandId: 'sireader:lock-annotation-tool', variant: 'icon', categories: ['tools'] },
+      ...item.items.slice(lockIndex),
+    ] } : item) }
+  }
+  if (!annotationMenu && !selectionMenu && !documentMenu) return ui.mergeSchema?.({ toolbars })
+  const requiredIds = ['sireader:lock-annotation-tool', 'sireader:copy-annotation-link', 'sireader:dict-annotation', 'sireader:translate-annotation', 'sireader:create-hole', 'sireader:dict-selection', 'sireader:translate-selection', 'sireader:capture-copy', ...docs.flatMap((doc: any) => [pdfQuickSendCommandId('selection', doc.id), pdfQuickSendCommandId('annotation', doc.id)])]
   if (requiredIds.some(id => !installed.some(command => command.id === id))) return disposePdfCommands(rawCommands)
   if (annotationMenu) {
     const items = annotationMenu.items.filter((item: any) => !['sireader-send-annotation-list', 'sireader-send-annotation-divider', 'sireader-send-annotation-menu'].includes(item.id))
@@ -545,6 +612,7 @@ const setupPdfCommands = (registry: PluginRegistry) => {
   })
   const sendMenus = { 'sireader-pdf-send-annotation': sendMenu('annotation'), 'sireader-pdf-send-selection': sendMenu('selection') }
   ui.mergeSchema?.({
+    toolbars,
     selectionMenus: schema.selectionMenus,
     menus: documentMenu ? {
       ...schema.menus,
@@ -744,12 +812,13 @@ const handleReady = async (registry: PluginRegistry) => {
   setupPdfDoubleTapZoom(registry)
   setupPdfCapture(registry)
   let annotationsLoaded = false
+  const storedAnnotationIds = new Set<string>()
   const annotation = activeAnnotationScope
   const annotationIds = () => new Set(annotation?.getAnnotations?.()?.map((item: any) => item.object?.id).filter(Boolean) || [])
   const loadAnnotations = async () => {
     if (annotationsLoaded) return
     annotationsLoaded = true
-    if (!storageKey() || !annotation?.importAnnotations) {
+    if (!storageKey() || !annotation?.createAnnotation) {
       window.dispatchEvent(new Event('sireader:marks-updated'))
       refreshPdfTooltipAnnotations()
       return
@@ -757,6 +826,7 @@ const handleReady = async (registry: PluginRegistry) => {
     nativePdfAnnotationIds = annotationIds()
     const pageHeights = getPageHeights()
     const stored = await readEmbedPdfAnnotations(storageKey(), pageHeights).catch(() => null)
+    stored?.forEach((item: any) => storedAnnotationIds.add((item.annotation || item)?.id))
     const managed = stored?.filter((item: any) => !nativePdfAnnotationIds.has((item.annotation || item)?.id)) || []
     const aligned = managed.length && needsLegacyPdfTextAlign(managed) ? await alignLegacyPdfAnnotations(managed, registry, documents, documentId) : managed
     if ((stored?.length || 0) !== managed.length || aligned !== managed) await writeEmbedPdfAnnotations(storageKey(), aligned)
@@ -765,24 +835,37 @@ const handleReady = async (registry: PluginRegistry) => {
       const missing = aligned.filter((item: any) => !existing.has((item.annotation || item)?.id))
       if (missing.length) {
         if (missing.length > 500) await nextIdle()
-        annotation.importAnnotations(missing)
+        for (const item of missing) {
+          const value = item?.annotation || item
+          if (value?.id && Number.isFinite(Number(value.pageIndex))) {
+            annotation.createAnnotation?.(value.pageIndex, value)
+          }
+        }
       }
     }
     window.dispatchEvent(new Event('sireader:marks-updated'))
     refreshPdfTooltipAnnotations()
   }
   if (annotation) {
+    const offActiveTool = annotation.onActiveToolChange?.((tool: any) => {
+      if (tool?.id) lastPdfAnnotationToolId = tool.id
+    })
     const offEvent = annotation.onAnnotationEvent?.((event: any) => {
+      const id = event?.annotation?.id
+      const activeToolId = event?.type === 'create' && pdfAnnotationToolLocked ? lastPdfAnnotationToolId : null
       if (event?.type === 'loaded') {
+        nativePdfAnnotationIds = new Set([...annotationIds()].filter(id => !storedAnnotationIds.has(id)))
         void loadAnnotations()
-      } else if (!nativePdfAnnotationIds.has(event?.annotation?.id)) {
+      } else if (['create', 'update', 'delete'].includes(event?.type) && !nativePdfAnnotationIds.has(id)) {
         queueAnnotationSave(registry)
       }
+      if (activeToolId) restorePdfAnnotationTool(annotation, activeToolId)
       refreshPdfTooltipAnnotations()
     })
     const offState = annotation.onStateChange?.(refreshPdfTooltipAnnotations)
     cleanupAnnotationEvents = () => {
       clearTimeout(toolDefaultsTimer)
+      offActiveTool?.()
       offEvent?.()
       offState?.()
       offTools?.()
@@ -793,7 +876,7 @@ const handleReady = async (registry: PluginRegistry) => {
     if (event.documentId === documentId) showMessage(event.message || pdfLoadFailedMessage(), 3000, 'error')
   })
   cleanupDocumentEvents = () => offError?.()
-  if (annotationIds().size) void loadAnnotations()
+  void loadAnnotations()
   ensurePageThemeStyle()
   void nextTick(setupPdfTooltip)
 }
@@ -826,6 +909,12 @@ const config = computed(() => ({
   stamp: { manifests: pdfAssets.value?.stampManifests || [] },
   permissions: { enforceDocumentPermissions: true },
   capture: { imageType: 'image/png', scale: 2, withAnnotations: true },
+  annotations: { deactivateToolAfterCreate: true },
+  pan: { defaultMode: 'always' },
+  commands: {
+    'scroll:previous-page': { id: 'scroll:previous-page', labelKey: 'page.previous', icon: 'chevronLeft', categories: ['page', 'navigation', 'navigation-previous'], action: ({ registry, documentId }: any) => registry.getPlugin('scroll')?.provides()?.forDocument(documentId)?.scrollToPreviousPage(pdfPageBehavior()) },
+    'scroll:next-page': { id: 'scroll:next-page', labelKey: 'page.next', icon: 'chevronRight', categories: ['page', 'navigation', 'navigation-next'], action: ({ registry, documentId }: any) => registry.getPlugin('scroll')?.provides()?.forDocument(documentId)?.scrollToNextPage(pdfPageBehavior()) },
+  },
   scroll: { defaultBufferSize: 1 },
   zoom: { defaultZoomLevel: pdfInitialZoomLevel() ?? 'fit-width' },
   redaction: { useAnnotationMode: true, drawBlackBoxes: true },
@@ -908,6 +997,18 @@ onBeforeUnmount(() => {
   pdfTooltip?.remove()
   pdfTooltip = null
 })
+
+const resize = () => {
+  const container = rootRef.value?.querySelector('embedpdf-container') as HTMLElement | null
+  const shadow = container?.shadowRoot
+  const appRoot = shadow?.querySelector('.bg-bg-app') as HTMLElement | null
+  if (appRoot && !appRoot.children.length && activeViewer) {
+    disposePdfViewer()
+    void nextTick(mountPdfViewer)
+  }
+}
+
+defineExpose({ resize })
 </script>
 
 <style scoped>

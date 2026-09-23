@@ -139,7 +139,7 @@
 <script setup lang="ts">
 import {ref,computed,onMounted,onUnmounted,watch,nextTick,inject} from 'vue'
 import {bookshelfManager} from '@/core/bookshelf'
-import {useLicense} from '@/composables/useLicense'
+import {useLicense} from '@/core/license'
 
 const props=defineProps<{visible:boolean}>()
 const emit=defineEmits<{close:[];open:[book:any]}>()

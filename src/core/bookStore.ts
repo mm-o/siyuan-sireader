@@ -236,12 +236,14 @@ export const loadData = async <T = any>(key: string): Promise<T | null> => {
 
 export const saveData = async (key: string, data: any) => {
   const plugin = getPlugin()
+  if (!plugin || typeof (plugin as any).saveData !== 'function') return
   await plugin.saveData(key, data)
   if ((plugin as any).data) (plugin as any).data[key] = data
 }
 
 export const removeData = async (key: string) => {
   const plugin = getPlugin()
+  if (!plugin || typeof (plugin as any).removeData !== 'function') return
   await plugin.removeData(key)
   if ((plugin as any).data) delete (plugin as any).data[key]
 }
@@ -267,6 +269,20 @@ export const writeBookRecord = async (url: string, record: BookRecord) => {
   writeQueues.set(key, queued)
   return task
 }
+const updateBookRecord = async (url: string, update: (record: BookRecord | null) => BookRecord | Promise<BookRecord>) => {
+  const key = getRecordKey(url)
+  const task = (writeQueues.get(key) || Promise.resolve()).catch(() => {}).then(async () => {
+    const current = await readBookRecord(url)
+    const next = await update(current)
+    bookRecordCache.set(key, next)
+    await saveData(key, next)
+  })
+  const queued = task.finally(() => {
+    if (writeQueues.get(key) === queued) writeQueues.delete(key)
+  })
+  writeQueues.set(key, queued)
+  return task
+}
 export const removeBookRecord = async (url: string) => {
   const key = getRecordKey(url)
   bookRecordCache.delete(key)
@@ -279,8 +295,7 @@ const migratePdfRecordFor = (url: string, pageHeights: number[] = []) => ensureP
   removeLegacy: url => removeFile(getPluginStoragePath(getLegacyEmbedPdfRecordKey(url))),
 }, pageHeights)
 const writeEmbedPdfRecord = async (url: string, patch: Partial<BookRecord>) => {
-  const record = await readBookRecord(url)
-  await writeBookRecord(url, { version: 1, book: record?.book || {}, annotations: record?.annotations || [], progress: record?.progress, ...patch, migration: { ...(record?.migration || {}), pdfAnnotations: PDF_MIGRATION_VERSION }, updatedAt: Date.now() })
+  await updateBookRecord(url, record => ({ version: 1, book: record?.book || {}, annotations: record?.annotations || [], progress: record?.progress, ...patch, migration: { ...(record?.migration || {}), pdfAnnotations: PDF_MIGRATION_VERSION }, updatedAt: Date.now() }))
 }
 export const readEmbedPdfAnnotations = async (url: string, pageHeights: number[] = []): Promise<any[] | null> => {
   const record = await migratePdfRecordFor(url, pageHeights)

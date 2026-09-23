@@ -1,9 +1,9 @@
 ﻿<template>
   <div ref="containerRef" class="reader-container" tabindex="0" :style="{'--toolbar-opacity':(1-((currentSettings?.toolbarOpacity??70)/100))*.55}">
     <ReaderSplash v-if="showOpeningSplash" ref="readerSplashRef" :book-info="props.bookInfo" :file-name="props.file?.name" status="opening" />
-    <div v-if="loading" class="reader-loading"><div class="spinner"></div><div>{{ error || 'Loading...' }}</div></div>
+    <div v-if="loading || error" class="reader-loading"><div v-if="loading" class="spinner"></div><div>{{ error || 'Loading...' }}</div></div>
     <div v-if="showToc&&!loading" class="reader-overlay" @click="closePanels"/>
-    <EmbedPdfReader v-if="isEmbedPdfMode" :source="embedPdfSource" :book-url="currentBookUrl" :storage-key="props.bookInfo?.dataId || currentBookUrl" :settings="currentSettings" :theme="currentSettings?.theme" :custom-theme="currentSettings?.customTheme" :hide-annotations="embedPdfAnnotationsHidden" :i18n="i18n" class="viewer-container" @ready="handleEmbedPdfReady"/>
+    <EmbedPdfReader v-if="isEmbedPdfMode" ref="embedPdfReaderRef" :source="embedPdfSource" :book-url="currentBookUrl" :storage-key="props.bookInfo?.dataId || currentBookUrl" :settings="currentSettings" :theme="currentSettings?.theme" :custom-theme="currentSettings?.customTheme" :hide-annotations="embedPdfAnnotationsHidden" :i18n="i18n" class="viewer-container" @ready="handleEmbedPdfReady"/>
     <div v-else ref="viewerContainerRef" class="viewer-container"></div>
     <div v-if="!isEmbedPdfMode&&!loading" class="reader-progress" aria-hidden="true"><span :style="{transform:`scaleX(${readingProgress})`}"/></div>
     <Transition name="toc-popup">
@@ -68,13 +68,13 @@ import ReaderMarks from './ReaderMarks.vue'
 import Settings from './Settings.vue'
 import ReaderSplash from './ui/ReaderSplash.vue'
 import DockShell from './ui/DockShell.vue'
-import { gotoEPUB, initJump, pdfPageFromCfi } from '@/utils/jump'
+import { gotoEPUB, pdfPageFromCfi } from '@/utils/jump'
 import { copyMark as copyMarkUtil } from '@/utils/copy'
 import { capturePdfAnnotationImage, isPdfImageAnnotation, taskToPromise } from '@/utils/embedPdfActions'
 import { isUserEmbedPdfAnnotation } from '@/core/dataMigration'
 import { createKeyboardHandler, setupEpubKeyboard, shouldHandleReaderKeydown } from '@/utils/keyboard'
 import { getTTSController } from '@/services/TTSPlayer'
-import { useLicense } from '@/composables/useLicense'
+import { useLicense } from '@/core/license'
 const props = defineProps<{ file?: File; plugin: Plugin; settings?: ReaderSettings; url?: string; blockId?: string; bookInfo?: any; onReaderReady?: (r: FoliateReader) => void; i18n?: any }>()
 const i18n = computed(() => props.i18n || {})
 const { can, showUpgrade } = useLicense(i18n.value)
@@ -123,6 +123,7 @@ const handleSettingsUpdate=async(e:Event)=>{
 }
 const containerRef = ref<HTMLElement>()
 const viewerContainerRef = ref<HTMLElement>()
+const embedPdfReaderRef = ref<{ resize?: () => void } | null>(null)
 const readerSplashRef = ref<{ dismiss: () => void; cleanup: () => void; isVisible: () => boolean } | null>(null)
 const loading = ref(true)
 const error = ref('')
@@ -236,7 +237,7 @@ const initEmbedPdfMode=async(loadSource:()=>Promise<File|string|null>)=>{
   embedPdfMarks.value=[]
   embedPdfAnnotationsHidden.value=false
   markManager.value=null
-  currentView.value={engine:'embedpdf',isPdf:true,annotationsHidden:embedPdfAnnotationsHidden,marks:{getAnnotations:()=>embedPdfMarks.value.filter((item:any)=>item.type!=='bookmark'),getBookmarks:()=>embedPdfMarks.value.filter((item:any)=>item.type==='bookmark'),updateMark:updateEmbedPdfMark,deleteMark:deleteEmbedPdfMark,toggleBookmark:toggleEmbedPdfBookmark,imageMark:imageEmbedPdfMark},goTo:(page:any,id?:string)=>{const pageNumber=Number(page)||1;embedPdfPages.value?.scrollToPage({pageNumber,behavior:'smooth'});if(id)requestAnimationFrame(()=>embedPdfAnnotations.value?.selectAnnotation?.(pageNumber-1,id))},getCurrentPage:()=>embedPdfPages.value?.getCurrentPage?.()||1,toggleAnnotationsHidden:()=>embedPdfAnnotationsHidden.value=!embedPdfAnnotationsHidden.value,cleanup:()=>{cleanupEmbedPdfEvents?.();cleanupEmbedPdfEvents=null;embedPdfSource.value=null;embedPdfPages.value=null;embedPdfAnnotations.value=null;embedPdfNativeIds=new Set();embedPdfMarks.value=[];embedPdfAnnotationsHidden.value=false}}
+  currentView.value={engine:'embedpdf',isPdf:true,annotationsHidden:embedPdfAnnotationsHidden,marks:{getAnnotations:()=>embedPdfMarks.value.filter((item:any)=>item.type!=='bookmark'),getBookmarks:()=>embedPdfMarks.value.filter((item:any)=>item.type==='bookmark'),updateMark:updateEmbedPdfMark,deleteMark:deleteEmbedPdfMark,toggleBookmark:toggleEmbedPdfBookmark,imageMark:imageEmbedPdfMark},goTo:(page:any,id?:string)=>{const pageNumber=Number(page)||1;embedPdfPages.value?.scrollToPage({pageNumber,behavior:getSettings()?.pageAnimation==='push'?'instant':'smooth'});if(id)requestAnimationFrame(()=>embedPdfAnnotations.value?.selectAnnotation?.(pageNumber-1,id))},getCurrentPage:()=>embedPdfPages.value?.getCurrentPage?.()||1,toggleAnnotationsHidden:()=>embedPdfAnnotationsHidden.value=!embedPdfAnnotationsHidden.value,cleanup:()=>{cleanupEmbedPdfEvents?.();cleanupEmbedPdfEvents=null;embedPdfSource.value=null;embedPdfPages.value=null;embedPdfAnnotations.value=null;embedPdfNativeIds=new Set();embedPdfMarks.value=[];embedPdfAnnotationsHidden.value=false}}
   setActiveReader(currentView.value,null,getSettings())
 }
 const handleEmbedPdfReady=(registry:any)=>{
@@ -273,7 +274,7 @@ const handleEmbedPdfReady=(registry:any)=>{
 }
 const loadViewer=()=>document.getElementById('protyleViewerScript')?Promise.resolve():new Promise<void>((resolve,reject)=>{
   const s=document.createElement('script')
-  s.id='protyleViewerScript';s.src='/stage/protyle/js/viewerjs/viewer.js?v=1.11.7';s.onload=()=>resolve();s.onerror=()=>reject(new Error('viewer.js load failed'));document.head.appendChild(s)
+  s.id='protyleViewerScript';s.src='/stage/protyle/js/viewerjs/viewer.js?v=1.11.8';s.onload=()=>resolve();s.onerror=()=>reject(new Error('viewer.js load failed'));document.head.appendChild(s)
 })
 let activeMediaMenu:any=null
 const closeMediaMenu=()=>{activeMediaMenu?.element?.remove?.();activeMediaMenu=null}
@@ -283,6 +284,17 @@ const openImageMenu = ({ item, x, y }: any) => openMediaMenu(x, y, m => {
   m.addItem({ icon: 'iconUpload', label: '导出图片', click: () => handleCopy(item) })
   m.addItem({ icon: 'iconMark', label: '标注图片', click: async () => markPanelRef.value?.showCard(await (markManager.value as any)?.addImageMark(item.image, item.text, item.cfi), x, y, true) })
 })
+const copyImageAsPng=async(src:string)=>{
+  try{
+    const image=new Image()
+    image.src=src
+    await new Promise((resolve,reject)=>{image.onload=resolve;image.onerror=reject})
+    const canvas=document.createElement('canvas');canvas.width=image.naturalWidth;canvas.height=image.naturalHeight
+    canvas.getContext('2d')?.drawImage(image,0,0)
+    const blob=await new Promise<Blob|null>(resolve=>canvas.toBlob(resolve,'image/png'))
+    if(blob) await navigator.clipboard.write([new ClipboardItem({'image/png':blob})])
+  }catch{showMessage('复制图片失败',2000,'error')}
+}
 const openImageViewer=async({item}:any)=>{
   if(!item?.image)return
   await loadViewer().catch(()=>{})
@@ -290,11 +302,13 @@ const openImageViewer=async({item}:any)=>{
   const root=document.createElement('ul')
   const mediaSrc=(el:any,doc:any)=>{if(el.localName==='img')return el.currentSrc||el.src;const image=el.querySelector?.('image');const href=image?.getAttribute('href')||image?.getAttributeNS?.('http://www.w3.org/1999/xlink','href');return href&&(/^data:|^blob:|^[a-z]+:/i.test(href)?href:new URL(href,doc.baseURI).href)}
   const images=[...new Set([...(reader?.getView?.()?.renderer?.getContents?.()?.flatMap(({doc}:any)=>Array.from(doc.querySelectorAll('img, svg')).map((el:any)=>mediaSrc(el,doc)))||[]),item.image].filter(Boolean))]
-  images.forEach((src:any)=>{const li=document.createElement('li');li.appendChild(Object.assign(document.createElement('img'),{src,alt:item.text||''}));root.appendChild(li)})
-  const initialViewIndex=Math.max(0,images.indexOf(item.image))
-  ;(window as any).siyuan ||= {}
-  const viewer=(window as any).siyuan.viewer=new (window as any).Viewer(root,{button:false,initialViewIndex,transition:false,hidden(){viewer.destroy()},toolbar:{close(){viewer.destroy()},flipHorizontal:true,flipVertical:true,next:true,oneToOne:true,play:true,prev:true,reset:true,rotateLeft:true,rotateRight:true,zoomIn:true,zoomOut:true}})
-  viewer.show();viewer.view(initialViewIndex)
+  images.forEach((src:any)=>{const li=document.createElement('li');li.innerHTML=`<img src="${encodeURI(src)}">`;root.appendChild(li)})
+  let initialViewIndex=-1
+  images.some((src:any,index)=>{if(item.image.endsWith(encodeURI(src))||item.image.endsWith(src)){initialViewIndex=index;return true}return false})
+  let cleaned=false
+  const close=()=>{viewer.destroy();if(!cleaned)cleaned=true}
+  const viewer=(window as any).siyuan.viewer=new (window as any).Viewer(root,{initialViewIndex:item.image?initialViewIndex:0,title:[1,(image:HTMLImageElement,data:any)=>{let name=image.alt||image.src.substring(image.src.lastIndexOf('/')+1);name=name.substring(0,name.lastIndexOf('.')).replace(/-\d{14}-\w{7}$/,'');return `${name} [${data.naturalWidth} × ${data.naturalHeight}]`}],button:false,transition:false,ready:()=>{const languages=(window as any).siyuan.languages||{};const labels:any={'zoom-in':languages.zoomIn||'放大','zoom-out':languages.zoomOut||'缩小','one-to-one':languages.pageScaleActual||'原始大小',reset:languages.reset||'重置',prev:languages.previous||'上一张',play:languages.imageViewerPlay||'播放',next:languages.next||'下一张','rotate-left':languages.rotateCcw||'逆时针旋转','rotate-right':languages.rotateCw||'顺时针旋转','flip-horizontal':languages.imageFlipHorizontal||'水平翻转','flip-vertical':languages.imageFlipVertical||'垂直翻转',copy:languages.copyAsPNG||'复制为 PNG','copy-file':languages.copyFile||'复制文件',close:languages.close||'关闭'};const copy=viewer.toolbar.querySelector('.viewer-copy');if(copy)copy.innerHTML='<svg><use xlink:href="#iconImage"></use></svg>';const copyFile=viewer.toolbar.querySelector('.viewer-copy-file');if(copyFile){copyFile.innerHTML='<svg><use xlink:href="#iconFile"></use></svg>';copyFile.classList.add('fn__none')}Object.entries(labels).forEach(([action,label])=>{const button=viewer.toolbar.querySelector(`.viewer-${action}`);button?.classList.add('ariaLabel');button?.setAttribute('aria-label',label as string);button?.setAttribute('data-position','north')})},hidden:close,view:()=>viewer.toolbar.querySelector('.viewer-copy-file')?.classList.add('fn__none'),viewed:()=>viewer.toolbar.querySelector('.viewer-copy-file')?.classList.add('fn__none'),toolbar:{zoomIn:true,zoomOut:true,oneToOne:true,reset:true,prev:true,play:true,next:true,rotateLeft:true,rotateRight:true,flipHorizontal:true,flipVertical:true,copy:()=>viewer.viewed&&viewer.image&&copyImageAsPng(viewer.image.src),copyFile:()=>{},close}})
+  viewer.show()
 }
 const openTableMenu = ({ item, x, y }: any) => openMediaMenu(x, y, m => {
   m.addItem({ icon: 'iconCopy', label: '复制表格', click: () => navigator.clipboard.writeText(item.html || item.text || '') })
@@ -325,7 +339,7 @@ const init=async()=>{
     if(isPdf){
       await initEmbedPdfMode(loadSource)
     }else{
-      reader=createReader({container:viewerContainerRef.value!,settings:getSettings()!,plugin:props.plugin})
+      reader=await createReader({container:viewerContainerRef.value!,settings:getSettings()!,plugin:props.plugin})
       await reader.open(async()=>await loadSource()||await Promise.reject(new Error('未提供书籍')),props.bookInfo?.format)
       const view=reader.getView()
       markManager.value=createMarkManager({format:'epub',view,plugin:props.plugin,bookUrl,bookName:getBookName(),reader})
@@ -360,7 +374,6 @@ const init=async()=>{
   }finally{
     loading.value=false
     setTimeout(()=>readerSplashRef.value?.dismiss(),300)
-        !props.bookInfo?.temporary&&!isEmbedPdfMode.value&&props.bookInfo?.pos?.cfi&&initJump(props.bookInfo.pos.cfi,currentBookUrl.value)
   }
 }
 const copyReaderMark=(item:any,clipboard=false)=>{
@@ -371,10 +384,11 @@ const handleCopy=(item:any)=>copyReaderMark(item)
 const handleCopyToClipboard=(item:any)=>copyReaderMark(item,true)
 const handleOpenDict=(text:string,x:number,y:number,selection:any)=>selection&&openDictDialog(text,x,y,selection)
 const isEpubScrollMode=()=>getSettings()?.viewMode==='scroll'
+const pdfPageBehavior=()=>getSettings()?.pageAnimation==='push'?'instant':'smooth'
 const flipPage=async(dir:'prev'|'next',distance?:number)=>{
   if(dir==='next'&&readerSplashRef.value?.isVisible())return readerSplashRef.value.dismiss()
   if(props.bookInfo?.temporary&&typeof props.bookInfo?.webpageTurn==='function')return props.bookInfo.webpageTurn(dir)
-  if(isEmbedPdfMode.value)return embedPdfPages.value?.[dir==='prev'?'scrollToPreviousPage':'scrollToNextPage']('smooth')
+  if(isEmbedPdfMode.value)return embedPdfPages.value?.[dir==='prev'?'scrollToPreviousPage':'scrollToNextPage'](pdfPageBehavior())
     if(reader)return isEpubScrollMode() ? reader[dir](distance) : reader[dir==='prev'?'goLeft':'goRight']()
   return currentView.value?.[dir]?.()||currentView.value?.[dir==='prev'?'goLeft':'goRight']?.()
 }
@@ -445,7 +459,10 @@ const events=[
 ]as const
 const suppressError=(e:PromiseRejectionEvent)=>/createTreeWalker|destroy/.test(e.reason?.message||'')&&e.preventDefault()
 const setupTabObserver=()=>{if(isMobile())return;let el=containerRef.value?.parentElement;while(el){if(el.hasAttribute('data-id')){const h=document.querySelector(`li[data-type="tab-header"][data-id="${el.getAttribute('data-id')}"]`);if(h){const obs=new MutationObserver(ms=>ms.forEach(m=>{if(m.type!=='attributes'||m.attributeName!=='class')return;const focused=(m.target as HTMLElement).classList.contains('item--focus');focused&&setActiveReader(currentView.value,reader,getSettings());focused&&window.dispatchEvent(new CustomEvent('sireader:tab-switched'));syncReaderFocus(focused&&hasReaderFocus())}));obs.observe(h,{attributes:true,attributeFilter:['class']});(containerRef.value as any).__observer=obs;break}}el=el.parentElement}}
-const resize=()=>reader?.resize?.()
+const resize=()=>{
+  if(isEmbedPdfMode.value) embedPdfReaderRef.value?.resize?.()
+  else reader?.resize?.()
+}
 defineExpose({ resize })
 onMounted(()=>{init();containerRef.value?.focus();events.forEach(([e,h])=>window.addEventListener(e,h as any));window.addEventListener('keydown',handleKeydown);window.addEventListener('unhandledrejection',suppressError);window.addEventListener('blur',handleWindowBlur);window.addEventListener('focus',handleWindowFocus);document.addEventListener('visibilitychange',handleVisibilityChange);setupTabObserver();const c=containerRef.value;c&&(c.addEventListener('focusin',handleFocusIn),c.addEventListener('focusout',handleFocusOut));bindTouchPaging(c);bindTouchPaging(viewerContainerRef.value);window.dispatchEvent(new CustomEvent('reader:open',{detail:{bookUrl:getBookUrl()}}));syncReaderFocus(true)})
 onUnmounted(async()=>{

@@ -6,8 +6,7 @@ import { DEFAULT_NAV_ITEMS, LINK_FORMAT_PRESETS, NOTE_MODE_LABELS, NOTE_MODE_OPT
 import { bookshelfManager } from '@/core/bookshelf'
 import { offlineDictManager, onlineDictManager } from '@/utils/dictionary'
 import { usePlugin } from '@/main'
-import { useLicense } from '@/composables/useLicense'
-import { focusMobileEditable } from '@/utils/mobile'
+import { useLicense } from '@/core/license'
 import { translators } from '@/services/translator'
 
 const props = defineProps<{modelValue:ReaderSettings;i18n:any;onSave:()=>Promise<void>}>()
@@ -72,7 +71,7 @@ const removingFont = ref<string|null>(null)
 const removingBackground = ref<string|null>(null)
 const quickDoc = useDocSearch(), insertDoc = useDocSearch()
 const {notebooks,load:loadNotebooks} = useNotebooks()
-const {license,userAvatar,code:activationCode,loading:loadingLicense,processing,load:loadLicense,activate:activateLicense,recover:recoverLicense,clear:clearLicense,can,showUpgrade} = useLicense(props.i18n)
+const {license,userAvatar,qr,loading:loadingLicense,processing,load:loadLicense,bind:bindLicense,cancelBind:cancelLicenseBind,recover:recoverLicense,can,showUpgrade} = useLicense(props.i18n)
 const licenseMedia = computed(() => getLicenseMedia(license.value, userAvatar.value, props.i18n))
 const ttsFields = computed(() => [...ttsItems, ...ttsOptions.map(item => ({ ...item, desc: ttsI18nKey(item.key,'Desc') }))])
 const linkFormatPresetOptions = Object.keys(LINK_FORMAT_PRESETS) as (keyof typeof LINK_FORMAT_PRESETS)[]
@@ -354,7 +353,6 @@ const pickFont = (f:FontFileInfo) => { loadFont(f); setFont(f) }
 const saveTheme = () => { if (!can.value('reader-theme')) return settings.value.theme='default', showUpgrade('主题配色'); save() }
 const openPage = (url:string) => window.open(url,'_blank')
 const dictHelpUrl = `https://github.com/mm-o/siyuan-sireader/blob/main/docs/${encodeURIComponent('离线词典使用说明.md')}`
-const openPurchasePage = () => openPage('https://pay.ldxp.cn/shop/J7MJJ8YR/lillyt')
 const openMembershipInfo = () => openPage('https://sireader.745201.xyz')
 
 // 打开授权面板
@@ -388,9 +386,9 @@ onUnmounted(() => window.removeEventListener('sireaderSettingsUpdated', syncAnno
           </SectionTitle>
           <template v-if="isOpen('license')">
             <SettingRows v-if="loadingLicense" :rows="[]" :loading="true" :i18n="i18n" />
-            <li v-else class="b3-list-item">
+            <li v-else class="b3-list-item sr-license-card">
               <span class="b3-list-item__toggle fn__hidden"></span>
-              <div class="fn__flex-1 fn__flex" style="gap:12px;align-items:flex-start">
+              <div class="fn__flex-1 fn__flex sr-license-info" style="gap:12px;align-items:flex-start">
                 <div class="fn__flex-center">
                   <div style="position:relative;width:48px;height:48px;display:inline-block;overflow:visible">
                     <img v-if="licenseMedia.avatar" :src="licenseMedia.avatar" loading="lazy" style="width:48px;height:48px;border-radius:50%;object-fit:cover;display:block">
@@ -400,34 +398,22 @@ onUnmounted(() => window.removeEventListener('sireaderSettingsUpdated', syncAnno
                 </div>
                 <div class="fn__flex-1 fn__flex-column">
                   <div class="fn__flex-1">
-                    {{ license?.userName || i18n.membership || '会员订阅' }}
+                    <strong>{{ licenseMedia.title }}</strong>
                     <div v-for="line in licenseMedia.lines" :key="line" class="ft__smaller ft__on-surface">{{ line }}</div>
-                    <input
-                      v-if="!license"
-                      v-model="activationCode"
-                      type="text"
-                      class="b3-text-field"
-                      :placeholder="i18n.enterActivationCode || '激活码'"
-                      :disabled="processing"
-                      @mousedown.stop
-                      @pointerdown.stop
-                      @touchend.stop="focusMobileEditable($event.target)"
-                    >
                   </div>
                 </div>
               </div>
-              <span class="fn__space"></span>
-              <div class="fn__flex" style="align-self:flex-end">
-                <template v-if="license">
-                  <span class="b3-list-item__action b3-tooltips b3-tooltips__nw" :aria-label="i18n.logout || '退出'" @click.stop="clearLicense"><svg><use xlink:href="#lucide-x"></use></svg></span>
-                  <span class="b3-list-item__action b3-tooltips b3-tooltips__nw" :aria-label="i18n.purchase || '购买'" @click.stop="openPurchasePage"><svg><use xlink:href="#lucide-shopping-bag"></use></svg></span>
-                </template>
-                <template v-else>
-                  <button class="b3-button b3-button--outline" :disabled="processing || !activationCode.trim()" @click.stop="activateLicense">{{ processing ? (i18n.processing || '处理中') : (i18n.activate || '激活') }}</button>
-                  <button class="b3-button b3-button--text" :disabled="processing" @click.stop="recoverLicense">{{ i18n.recover || '恢复' }}</button>
-                  <span class="b3-list-item__action b3-tooltips b3-tooltips__nw" :aria-label="i18n.purchase || '购买'" @click.stop="openPurchasePage"><svg><use xlink:href="#lucide-shopping-bag"></use></svg></span>
-                </template>
+              <span class="fn__space fn__hidden"></span>
+              <div class="fn__flex sr-license-actions">
+                <button class="b3-button b3-button--outline" :disabled="processing" @click.stop="bindLicense"><svg><use xlink:href="#lucide-qr-code"></use></svg>{{ license ? '扫码恢复权益' : '扫码绑定会员' }}</button>
+                <button class="b3-button b3-button--text" :disabled="processing" @click.stop="recoverLicense"><svg><use xlink:href="#lucide-refresh-cw"></use></svg>恢复权益</button>
               </div>
+            </li>
+            <li v-if="qr" class="b3-list-item sr-license-qr">
+              <div v-if="!qr.data" class="sr-license-qr-loading">正在获取二维码...</div>
+              <img v-else :src="qr.data" alt="思阅会员绑定小程序码">
+              <span class="ft__secondary">{{ license ? '扫码后自动恢复思阅会员权益' : '扫码后自动绑定并同步思阅会员权益' }}</span>
+              <button class="b3-button b3-button--text" @click.stop="cancelLicenseBind">取消</button>
             </li>
           </template>
         </ul>
@@ -599,6 +585,13 @@ onUnmounted(() => window.removeEventListener('sireaderSettingsUpdated', syncAnno
 .bs-tree :deep(.sr-section-title:hover > svg.b3-list-item__graphic){color:inherit;opacity:1}
 .sr-control{width:80px}
 .sr-settings-actions{display:flex;justify-content:center;align-items:center;gap:8px;padding:8px 0 0}
+.sr-license-actions{align-self:center;gap:4px;flex-wrap:wrap;justify-content:flex-end}
+.sr-license-card{display:flex;flex-direction:column;align-items:stretch;gap:10px}
+.sr-license-info{width:100%;align-items:flex-start}
+.sr-license-actions .b3-button{display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
+.sr-license-actions svg{width:14px;height:14px}
+.sr-license-qr{display:flex;flex-direction:column;align-items:center;gap:6px;padding:8px 12px 12px!important}
+.sr-license-qr img,.sr-license-qr-loading{display:block;width:220px;height:220px;border-radius:12px}.sr-license-qr-loading{display:flex;align-items:center;justify-content:center;color:var(--b3-theme-on-surface-light)}
 .bs-tree :deep(input[type="color"].sr-control){height:24px;padding:0;border:none;background:transparent}
 .license-highlight{animation:license-pulse 2s ease}
 @keyframes license-pulse {

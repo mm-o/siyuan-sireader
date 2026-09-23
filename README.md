@@ -7,7 +7,7 @@
 Transform SiYuan Notes into a professional eBook reader  
 Professional eBook reader for EPUB/PDF/MOBI/TXT/online novels. PDFs support highlights, ink, shapes, forms, stamps, signatures, images, screenshots, search, printing, export, and backlinks, with annotation notes, dictionary, translation, themes, and bookshelf management.
 
-[![Version](https://img.shields.io/badge/version-2.2.8-blue.svg)](https://github.com/your-repo/siyuan-sireader)
+[![Version](https://img.shields.io/badge/version-2.3.0-blue.svg)](https://github.com/your-repo/siyuan-sireader)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![SiYuan](https://img.shields.io/badge/SiYuan-3.0+-orange.svg)](https://github.com/siyuan-note/siyuan)
 
@@ -18,6 +18,41 @@ Professional eBook reader for EPUB/PDF/MOBI/TXT/online novels. PDFs support high
 ---
 
 ## 📝 Latest Updates
+
+### v2.3.0 (2026.9.23)
+
+### Added
+
+- Added search when importing books or moving them to a bookshelf group, making large group lists easier to navigate.
+- Added reading-status dots to compact bookshelf view to distinguish unread, in-progress, and completed books by color.
+- Added Tencent, Youdao, Volcengine, WeChat, and MyMemory translation engines. Volcengine and WeChat use the SiYuan network proxy and work on both desktop and mobile.
+- PDF translation results can now be added directly as annotations, preserving the selected source text and writing the translation as a reply.
+- Added a PDF annotation lock switch: after an annotation is completed, the toolbar either returns to hand-pan mode or keeps the selected annotation tool active.
+
+### Improved
+
+- Refined compact bookshelf layout with consistent group and book row heights, SiYuan-style hierarchy markers, and clearer status/progress alignment.
+- PDF page-turn settings now use EmbedPDF's official `instant` and `smooth` APIs for consistent TOC, annotation, and adjacent-page behavior; redundant interception and custom scrolling logic were removed for more stable navigation.
+- Shift-click resource links now use SiYuan's native logic to open in the system default application instead of being intercepted by SiReader.
+
+### Fixed
+
+- Fixed accidental drag-and-drop while swiping the bookshelf on mobile; mobile grouping now uses the book menu while desktop drag-and-drop remains available.
+- Fixed blank EPUB readers and missing TOCs in some mobile WebViews by restoring the required Foliate group APIs and initialization/progress-restore order.
+- Fixed errors from asynchronous saves running after a mobile plugin reload destroyed the plugin instance.
+- Fixed EPUB image annotation field mapping so image descriptions are saved as notes without occupying the text field.
+- Fixed cross-section EPUB footnotes that failed to open or displayed an entire chapter; standard `type="noteref"` / `type="rearnote"` structures are supported and popup height adapts to the footnote content.
+- Fixed concurrent progress and annotation saves overwriting one another when multiple PDF readers were open in split view by serializing merged writes.
+- Fixed PDF views being unloaded after a new tab was dragged into split view, which reset the page and hid annotations; the view is now rebuilt with reading state restored.
+- Fixed text selection crossing columns in double-column PDFs.
+- Fixed Microsoft translation returning the source text after an API failure and restored keyless translation.
+- Fixed WeRead toolbar buttons remaining after they were disabled or being registered repeatedly when re-enabled.
+- Fixed EPUB image browser behavior diverging from SiYuan's native interface by reusing its script version, toolbar, title, and preview behavior.
+
+### Authorization and Membership
+
+- Unified the short-path membership API to fix failures with legacy QR-code endpoints.
+- Improved QR-code authorization and membership-entitlement synchronization.
 
 ### v2.2.8 (2026.9.13)
 

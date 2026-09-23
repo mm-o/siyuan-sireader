@@ -21,7 +21,7 @@ export interface LayoutSettings { gap?: number; headerFooterMargin?: number; mar
 export interface VisualSettings { brightness: number; contrast: number; sepia: number; saturate: number; invert: boolean }
 export interface TTSVoice { name: string; displayName: string; locale: string; isLocal?: boolean }
 export interface TTSSettings { enabled: boolean; voice: string; rate: number; pitch: number; sentenceGap: number; paragraphGap: number; autoTurnPage: boolean; highlightText: boolean; favoriteVoices: TTSVoice[] }
-export interface TranslationSettings { autoOnSelection: boolean; engine: 'google' | 'azure' | 'yandex' | 'ai-free' | 'ai' }
+export interface TranslationSettings { autoOnSelection: boolean; engine: 'google' | 'azure' | 'transmart' | 'youdao' | 'volcengine' | 'wechat' | 'mymemory' | 'ai' }
 export interface ReaderSettings { enabled: boolean; openMode: 'newTab' | 'rightTab' | 'bottomTab' | 'newWindow'; navPosition: NavPosition; pageAnimation: PageTurnStyle; viewMode: ViewMode; theme: string; customTheme: ReadTheme; backgroundImage?: string; notebookId?: string; parentDoc?: DocInfo; noteInsertTarget: NoteInsertTarget; noteInsertMode: NoteInsertMode; linkFormat: string; annotationTagPresets: string; annotationSyncOnAdd: boolean; annotationSyncOnDelete: boolean; bookshelfCoverSize: number; bookshelfHiddenItems: string[]; openDocAssets: boolean; docAssetExcludeRegex: string; showWereadTopBar: boolean; epubOpeningSplash: boolean; toolbarOpacity: number; pdfZoomLevel?: 'automatic' | 'fit-page' | 'fit-width' | number; pdfAnnotationToolDefaults?: Record<string, Record<string, any>>; quickSendDocs?: DocInfo[]; navItems?: NavItem[]; textSettings: TextSettings; paragraphSettings: ParagraphSettings; layoutSettings: LayoutSettings; visualSettings: VisualSettings; translation: TranslationSettings; tts?: TTSSettings }
 
 // ===== 预设主题 =====
@@ -180,15 +180,21 @@ export const setCustomBackgroundFromInput = async (settings: ReaderSettings, e: 
   finally { input.value = '' }
 }
 export const licenseIcon = (type?: string) => ({ lifetime: '#iconLicenseLifetime', annual: '#iconLicenseAnnual', monthly: '#iconLicenseMonthly', trial: '#iconLicenseTrial' } as Record<string, string>)[type || ''] || '#iconLicenseTrial'
-export const licenseTypeText = (type: string | undefined, i18n: any) => i18n?.[type === 'lifetime' ? 'lifetimeVersion' : type === 'annual' ? 'annualVersion' : type === 'monthly' ? 'monthlyVersion' : 'trialVersion'] || type || ''
+export const licenseTypeText = (type: string | undefined, i18n: any) => {
+  const key = type === 'lifetime' ? 'lifetimeVersion' : type === 'annual' ? 'annualVersion' : type === 'monthly' ? 'monthlyVersion' : 'trialVersion'
+  return i18n?.[key] || ({ lifetime: '永久会员', annual: '年付会员', monthly: '月付会员', trial: '体验会员' } as Record<string, string>)[type || ''] || '会员'
+}
 export const licenseAvatar = (avatar = '') => avatar || ((globalThis as any)?.window?.siyuan?.user?.userAvatarURL || '')
-export const licenseLines = (license: any, i18n: any) => license ? [
-  `${i18n?.activated || '已激活'} · ${licenseTypeText(license.type, i18n)}`,
-  license.userId && `ID ${license.userId}`,
-  license.activatedAt && `${i18n?.activatedAt || '激活于'} ${new Date(license.activatedAt).toLocaleDateString()}`,
-  license.expiresAt && license.expiresAt !== 0 && `${i18n?.expiresAt || '到期'} ${new Date(license.expiresAt).toLocaleDateString()}`
-].filter(Boolean) : [i18n?.notActivated || '未激活']
-export const getLicenseMedia = (license: any, avatar: string, i18n: any) => ({ avatar: licenseAvatar(avatar), icon: licenseIcon(license?.type), lines: licenseLines(license, i18n) })
+export const licenseLines = (license: any) => license ? [
+  `${license.userName || '思源用户'} · ID ${license.userId}`,
+  license.expiresAt > 0 ? `有效期至 ${new Date(license.expiresAt).toLocaleDateString()}` : '永久有效',
+] : ['扫码绑定后自动同步会员权益']
+export const getLicenseMedia = (license: any, avatar: string, i18n: any) => ({
+  avatar: licenseAvatar(avatar),
+  icon: licenseIcon(license?.type),
+  title: license ? licenseTypeText(license.type, i18n) : '思阅会员',
+  lines: licenseLines(license),
+})
 
 // ===== 字体 =====
 let cachedFonts: FontFileInfo[] | null = null, fontScanTask: Promise<FontFileInfo[]> | null = null, loadedFontKey = '';

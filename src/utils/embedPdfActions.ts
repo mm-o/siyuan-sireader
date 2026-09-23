@@ -53,11 +53,42 @@ export const makePdfSelectionMark = (text: string, selection: any[] = []) => {
   }
 }
 
+const rectLeft = (rect: any) => Number(rect?.origin?.x ?? 0)
+const rectRight = (rect: any) => rectLeft(rect) + Number(rect?.size?.width ?? 0)
+const rectHeight = (rect: any) => Number(rect?.size?.height ?? 0)
+
+/** Keep the column containing the start of a selection on multi-column pages. */
+export const filterPdfSelectionColumns = (selection: any[] = []) => selection.map(item => {
+  const rects = Array.isArray(item?.segmentRects) ? item.segmentRects.filter(Boolean) : []
+  if (rects.length < 2) return item
+  const sorted = [...rects].sort((a, b) => rectLeft(a) - rectLeft(b))
+  const medianHeight = [...rects].map(rectHeight).sort((a, b) => a - b)[Math.floor(rects.length / 2)] || 1
+  let split = -1
+  let largestGap = 0
+  for (let i = 1; i < sorted.length; i++) {
+    const gap = rectLeft(sorted[i]) - rectRight(sorted[i - 1])
+    if (gap > largestGap) { largestGap = gap; split = i }
+  }
+  if (split < 0 || largestGap < medianHeight * 2) return item
+  const start = rects[0]
+  const startColumn = rectLeft(start) <= rectLeft(sorted[split - 1]) ? sorted.slice(0, split) : sorted.slice(split)
+  if (!startColumn.length || startColumn.length === rects.length) return item
+  const minX = Math.min(...startColumn.map(rectLeft))
+  const minY = Math.min(...startColumn.map(rect => Number(rect?.origin?.y ?? 0)))
+  const maxX = Math.max(...startColumn.map(rectRight))
+  const maxY = Math.max(...startColumn.map(rect => Number(rect?.origin?.y ?? 0) + rectHeight(rect)))
+  return { ...item, rect: { origin: { x: minX, y: minY }, size: { width: maxX - minX, height: maxY - minY } }, segmentRects: startColumn }
+})
+
 export const getPdfSelectionMark = async (selectionScope: any) => {
   const lines = await taskToPromise<string[]>(selectionScope?.getSelectedText?.()).catch(() => [])
   const text = inlineLinkText((lines || []).join('\n'))
-  return text ? makePdfSelectionMark(text, selectionScope?.getFormattedSelection?.() || []) : null
+  return text ? makePdfSelectionMark(text, filterPdfSelectionColumns(selectionScope?.getFormattedSelection?.() || [])) : null
 }
+
+export const restorePdfAnnotationTool = (scope: any, toolId: string) => queueMicrotask(() => {
+  if (!scope?.getActiveTool?.()) scope?.setActiveTool?.(toolId)
+})
 
 export const pdfAnnotationNote = (item: any) => item?.annotation?.custom?.note || item?.annotation?.contents || ''
 

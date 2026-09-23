@@ -70,16 +70,17 @@
     </div>
 
     <textarea
-      v-if="editing"
+      :class="['b3-text-field', 'sr-note-edit', { 'sr-note-edit--hidden': !editing }]"
+      ref="noteInput"
       :value="note"
-      class="b3-text-field sr-note-edit"
+      :tabindex="editing ? 0 : -1"
       :placeholder="props.i18n?.inputNote || props.i18n?.note || 'Note'"
       rows="4"
       @input="emit('update:note', ($event.target as HTMLTextAreaElement).value)"
       @keydown.ctrl.enter.prevent="emit('save')"
       @keydown.meta.enter.prevent="emit('save')"
     />
-    <div v-else-if="note" class="sr-note" :title="note">{{ note }}</div>
+    <div v-if="!editing && note" class="sr-note" :title="note">{{ note }}</div>
 
     <slot name="extra" />
 
@@ -89,11 +90,11 @@
         <button class="sr-text-btn sr-text-btn--primary" @click.stop="emit('save')">{{ props.i18n?.save || 'Save' }}</button>
       </template>
       <template v-else>
-        <button class="sr-text-btn" @click.stop="emit('edit')">
+        <button class="sr-text-btn" @pointerdown.stop.prevent="beginEdit" @click.stop="beginEdit">
           <svg><use xlink:href="#iconTags" /></svg>
           <span>{{ props.i18n?.inputTags || 'Tags' }}</span>
         </button>
-        <button class="sr-text-btn sr-text-btn--primary" @click.stop="emit('edit')">
+        <button class="sr-text-btn sr-text-btn--primary" @pointerdown.stop.prevent="beginEdit" @click.stop="beginEdit">
           <svg><use xlink:href="#iconEdit" /></svg>
           <span>{{ props.i18n?.note || 'Note' }}</span>
         </button>
@@ -132,7 +133,8 @@ export const collectMarkTagGroups = (source: any[] | any = [], extra: unknown[] 
 </script>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
+import { focusMobileEditable } from '@/utils/mobile'
 
 type ColorOption = { key: string; value: string; bg: string }
 type StyleOption = { value: string; label: string; icon?: string }
@@ -173,6 +175,15 @@ const props = withDefaults(defineProps<{
 })
 
 const titleClass = computed(() => props.kind === 'note' ? 'sr-title--note' : 'sr-title--primary')
+const noteInput = ref<HTMLTextAreaElement | null>(null)
+const beginEdit = () => {
+  if (props.editing || noteInput.value === document.activeElement) return
+  noteInput.value?.focus({ preventScroll: true })
+  emit('edit')
+}
+watch(() => props.editing, editing => {
+  if (editing) nextTick(() => noteInput.value !== document.activeElement && focusMobileEditable(noteInput.value))
+}, { immediate: true })
 const isGroupActive = (tags: string[]) => !!tags.length && tags.every(tag => props.selectedTags.includes(tag))
 
 const emit = defineEmits<{
@@ -229,6 +240,7 @@ button.sr-tag-chip.active{opacity:1;background:var(--b3-theme-primary-lightest);
 .sr-style-icon[data-type="squiggly"]{text-decoration:underline wavy;text-decoration-thickness:1px;text-underline-offset:3px}
 .sr-note{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;color:var(--b3-theme-on-surface);cursor:text;white-space:normal}
 .sr-note-edit{width:100%;min-height:76px;resize:vertical;font-size:13px;line-height:1.5}
+.sr-note-edit--hidden{position:absolute;left:-9999px;width:1px;height:1px;opacity:0;pointer-events:none}
 .sr-card-foot{display:flex;align-items:center;justify-content:space-between;gap:var(--sr-gap,4px)}
 .sr-text-btn{display:inline-flex;align-items:center;gap:4px;height:22px;padding:0;border:none;background:transparent;color:var(--b3-theme-on-surface-variant);font-size:12px;line-height:1;cursor:pointer}
 .sr-text-btn svg{width:14px;height:14px;flex-shrink:0}

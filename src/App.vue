@@ -1,14 +1,12 @@
 ﻿<template>
-  <div class="plugin-app-main">
-    <Stats :visible="showStats" @close="showStats=false" @open="handleOpenBook" />
-    <TTSMini />
-  </div>
+  <Stats :visible="showStats" @close="showStats=false" @open="handleOpenBook" />
+  <TTSMini />
 </template>
 
 <script setup lang="ts">
 import { computed, createApp, defineComponent, h, onMounted, onUnmounted, provide, ref, toRaw, watch, type Component } from 'vue'
 import { MotionPlugin } from '@vueuse/motion'
-import { showMessage } from 'siyuan'
+import { openTab, showMessage } from 'siyuan'
 import { usePlugin, setOpenSettingHandler, registerCleanup } from '@/main'
 import { useSetting, settingsManager, parseBookLink, DEFAULT_NAV_ITEMS } from '@/composables/useSetting'
 import { useStats } from '@/composables/useStats'
@@ -25,13 +23,67 @@ import ReaderMarks from '@/components/ReaderMarks.vue'
 import Settings from '@/components/Settings.vue'
 import Stats from '@/components/Stats.vue'
 import TTSMini from '@/components/TTSMini.vue'
+import Weread from '@/weread/Weread.vue'
 import { getTTSController } from '@/services/TTSPlayer'
-import { isWereadReaderUrl, normalizeWereadReaderUrl, openWereadReaderLink, registerWeread } from '@/weread/open'
+import { bookshelfManager } from '@/core/bookshelf'
+import { getOrAddAssetBook, openOnlineReaderTab, openOrActivateBook, openReaderTab } from '@/utils/bookOpen'
 import { normalizeSiyuanCloudUrl } from '@/core/bookStore'
 
 const plugin = usePlugin()
 const { settings, isLoaded } = useSetting(plugin)
 const showStats = ref(false)
+
+const WEREAD_TITLE = '微信读书'
+const normalizeWereadReaderUrl = (url = '') => {
+  try {
+    const parsed = new URL(url)
+    const id = parsed.hostname === 'weread.qq.com' ? parsed.pathname.match(/^\/web\/reader\/([^/#?]+)/)?.[1] : ''
+    return id ? `https://weread.qq.com/web/reader/${id.split('k')[0]}` : ''
+  } catch { return '' }
+}
+const isWereadReaderUrl = (url = '') => !!normalizeWereadReaderUrl(url)
+const findWereadBook = async (bookUrl: string, cfi = '') => {
+  const direct = await bookshelfManager.getBook(bookUrl)
+  if (direct) return direct
+  const candidates = [...new Set([normalizeWereadReaderUrl(bookUrl), normalizeWereadReaderUrl(cfi)].filter(Boolean))]
+  for (const url of candidates) {
+    const book = await bookshelfManager.getBook(url)
+    if (book) return book
+  }
+  if (!candidates.length) return null
+  const books = await bookshelfManager.getBooks()
+  return books.find((book: any) => candidates.includes(normalizeWereadReaderUrl(book.url || book.path || ''))) || null
+}
+const openWereadReaderLink = async (bookUrl: string, cfi = bookUrl, id?: string) => {
+  const url = cfi || bookUrl
+  if (!isWereadReaderUrl(bookUrl) && !isWereadReaderUrl(url)) return false
+  const afterOpen = () => window.dispatchEvent(new CustomEvent('sireader:goto', { detail: { cfi: url, id } }))
+  const book = await findWereadBook(bookUrl, url)
+  book ? openOrActivateBook(plugin, book, settings.value, afterOpen) : openOnlineReaderTab(plugin, WEREAD_TITLE, url, settings.value, afterOpen)
+  return true
+}
+const openWereadTab = () => openTab({ app: (plugin as any).app, custom: { icon: 'iconWeread', title: WEREAD_TITLE, data: {}, id: `${plugin.name}weread` } })
+plugin.addTab({
+  type: 'weread',
+  init() {
+    this.element.innerHTML = ''
+    this.element.style.cssText = 'height:100%;overflow:hidden'
+    ;(this as any)._app = createApp(Weread as Component, { i18n: plugin.i18n })
+    ;(this as any)._app.mount(this.element)
+  },
+  resize() {},
+  destroy() { (this as any)._app?.unmount() },
+})
+let wereadTopBar: HTMLElement | null = null
+const setWereadTopBarVisible = (visible: boolean) => {
+  if (visible) {
+    if (!wereadTopBar) wereadTopBar = plugin.addTopBar({ icon: '<svg><use xlink:href="#iconWeread"/></svg>', title: WEREAD_TITLE, callback: openWereadTab })
+  } else {
+    wereadTopBar?.remove()
+    wereadTopBar = null
+  }
+}
+plugin.addCommand({ langKey: 'openWeread', langText: `打开${WEREAD_TITLE}`, hotkey: '', callback: openWereadTab })
 
 let settingsApp: any = null
 let mobileReaderApp: any = null
@@ -54,7 +106,7 @@ const SettingsDock = defineComponent({
       model.value = value
       props['onUpdate:modelValue']?.(value)
     }
-    const handleReadOnline = async (book: any) => (await import('@/utils/bookOpen')).openOrActivateBook(plugin, book, model.value)
+    const handleRead = (book: any) => openOrActivateBook(plugin, book, model.value)
     const openLicense = () => {
       activeTab.value = 'appearance'
       setTimeout(() => (window as any)._openLicenseContent?.(), 50)
@@ -90,7 +142,7 @@ const SettingsDock = defineComponent({
             coverSize: model.value.bookshelfCoverSize,
             hiddenItems: model.value.bookshelfHiddenItems,
             openDocAssets: model.value.openDocAssets,
-            onRead: handleReadOnline,
+            onRead: handleRead,
             style: { display: activeTab.value === 'bookshelf' ? '' : 'none' },
           }),
           activeTab.value === 'toc'
@@ -107,8 +159,8 @@ const SettingsDock = defineComponent({
 
 const DOCK_TYPE = 'reader'
 const DOCK_ID = `${plugin.name}${DOCK_TYPE}`
-const { openWereadTab, topBar: wereadTopBar } = registerWeread(plugin)
-watch(() => settings.value.showWereadTopBar, show => wereadTopBar.style.display = show === false ? 'none' : '', { immediate: true })
+watch(() => isLoaded.value && settings.value.showWereadTopBar !== false, setWereadTopBarVisible, { immediate: true })
+registerCleanup(() => setWereadTopBarVisible(false))
 
 // 打开设置并展开授权
 const openSetting = (openLicense = false) => {
@@ -137,6 +189,10 @@ const fetchFile = async (url: string) => {
   } catch { return null }
 }
 
+const showReaderError = (element: HTMLElement) => {
+  element.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--b3-theme-error)">加载失败</div>'
+}
+
 const createReaderApp = async (props: any) => {
   const { default: Reader } = await import('@/components/Reader.vue')
   return createApp(Reader as Component, { ...props, plugin, settings: cloneSettings(), i18n: plugin.i18n })
@@ -150,56 +206,50 @@ const mountReader = async (el: HTMLElement, props: any) => {
   return app
 }
 
+const unmountTabApp = (tab: any) => {
+  tab._app?.unmount?.()
+  tab._app = null
+}
+
+const registerReaderTab = (type: string, init: (tab: any) => void | Promise<void>) => plugin.addTab({
+  type,
+  init() { return init(this as any) },
+  resize() { (this as any)._app?.resize?.() },
+  destroy() { unmountTabApp(this) },
+})
+
 // 暴露渲染接口供其他插件调用
 ;(window as any).sireader = {
   mountReader: async (el: HTMLElement, props: any) => await mountReader(el, props),
-  openEpubTab: async (file: File, title?: string) => (await import('@/utils/bookOpen')).openReaderTab(plugin, title || file.name.replace(/\.[^.]+$/, ''), { file }, `${plugin.name}epub_reader`),
+  openEpubTab: async (file: File, title?: string) => openReaderTab(plugin, title || file.name.replace(/\.[^.]+$/, ''), { file }, `${plugin.name}epub_reader`),
   registerPageScript,
   unregisterPageScript,
   listPageScripts,
   setPageScriptEnabled,
 }
-window.dispatchEvent(new CustomEvent('sireader:api-ready', { detail: (window as any).sireader }))
+const sireaderApi = (window as any).sireader
+window.dispatchEvent(new CustomEvent('sireader:api-ready', { detail: sireaderApi }))
+registerCleanup(() => {
+  if ((window as any).sireader === sireaderApi) delete (window as any).sireader
+})
 
 // 注册标签页
-plugin.addTab({
-  type: 'epub_reader',
-  async init() {
-    const { url, blockId, file } = this.data
-    if (!file && !url) return this.element.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--b3-theme-error)">加载失败</div>'
-    ;(this as any)._app = await mountReader(this.element, { file, url, blockId })
-  },
-  resize() { ;(this as any)._app?.resize?.() },
-  destroy() { ;(this as any)._app?.unmount() }
+registerReaderTab('epub_reader', async tab => {
+  const { url, blockId, file } = tab.data
+  if (!file && !url) return showReaderError(tab.element)
+  tab._app = await mountReader(tab.element, { file, url, blockId })
 })
-
-plugin.addTab({
-  type: 'custom_tab_book_reader',
-  async init() {
-    const { bookInfo } = this.data
-    if (!bookInfo) return this.element.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--b3-theme-error)">加载失败</div>'
-    ;(this as any)._app = await mountReader(this.element, { bookInfo })
-  },
-  resize() { ;(this as any)._app?.resize?.() },
-  destroy() { ;(this as any)._app?.unmount() }
+registerReaderTab('custom_tab_book_reader', async tab => {
+  const { bookInfo } = tab.data
+  if (!bookInfo) return showReaderError(tab.element)
+  tab._app = await mountReader(tab.element, { bookInfo })
 })
-
-plugin.addTab({
-  type: 'online_reader',
-  init() {
-    const { url, bookInfo, context } = this.data
-    if (!url) return this.element.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--b3-theme-error)">加载失败</div>'
-    this.element.innerHTML = ''
-    ;(this as any)._app = createApp(OnlineReader as Component, {
-      url,
-      title: bookInfo?.title || '在线阅读',
-      context,
-      mountReader,
-    })
-    ;(this as any)._app.mount(this.element)
-  },
-  resize() { ;(this as any)._app?.resize?.() },
-  destroy() { ;(this as any)._app?.unmount?.() }
+registerReaderTab('online_reader', tab => {
+  const { url, bookInfo, context } = tab.data
+  if (!url) return showReaderError(tab.element)
+  tab.element.innerHTML = ''
+  tab._app = createApp(OnlineReader as Component, { url, title: bookInfo?.title || '在线阅读', context, mountReader })
+  tab._app.mount(tab.element)
 })
 
 // 链接打开书籍
@@ -212,15 +262,15 @@ const getLinkTarget = (target: EventTarget | null) => {
 const handleEbookLink = async (e: MouseEvent) => {
   const { link, url } = getLinkTarget(e.target)
   if (!url) return
+  // 交给思源原生的 Shift+点击资产逻辑，由系统默认程序打开。
+  if (e.shiftKey && !e.ctrlKey && !e.altKey && url.startsWith('assets/')) return
   
   // 处理自定义协议 sireader://
   const parsed = parseBookLink(url)
   if (parsed) {
     e.preventDefault(), e.stopPropagation()
     if (!parsed.bookUrl) return showMessage('无效的书籍链接', 3000, 'error')
-    if (await openWereadReaderLink(plugin, settings.value, parsed.bookUrl, parsed.cfi, parsed.id)) return
-    const { bookshelfManager } = await import('@/core/bookshelf')
-    const { openOrActivateBook } = await import('@/utils/bookOpen')
+    if (await openWereadReaderLink(parsed.bookUrl, parsed.cfi, parsed.id)) return
     const book = await bookshelfManager.getBook(parsed.bookUrl)
     if (!book) return showMessage('书籍不存在', 3000, 'error')
     return openOrActivateBook(plugin, book, settings.value, () =>
@@ -231,7 +281,7 @@ const handleEbookLink = async (e: MouseEvent) => {
   const wereadBookUrl = normalizeWereadReaderUrl(url)
   if (wereadBookUrl) {
     e.preventDefault(), e.stopPropagation()
-    return openWereadReaderLink(plugin, settings.value, wereadBookUrl, url)
+    return openWereadReaderLink(wereadBookUrl, url)
   }
   
   const cleanUrl = url.split('#')[0]
@@ -243,12 +293,10 @@ const handleEbookLink = async (e: MouseEvent) => {
     e.preventDefault(), e.stopPropagation()
     const file = await fetchFile(cleanUrl)
     if (!file) return showMessage('文件不存在', 3000, 'error')
-    const { openReaderTab, getOrAddAssetBook, openOrActivateBook } = await import('@/utils/bookOpen')
     if (!shouldAddDocAssetToShelf(url, settings.value.docAssetExcludeRegex)) {
       const title = file.name.replace(/\.[^.]+$/, '') || 'Reader'
       return openReaderTab(plugin, title, { file, bookInfo: { title, url: `asset://${url}`, temporary: true } }, `${plugin.name}epub_reader`, settings.value)
     }
-    const { bookshelfManager } = await import('@/core/bookshelf')
     const book = await getOrAddAssetBook(bookshelfManager, url, file)
     if (!book) return showMessage('添加失败', 3000, 'error')
     return openOrActivateBook(plugin, book, settings.value)
@@ -256,8 +304,6 @@ const handleEbookLink = async (e: MouseEvent) => {
   
   // 普通文件链接
   e.preventDefault(), e.stopPropagation()
-  const { bookshelfManager } = await import('@/core/bookshelf')
-  const { openOrActivateBook, openReaderTab } = await import('@/utils/bookOpen')
   const readUrl = normalizeSiyuanCloudUrl(cleanUrl)
   const blockId = link.closest('[data-node-id]')?.getAttribute('data-node-id')
   const existing = await bookshelfManager.getBook(readUrl)
@@ -290,6 +336,10 @@ const handleEbookLinkLeave = async (e: MouseEvent) => {
 }
 
 setOpenSettingHandler(openSetting)
+registerCleanup(() => {
+  const sample = (window as any)._sy_plugin_sample
+  if (sample?.openSetting === openSetting) delete sample.openSetting
+})
 
 const iconId = READER_ICON_ID
 plugin.addDock({
@@ -322,7 +372,7 @@ plugin.addTopBar({ icon: `<svg><use xlink:href="#${iconId}"/></svg>`, title: '�
 
 // 启用底部右下角的阅读统计功能
 const statsInstance = useStats(plugin)
-statsInstance.init()
+registerCleanup(statsInstance.init())
 provide('stats', statsInstance)
 provide('plugin', plugin)
 
@@ -333,27 +383,26 @@ ttsBar.id = 'tts-btn'
 ttsBar.innerHTML = '<svg class="toolbar__icon"><use xlink:href="#lucide-volume-2"></use></svg>'
 ttsBar.setAttribute('aria-label', '朗读播放')
 ttsBar.style.cssText = 'cursor:pointer;display:none'
-ttsBar.addEventListener('click', () => window.dispatchEvent(new CustomEvent('tts:toggle-mini')))
+const toggleTts = () => window.dispatchEvent(new CustomEvent('tts:toggle-mini'))
+ttsBar.addEventListener('click', toggleTts)
 plugin.addStatusBar({ element: ttsBar, position: 'right' })
 watch([ttsController.isActive, ttsController.paused], ([active, paused]) => {
   ttsBar.style.display = active ? '' : 'none'
   ttsBar.classList.toggle('toolbar__item--active', !!active && !paused)
   ttsBar.setAttribute('aria-label', active ? (paused ? '继续朗读' : '朗读中') : '朗读播放')
 }, { immediate: true })
+registerCleanup(() => ttsBar.removeEventListener('click', toggleTts))
 
 // 处理统计面板切换
 const handleStatsToggle = () => showStats.value = !showStats.value
-const handleOpenWeread = () => openWereadTab()
+const handleOpenWeread = openWereadTab
 const handleOpenOnlineReader = async (e: CustomEvent) => {
   const { title, url, context } = e.detail || {}
   if (!url) return showMessage('在线阅读地址为空', 2000, 'error')
-  const { openOnlineReaderTab } = await import('@/utils/bookOpen')
   openOnlineReaderTab(plugin, title || '在线阅读', url, settings.value, undefined, context)
 }
 const handleOpenBook = async (book: any) => {
   showStats.value = false
-  const { openOrActivateBook } = await import('@/utils/bookOpen')
-  const { bookshelfManager } = await import('@/core/bookshelf')
   const full = await bookshelfManager.getBook(book.url)
   if (!full) return showMessage('加载失败', 3000, 'error')
   openOrActivateBook(plugin, full, settings.value)
@@ -382,7 +431,7 @@ const handleMobileReaderClose = () => {
   document.getElementById('sireader-mobile-container')?.style.setProperty('display', 'none')
 }
 
-onMounted(async () => {
+onMounted(() => {
   window.addEventListener('click', handleEbookLink, true)
   window.addEventListener('mouseover', handleEbookLinkEnter, true)
   window.addEventListener('mouseout', handleEbookLinkLeave, true)
@@ -404,16 +453,9 @@ onMounted(async () => {
     registerCleanup(() => {
       window.removeEventListener('reader:mobile-open', handleMobileReaderOpen as any)
       window.removeEventListener('reader:mobile-close', handleMobileReaderClose)
+      handleMobileReaderClose()
     })
   }
 })
 </script>
-
-<style lang="scss" scoped>
-.plugin-app-main {
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-}
-</style>
 

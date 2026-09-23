@@ -35,6 +35,11 @@ export const STATUS_SELECT_OPTIONS = STATUS_OPTIONS.map(([value, label]) => ({ v
 export const FORMAT_SELECT_OPTIONS = FORMAT_OPTIONS.map(value => ({ value, label: value.toUpperCase() }));
 export const createDefaultGroupRules = () => ({ tags: [] as string[], format: [] as BookFormat[], status: [] as BookStatus[], rating: 0 });
 export const createDefaultEditForm = (): BookshelfEditForm => ({ title: '', author: '', tags: '', rating: 0, status: 'unread', cover: '', groups: [], bindDocId: '', bindDocName: '' });
+export const canDragBook = (enabled: boolean, itemType: string) => enabled && itemType === 'book'
+export const filterGroupsByKeyword = (groups: GroupConfig[], keyword = '') => {
+  const query = keyword.trim().toLowerCase();
+  return groups.filter(group => group.type === 'folder' && (!query || group.name.toLowerCase().includes(query)));
+};
 export const bookInGroup = (book: Pick<any, 'tags' | 'format' | 'status' | 'rating' | 'groups'>, group: GroupConfig) => {
   if (group.type === 'folder') return book.groups?.includes(group.id)
   const { tags = [], format = [], status = [], rating = 0 } = group.rules || {}
@@ -271,15 +276,12 @@ export class BookshelfManager {
   }
   
   // 恢复阅读进度
-  async restoreProgress(url:string,reader?:any,view?:any){
+  async restoreProgress(url:string,reader?:any){
     try{
       const b=await this.getBook(url),cfi=b?.pos?.cfi,chapter=Number.isInteger(b?.chapter)?b.chapter:undefined
-      if(!b)return
-      const tgt=reader||view,loc=chapter??cfi
-      if(!tgt)return
-      if(!loc)return
-      await new Promise(r=>setTimeout(r,300))
-      try{await tgt.goTo(loc)}catch{chapter&&tgt.goTo(chapter).catch(()=>{})}
+      if(!b||!reader)return
+      if(cfi&&await reader.goTo(cfi))return
+      if(chapter!==undefined)await reader.goTo(chapter)
     }catch{}
   }
   

@@ -71,7 +71,11 @@
               <div class="sr-editor-head"><strong>导入设置</strong></div>
               <input v-model="importBulkTags" class="b3-text-field sr-input" placeholder="添加标签，用逗号分隔" />
               <div v-if="allTags.length" class="sr-chips"><button v-for="t in allTags.slice(0, 10)" :key="t.tag" class="sr-chip" type="button" :class="{ 'is-active': importTagList.includes(t.tag) }" @click="toggleImportTag(t.tag)">#{{ t.tag }}</button></div>
-              <template v-for="row in importApplyRows" :key="row.key"><span class="sr-muted">{{ row.label }}</span><div class="sr-chips"><button v-for="item in row.items" :key="item.key" class="sr-chip" type="button" :class="{ 'is-active': item.active }" @click="item.click">{{ item.label }}</button></div></template>
+              <template v-for="row in importApplyRows" :key="row.key">
+                <span class="sr-muted">{{ row.label }}</span>
+                <input v-if="row.key === 'groups'" v-model="importGroupKeyword" class="b3-text-field sr-input" placeholder="搜索分组..." />
+                <div class="sr-chips"><button v-for="item in row.items" :key="item.key" class="sr-chip" type="button" :class="{ 'is-active': item.active }" @click="item.click">{{ item.label }}</button></div>
+              </template>
             </div>
 
           </template>
@@ -163,13 +167,13 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { showMessage, Menu } from 'siyuan'
-import { bookInGroup, bookshelfManager, SORTS, STATUS_OPTIONS, STATUS_MAP, RATING_OPTIONS, VIEW_MODES, VIEW_MODE_ICONS, MODAL_TITLES, STAR_OPTIONS, createDefaultGroupRules, createDefaultEditForm, getNextViewMode, buildFilterSections, buildEditFields, buildGroupFields, buildDetailFields, hasBookBulkPatch, normalizeCloudPath, siyuanCloudUrl, mergeCloudNodes, listCloudNodes, searchCloudNodes, cloudNodesToItems, isCloudBookPath, type BookBulkPatch, type SortType, type Book, type BookStatus, type BookFormat, type GroupConfig, type BookshelfViewMode, type BookshelfModalMode, type SiyuanCloudNode } from '@/core/bookshelf'
+import { bookInGroup, bookshelfManager, SORTS, STATUS_OPTIONS, STATUS_MAP, RATING_OPTIONS, VIEW_MODES, VIEW_MODE_ICONS, MODAL_TITLES, STAR_OPTIONS, createDefaultGroupRules, createDefaultEditForm, filterGroupsByKeyword, getNextViewMode, buildFilterSections, buildEditFields, buildGroupFields, buildDetailFields, hasBookBulkPatch, normalizeCloudPath, siyuanCloudUrl, mergeCloudNodes, listCloudNodes, searchCloudNodes, cloudNodesToItems, isCloudBookPath, type BookBulkPatch, type SortType, type Book, type BookStatus, type BookFormat, type GroupConfig, type BookshelfViewMode, type BookshelfModalMode, type SiyuanCloudNode } from '@/core/bookshelf'
 import View from '@/components/bookshelf/View.vue'
 import DockShell from './ui/DockShell.vue'
 import { isMobile } from '@/utils/mobile'
 import { searchDocs } from '@/composables/useSetting'
 import { useBookImport } from '@/composables/useBookImport'
-import { useLicense } from '@/composables/useLicense'
+import { useLicense } from '@/core/license'
 import { importPdfAnnotationsForBook } from '@/core/pdfAnnotationImport'
 
 type ImportMode = 'file' | 'link' | 'cloud'
@@ -179,10 +183,11 @@ const props = defineProps<{ i18n?: any; coverSize?: number; hiddenItems?: string
 const emit = defineEmits<{ read: [book: Book] }>()
 const { can, showUpgrade } = useLicense(props.i18n || {})
 const MENU_ICONS = { status: { unread: 'iconUncheck', reading: 'iconEye', finished: 'iconCheck' } }
+const dragEnabled = !isMobile()
 
 const books = ref<Book[]>([]), groups = ref<GroupConfig[]>([]), allTags = ref<Array<{ tag: string; count: number }>>([])
 const stats = ref({ byStatus: { unread: 0, reading: 0, finished: 0 }, byFormat: { epub: 0, pdf: 0, mobi: 0, azw3: 0, txt: 0 } })
-const keyword = ref(''), currentGroup = ref<string | null>(null), filterRating = ref(0), sortReverse = ref(false)
+const keyword = ref(''), importGroupKeyword = ref(''), moveGroupKeyword = ref(''), currentGroup = ref<string | null>(null), filterRating = ref(0), sortReverse = ref(false)
 const filterStatus = ref<BookStatus[]>([]), filterFormats = ref<BookFormat[]>([]), filterTags = ref<string[]>([])
 const sortType = ref<SortType>('time'), viewMode = ref<BookshelfViewMode>('grid')
 const batchMode = ref<'rate' | 'status' | 'tags' | 'groups' | null>(null)
@@ -212,6 +217,7 @@ const saveUiSetting = (key: string, value: any, delay = 180) => {
 }
 
 const folderGroups = computed(() => groups.value.filter(g => g.type === 'folder'))
+const importFolderGroups = computed(() => filterGroupsByKeyword(groups.value, importGroupKeyword.value))
 const currentGroupIsSmart = computed(() => !!groups.value.find(g => g.id === currentGroup.value && g.type === 'smart'))
 const gridStyle = computed(() => viewMode.value === 'grid' ? { gridTemplateColumns: `repeat(auto-fill,minmax(${props.coverSize || 120}px,1fr))` } : {})
 const viewModeIcon = computed(() => VIEW_MODE_ICONS[viewMode.value])
@@ -219,7 +225,7 @@ const toolbarStartActions = computed(() => currentGroup.value ? [{ id: 'back', i
 const toolbarActions = computed(() => [{ id: 'view', icon: viewModeIcon.value, label: '切换视图' }, { id: 'select', icon: selecting.value ? '#iconCheck' : '#iconUncheck', label: selecting.value ? '退出选择' : '选择书籍' }, { id: 'organize', icon: '#lucide-sliders-horizontal', label: '整理书架' }, { id: 'manage', icon: '#lucide-book-plus', label: '添加内容' }])
 const modalTitle = computed(() => modalMode.value ? MODAL_TITLES[modalMode.value] : '书架')
 const panelCover = computed(() => panelBook.value ? getCoverUrl(panelBook.value) : '')
-const viewProps = computed(() => ({ items: displayItems.value, mode: viewMode.value, gridStyle: gridStyle.value, groupCounts: groupCounts.value, statusMap: STATUS_MAP, getCoverUrl, getGroupCoverUrls, getProgress, currentGroup: currentGroup.value, currentGroupIsSmart: currentGroupIsSmart.value, selecting: selecting.value, selectedUrls: selectedBookUrls.value, hiddenItems: props.hiddenItems || [] }))
+const viewProps = computed(() => ({ items: displayItems.value, mode: viewMode.value, gridStyle: gridStyle.value, groupCounts: groupCounts.value, statusMap: STATUS_MAP, getCoverUrl, getGroupCoverUrls, getProgress, currentGroup: currentGroup.value, currentGroupIsSmart: currentGroupIsSmart.value, selecting: selecting.value, selectedUrls: selectedBookUrls.value, hiddenItems: props.hiddenItems || [], dragEnabled }))
 
 const getSortKey = (item: any, type: string) => item.type === 'group'
   ? (type === 'name' ? item.data.name : type === 'time' ? (item.data as any).created || 0 : item.data.order)
@@ -253,7 +259,7 @@ const batchTagList = computed(() => parseList(batchTags.value))
 const showImportItems = computed(() => !editingGroup.value && importHasItems.value)
 const optionChip = (key: string, label: string, active: boolean, click: () => void) => ({ key, label, active, click })
 const importApplyRows = computed(() => [
-  { key: 'groups', label: '导入到分组', items: folderGroups.value.map(g => optionChip(g.id, g.name, importBulkGroups.value.includes(g.id), () => toggleImportGroup(g.id))) },
+  { key: 'groups', label: '导入到分组', items: importFolderGroups.value.map(g => optionChip(g.id, g.name, importBulkGroups.value.includes(g.id), () => toggleImportGroup(g.id))) },
   { key: 'status', label: '导入后状态', items: [optionChip('none', '不改状态', !importBulkStatus.value, () => importBulkStatus.value = ''), ...STATUS_OPTIONS.map(([v, label]) => optionChip(v, label, importBulkStatus.value === v, () => importBulkStatus.value = v))] },
   { key: 'rating', label: '导入后评分', items: [optionChip('0', '不评分', !importBulkRating.value, () => importBulkRating.value = 0), ...STAR_OPTIONS.map(v => optionChip(String(v), '★'.repeat(v), importBulkRating.value === v, () => importBulkRating.value = v))] },
 ].filter(row => row.items.length))
@@ -507,7 +513,16 @@ const importBookAnnotations = async (book: Book) => {
 const showContextMenu = (book: Book, e: MouseEvent) => {
   e.preventDefault(); const hasBinding = !!(book as any).bindDocId
   const ratingMenu = ratingItems(rating => updateBookField(book, 'rating', rating, rating ? `已评 ${rating} 星` : '已清除评分'))
-  const groupMenu = (book.groups.length ? [{ icon: 'iconFiles', label: '首页', click: () => updateBookField(book, 'group', 'home', '已移动到首页') }, ...(folderGroups.value.length ? [{ type: 'separator' }] : [])] : []).concat(groups.value.map(g => g.type === 'smart' ? { icon: 'iconInfo', label: `${g.name}（智能分组不能作为移动目标）`, click: () => showMessage('智能分组按条件动态显示，不能移动到智能分组', 2000, 'info') } : { icon: 'iconFolder', label: g.name, click: () => updateBookField(book, 'group', g.id, `已移动到：${g.name}`) }))
+  const moveGroups = filterGroupsByKeyword(groups.value, moveGroupKeyword.value)
+  const searchMoveGroups = { icon: 'iconSearch', label: moveGroupKeyword.value ? `搜索分组（${moveGroupKeyword.value}）` : '搜索分组...', click: () => {
+    const value = window.prompt('搜索分组', moveGroupKeyword.value)
+    if (value === null) return
+    moveGroupKeyword.value = value.trim()
+    closeMenu()
+    showContextMenu(book, e)
+  } }
+  const clearMoveGroups = moveGroupKeyword.value ? { icon: 'iconClose', label: '清除分组搜索', click: () => { moveGroupKeyword.value = ''; closeMenu(); showContextMenu(book, e) } } : null
+  const groupMenu = [searchMoveGroups, ...(clearMoveGroups ? [clearMoveGroups] : []), ...(book.groups.length ? [{ icon: 'iconFiles', label: '首页', click: () => updateBookField(book, 'group', 'home', '已移动到首页') }, ...(moveGroups.length ? [{ type: 'separator' }] : [])] : []), ...moveGroups.map(g => ({ icon: 'iconFolder', label: g.name, click: () => updateBookField(book, 'group', g.id, `已移动到：${g.name}`) }))]
   const m = new Menu()
   ;[{ icon: 'iconPlay', label: '打开阅读', click: () => readBook(book) }, { icon: 'iconInfo', label: '详细信息', click: () => openBookPanel('detail', book) }, { icon: 'iconCheck', label: selectedBookUrls.value.includes(book.url) ? '取消选择' : '选择此书', click: () => toggleSelectBook(book) }, { icon: 'iconStar', label: '评分', type: 'submenu', submenu: ratingMenu }, { icon: 'iconCheck', label: '标记状态', type: 'submenu', submenu: statusItems(status => updateBookField(book, 'status', status, `已标记为${STATUS_MAP[status]}`)) }, { icon: 'iconFolder', label: '移动到', type: 'submenu', submenu: groupMenu }, { icon: hasBinding ? 'iconLinkOff' : 'iconLink', label: hasBinding ? '解除绑定' : '绑定文档', click: () => openBookPanel('edit', book) }, { icon: 'iconDownload', label: '导入批注', click: () => importBookAnnotations(book) }, { type: 'separator' }, { icon: 'iconEdit', label: '编辑信息', click: () => openBookPanel('edit', book) }, { icon: 'iconTrashcan', label: '移除', click: () => { closeMenu(); confirmDelete.value = { type: 'book', id: book.url, item: book } } }].forEach(item => m.addItem(item as any))
   openMenu(m, e)

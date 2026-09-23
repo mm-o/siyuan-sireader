@@ -28,7 +28,7 @@ export const gotoEPUB = async (cfi: string, id: string | undefined, reader: any,
   const target = mark?.cfi || cfi
   const view = reader?.getView?.()
   if (!target) return
-  const resolved = view?.goTo ? await view.goTo(target) : await reader?.goTo?.(target)
+  const resolved = reader?.goTo ? await reader.goTo(target) : await view?.goTo?.(target)
   requestAnimationFrame(() => flashEPUB(view || reader?.getView?.(), target, resolved))
   return resolved
 }
@@ -42,14 +42,4 @@ export const jump = (item: any, activeView: any, activeReader: any, marks: any) 
   if (activeView?.isOnlineContext && target) activeView.goTo(target)
   else if (activeView?.isPdf && page) activeView.goTo?.(page, item?.id)
   else if (target) void gotoEPUB(target, item?.id, activeReader, marks)
-}
-
-export const restorePosition = async (bookUrl: string, reader: any, getMobilePosition: any) => {
-  if (!bookUrl) return
-  const pos = await getMobilePosition(bookUrl)
-  if (pos?.cfi && reader) reader.goTo(pos.cfi)
-}
-
-export const initJump = (cfi: string, bookUrl?: string) => {
-  if (cfi) setTimeout(() => window.dispatchEvent(new CustomEvent('sireader:goto', { detail: { cfi, bookUrl } })), 500)
 }

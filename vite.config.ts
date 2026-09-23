@@ -67,6 +67,7 @@ export default defineConfig(({
     resolve: {
       alias: {
         "@": resolve(__dirname, "src"),
+        ...(process.env.VITEST ? { siyuan: resolve(__dirname, "tests/stubs/siyuan.ts") } : {}),
       },
     },
 

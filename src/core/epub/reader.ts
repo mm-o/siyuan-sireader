@@ -12,7 +12,18 @@ import { EPUBSearch } from './search'
 import { createTxtBook, isTxtSource } from '@/core/txt/book'
 import { isMobile } from '@/utils/mobile'
 import { FootnoteHandler } from 'foliate-js/footnotes.js'
-import 'foliate-js/view.js'
+
+const groupBy = (iterable: Iterable<any>, callback: (value: any, index: number) => any, map = false) => {
+  const groups: any = map ? new Map() : Object.create(null)
+  let index = 0
+  for (const value of iterable) {
+    const key = callback(value, index++), group = map ? groups.get(key) : groups[key]
+    group ? group.push(value) : map ? groups.set(key, [value]) : groups[key] = [value]
+  }
+  return groups
+}
+;(Object as any).groupBy ??= (items: Iterable<any>, callback: Function) => groupBy(items, callback as any)
+;(Map as any).groupBy ??= (items: Iterable<any>, callback: Function) => groupBy(items, callback as any, true)
 
 export interface ReaderOptions {
   container: HTMLElement
@@ -46,24 +57,20 @@ const setAttr = (el: Element, name: string, value: string, on: any = true) => {
   if (!on) return el.hasAttribute(name) && el.removeAttribute(name)
   if (el.getAttribute(name) !== value) el.setAttribute(name, value)
 }
-const numericNotePattern = /^.{0,2}\d+$/
+const numericMarker = /^.{0,2}\d+$/
 const inlineFootnoteSelector = '.js_readerFooterNote,.zhangyue-footnote,.duokan-footnote,.qqreader-footnote'
-const footnoteSelector = `${inlineFootnoteSelector},.footnote-link,.footnote`
 const footnoteLinkClasses = ['duokan-footnote', 'footnote-link', 'footnote']
+const footnoteSelector = `${inlineFootnoteSelector},.footnote-link,.footnote`
 const epubTypeOf = (el: Element) => el.getAttribute('epub:type') || el.getAttributeNS('http://www.idpf.org/2007/ops', 'type') || el.getAttribute('type') || ''
-const hrefId = (href = '') => { const id = href.split('#')[1] || ''; try { return decodeURIComponent(id) } catch { return id } }
-const shouldCheckAsFootnote = (a: HTMLAnchorElement) => {
-  if (!numericNotePattern.test(a.textContent?.trim() || '')) return false
-  const nav = a.closest('nav,ol,ul')
-  return !nav || Array.from(nav.querySelectorAll('a')).filter(link => link !== a && numericNotePattern.test(link.textContent?.trim() || '')).length < 2
-}
-const footnoteText = (el: HTMLElement, target?: Element | null) =>
-  (el.getAttribute('data-wr-footernote') || el.getAttribute('zy-footnote') || el.querySelector('img')?.getAttribute('alt') || el.getAttribute('alt') || (target as HTMLElement | null)?.getAttribute?.('alt') || el.textContent || '').trim()
-const inlineFootnote = (target: Element | null) => {
-  const el = target?.closest?.(inlineFootnoteSelector) as HTMLElement | null
-  if (!el || el.closest('a[href]')) return null
-  const text = footnoteText(el, target)
-  return text.trim() ? { el, text: text.trim() } : null
+const footnoteId = (href = '') => { const id = href.split('#')[1] || ''; try { return decodeURIComponent(id) } catch { return id } }
+const hasToken = (value: string, tokens: string[]) => value.split(/\s+/).some(token => tokens.includes(token))
+const isExplicitFootnoteReference = (el: Element) => hasToken(epubTypeOf(el), ['noteref', 'biblioref', 'glossref']) || hasToken(el.getAttribute('role') || '', ['doc-noteref', 'doc-biblioref', 'doc-glossref'])
+const shouldCheckAsFootnote = (anchor: HTMLAnchorElement) => {
+  if (!numericMarker.test(anchor.textContent?.trim() || '')) return false
+  for (let container = anchor.parentElement, depth = 0; container && depth < 3; container = container.parentElement, depth++) {
+    if ([...container.querySelectorAll('a')].filter(link => link !== anchor && numericMarker.test(link.textContent?.trim() || '')).length >= 2) return false
+  }
+  return true
 }
 const normalizeFootnoteTypes = (doc?: Document) => {
   doc?.querySelectorAll('[type~="noteref"],[type~="footnote"],[type~="endnote"],[type~="note"],[type~="rearnote"]').forEach(el => {
@@ -73,15 +80,32 @@ const normalizeFootnoteTypes = (doc?: Document) => {
   const ids = new Set<string>()
   doc?.querySelectorAll('aside,section').forEach(el => {
     if (/\b(footnote|endnote|rearnote)\b/.test(epubTypeOf(el)) || /\bdoc-(footnote|endnote)\b/.test(el.getAttribute('role') || '')) {
+      if (el.matches('aside')) el.classList.add('epubtype-footnote')
       el.setAttribute('data-sr-footnote', 'true')
       if (el.id) ids.add(el.id)
     }
   })
-  ids.size && doc?.querySelectorAll('a[href]').forEach(a => {
-    const id = hrefId(a.getAttribute('href') || ''), role = a.getAttribute('role') || ''
-    if (id && ids.has(id) && !/\bdoc-noteref\b/.test(role)) a.setAttribute('role', `${role} doc-noteref`.trim())
+  if (ids.size) doc?.querySelectorAll('a[href]').forEach(anchor => {
+    const role = anchor.getAttribute('role') || ''
+    if (ids.has(footnoteId(anchor.getAttribute('href') || '')) && !role.split(/\s+/).includes('doc-noteref')) anchor.setAttribute('role', `${role} doc-noteref`.trim())
   })
 }
+const getInlineFootnote = (target: Element | null) => {
+  const element = target?.closest?.(inlineFootnoteSelector) as HTMLElement | null
+  if (!element || element.closest('a[href]')) return null
+  const text = (element.getAttribute('data-wr-footernote') || element.getAttribute('zy-footnote') || element.querySelector('img')?.alt || element.getAttribute('alt') || (target as HTMLElement | null)?.getAttribute?.('alt') || element.textContent || '').trim()
+  return text ? { element, text } : null
+}
+const footnotePopupStyles = `
+  .duokan-footnote-content,.duokan-footnote-item{display:block!important}
+  body{padding:1em!important;overflow-wrap:break-word;font-size:13px!important;line-height:1.7!important;color:var(--b3-theme-on-surface)!important;background:var(--b3-theme-surface)!important}
+  a:any-link{text-decoration:none;padding:unset;margin:unset;color:var(--b3-theme-primary)!important}
+  ol{margin:0;padding:0}
+  p,li,blockquote,dd{margin:unset!important;text-indent:unset!important}
+  div{margin:unset!important;padding:unset!important}
+  dt{font-weight:bold;line-height:1.6}
+  .epubtype-footnote,aside[epub|type~="endnote"],aside[epub|type~="footnote"],aside[epub|type~="note"],aside[epub|type~="rearnote"]{display:block}
+`
 
 const isFootnoteClick = (target: Element | null) => {
   const a = target?.closest?.('a')
@@ -251,12 +275,16 @@ function applyCustomCSS(view: FoliateView, settings: ReaderSettings) {
     pre{white-space:pre-wrap!important}
     aside[epub|type~="footnote"],
     aside[epub|type~="endnote"],
+    aside[epub|type~="note"],
     aside[epub|type~="rearnote"],
     section[epub|type~="footnote"],
     section[epub|type~="endnote"],
     section[epub|type~="rearnote"],
     [role~="doc-footnote"],
     [role~="doc-endnote"],
+    .epubtype-footnote,
+    .duokan-footnote-content,
+    .duokan-footnote-item,
     [data-sr-footnote]{display:none!important}
   `
   ].join('')
@@ -336,8 +364,6 @@ export class FoliateReader {
   private footnote = new FootnoteHandler()
   private footnoteAnchor: HTMLElement | null = null
   private footnoteHref = ''
-  private footnoteHistory: any[] = []
-  private footnoteIndex = -1
   private destroyed = false
   private closeFootnote = () => document.querySelectorAll<HTMLElement>('[data-footnote-tooltip]').forEach(el => Object.assign(el.style, { display: 'none', opacity: '0', transform: 'translateY(-8px)' }))
   private closeFloaters = () => { this.closeFootnote(); this.emit('content-interaction') }
@@ -428,8 +454,8 @@ export class FoliateReader {
     doc.addEventListener('contextmenu', openMenu as EventListener)
     doc.addEventListener('click', ((event: MouseEvent) => {
       const target = event.target as Element | null
-      const note = inlineFootnote(target)
-      if (note) return event.preventDefault(), event.stopPropagation(), this.renderInlineFootnote(note.el, note.text)
+      const note = getInlineFootnote(target)
+      if (note) return event.preventDefault(), event.stopPropagation(), this.renderInlineFootnote(note.element, note.text)
       const media = mediaTarget(target)
       if (!media) return target?.closest?.('a[href]') ? undefined : this.closeFloaters()
       this.closeFloaters()
@@ -441,21 +467,32 @@ export class FoliateReader {
   private setupEventListeners() {
     this.footnote.addEventListener('before-render', ((e: CustomEvent) => {
       const view = e.detail.view as FoliateView
-      view.style.cssText = 'display:block;width:100%;height:min(360px,calc(100vh - 120px))'
+      view.style.cssText = 'display:block;width:100%;height:88px'
       view.addEventListener('link', ((event: CustomEvent) => {
         event.preventDefault()
         let id = this.footnoteHref.split('#')[1]
         try { id = id && decodeURIComponent(id) } catch {}
         if (id && event.detail.a?.id === id) return
         const detail = { ...event.detail, follow: true }
-        this.footnoteHistory = [...this.footnoteHistory.slice(0, this.footnoteIndex + 1), detail]
-        this.footnoteIndex = this.footnoteHistory.length - 1
         this.footnote.handle(this.view.book, { detail, preventDefault: () => event.preventDefault() } as any)?.catch(() => this.view.goTo(detail.href))
       }) as EventListener)
-      view.addEventListener('load', ((event: CustomEvent) => normalizeFootnoteTypes(event.detail?.doc)) as EventListener)
+      const tooltip = this.getFootnoteTooltip()
+      tooltip.innerHTML = createTooltip({
+        icon: '#iconMark',
+        iconColor: '#ef4444',
+        title: this.plugin.i18n.footnote || '脚注',
+        content: '<div data-footnote-content style="height:88px;overflow:auto;user-select:text"></div>',
+      })
+      tooltip.querySelector('[data-footnote-content]')?.append(view)
       view.renderer?.setAttribute?.('flow', 'scrolled')
+      view.renderer?.setAttribute?.('no-preload', '')
       view.renderer?.setAttribute?.('no-background', '')
-      view.renderer?.setStyles?.('body{padding:14px!important;font-size:13px!important;line-height:1.7!important;color:var(--b3-theme-on-surface)!important;background:var(--b3-theme-surface)!important}a{color:var(--b3-theme-primary)!important}')
+      view.renderer?.setAttribute?.('margin-top', '0px')
+      view.renderer?.setAttribute?.('margin-right', '0px')
+      view.renderer?.setAttribute?.('margin-bottom', '0px')
+      view.renderer?.setAttribute?.('margin-left', '0px')
+      view.renderer?.setAttribute?.('gap', '0%')
+      view.renderer?.setStyles?.(`@namespace epub "http://www.idpf.org/2007/ops";${footnotePopupStyles}`)
     }) as EventListener)
     this.footnote.addEventListener('render', ((e: CustomEvent) => this.renderFootnote(e.detail)) as EventListener)
     this.view.addEventListener('relocate', ((e: CustomEvent) => {
@@ -470,14 +507,12 @@ export class FoliateReader {
       if (!a || !href) return this.emit('link', e.detail)
       this.closeFloaters()
       this.footnoteAnchor = a
-      this.footnoteHistory = [e.detail]
-      this.footnoteIndex = 0
-      const sameDocNote = a.ownerDocument.getElementById(hrefId(a.getAttribute('href') || ''))
+      const sameDocNote = a.ownerDocument.getElementById(footnoteId(a.getAttribute('href') || ''))
       if (sameDocNote?.hasAttribute('data-sr-footnote')) return e.preventDefault(), this.renderSameDocFootnote(a, sameDocNote)
-      if (footnoteLinkClasses.some(cls => a.classList.contains(cls))) e.detail.follow = true
-      if (shouldCheckAsFootnote(a)) e.detail.check = true
+      if (footnoteLinkClasses.some(cls => a.classList.contains(cls)) || isExplicitFootnoteReference(a)) e.detail.follow = true
+      else if (shouldCheckAsFootnote(a)) e.detail.check = true
       const handled = this.footnote.handle(this.view.book, e as any)
-      if (handled) return handled.catch(() => this.emit('link', e.detail))
+      if (handled) return handled.catch(() => this.view.goTo(e.detail.href))
       this.emit('link', e.detail)
     }) as EventListener)
   }
@@ -517,16 +552,28 @@ export class FoliateReader {
     const tooltip = this.getFootnoteTooltip()
     const i = this.plugin.i18n
     const title = type === 'endnote' ? i.endnote || '尾注' : type === 'biblioentry' ? i.reference || '参考' : type === 'definition' ? i.glossary || '术语' : i.footnote || '脚注'
-    tooltip.innerHTML = createTooltip({ icon: '#iconMark', iconColor: '#ef4444', title: `${title} (${i.clickToJump || '点击跳转'})`, content: `${this.footnoteIndex > 0 ? '<button data-footnote-back style="margin:8px 0 0 8px;padding:4px 8px;border:1px solid var(--b3-border-color);border-radius:6px;background:var(--b3-theme-background);color:var(--b3-theme-on-surface);cursor:pointer">←</button>' : ''}<div data-footnote-content style="height:min(360px,calc(100vh - 120px));overflow:auto;user-select:text"></div>`, id: target?.id ? `#${target.id}` : '' })
-    tooltip.querySelector('[data-footnote-content]')?.replaceChildren(view)
-    tooltip.querySelector('[data-footnote-back]')?.addEventListener('click', () => {
-      const detail = this.footnoteHistory[--this.footnoteIndex]
-      detail && this.footnote.handle(this.view.book, { detail: { ...detail, follow: true }, preventDefault: () => {} } as any)
+    const header = document.createElement('div')
+    header.innerHTML = createTooltip({
+      icon: '#iconMark',
+      iconColor: '#ef4444',
+      title: `${title} (${i.clickToJump || '点击跳转'})`,
+      content: '',
+      id: target?.id ? `#${target.id}` : '',
     })
-    const header = tooltip.firstElementChild as HTMLElement | null
-    if (header) {
-      header.style.cursor = 'pointer'
-      header.onclick = () => { hideTooltip(tooltip!, 0); this.goTo(href).catch(() => {}) }
+    const currentHeader = tooltip.firstElementChild
+    currentHeader?.replaceWith(header.firstElementChild!)
+    const content = tooltip.querySelector<HTMLElement>('[data-footnote-content]')
+    if (content && !content.contains(view)) content.append(view)
+    let adjustments = 0
+    view.addEventListener('relocate', () => {
+      if (!content || adjustments++ >= 3) return
+      const height = Math.max(48, Math.min(Math.ceil(view.renderer?.viewSize || 88), 360, window.innerHeight - 120))
+      view.style.height = content.style.height = `${height}px`
+    })
+    const popupHeader = tooltip.firstElementChild as HTMLElement | null
+    if (popupHeader) {
+      popupHeader.style.cursor = 'pointer'
+      popupHeader.onclick = () => { hideTooltip(tooltip!, 0); this.goTo(href).catch(() => {}) }
     }
     const rect = a.getBoundingClientRect()
     const frameRect = (a.ownerDocument.defaultView?.frameElement as HTMLIFrameElement | null)?.getBoundingClientRect()
@@ -544,9 +591,9 @@ export class FoliateReader {
     this.syncThemeObserver(this.settings.theme === 'auto')
   }
 
-  private check = () => this.view.renderer || (console.warn('[Reader] Renderer not ready'), null)
+  private check = () => !this.destroyed && !!this.view.book && !!this.view.renderer
 
-  async goTo(target: string | number | Location) { this.check() && await this.view.goTo(target) }
+  async goTo(target: string | number | Location) { return this.check() ? await this.view.goTo(target) : null }
   async goToTextStart() { this.check() && await this.view.goToTextStart?.() }
   async goLeft() { this.check() && await this.view.goLeft() }
   async goRight() { this.check() && await this.view.goRight() }
@@ -622,6 +669,7 @@ export class FoliateReader {
   }
 }
 
-export function createReader(options: ReaderOptions): FoliateReader {
+export async function createReader(options: ReaderOptions): Promise<FoliateReader> {
+  await import('foliate-js/view.js')
   return new FoliateReader(options)
 }
