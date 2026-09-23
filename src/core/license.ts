@@ -139,10 +139,8 @@ export class LicenseManager {
     const payload = response.data
     if (!response.ok || !payload.token) throw new Error(payload.message || `绑定二维码生成失败（${response.status}）`)
 
-    const codeResponse = await this.requestJson(`${this.API}/bind/${encodeURIComponent(payload.token)}/code`)
-    const code = codeResponse.data
-    if (!codeResponse.ok || !code.data) throw new Error(code.message || `小程序码生成失败（${codeResponse.status}）`)
-    return { data: code.data as string, token: payload.token as string, expiresAt: payload.expiresAt || '' }
+    // 小程序码接口直接返回图片，交给浏览器原生加载，避免读取和转码大图片。
+    return { data: `${this.API}/bind/${encodeURIComponent(payload.token)}/code`, token: payload.token as string, expiresAt: payload.expiresAt || '' }
   }
 
   static async bind(account?: { userId?: string; userName?: string }, signal?: AbortSignal, onQr?: (qr: { data: string; expiresAt: string }) => void) {
