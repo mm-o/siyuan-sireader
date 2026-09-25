@@ -49,12 +49,14 @@ The file is the normal SiReader per-book JSON record:
 }
 ```
 
-Annotations are imported and exported only through EmbedPDF:
+Annotations keep EmbedPDF's transfer-item shape at the compatibility boundary. Initial load/repair may import or export through EmbedPDF:
 
 - `annotation.exportAnnotations()`
 - `annotation.importAnnotations()`
 
-SiReader filters exported annotations before saving so PDF-native link annotations are not duplicated into plugin storage. User annotations remain in EmbedPDF transfer format. Keep this direct round trip; do not add an adapter layer unless EmbedPDF changes its transfer shape.
+Normal create/update/delete events are persisted immediately as ID-based `upsert`/`delete` storage operations. They must never trigger a debounced full-array write: asynchronous exports can complete out of order and overwrite newer notes or deletions. Full replacement is allowed only during validated migration or repair. PDF-native link annotations are not duplicated into plugin storage, and user annotations remain in EmbedPDF transfer format.
+
+Per-book operations are serialized, reread the latest committed record under lock, and are verified after writing. PDF progress is an independent patch, so progress and annotation updates cannot overwrite one another. Initialization suppresses persistence for annotations being restored into the viewer.
 
 PDF annotations, PDF bookmarks, and PDF progress all use the same per-book JSON record. Do not reintroduce `.bin` as the active storage path.
 

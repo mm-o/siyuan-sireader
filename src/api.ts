@@ -14,6 +14,12 @@ async function request(url: string, data: any) {
   return res;
 }
 
+async function checkedRequest(url: string, data: any) {
+  const response: IWebSocketData = await fetchSyncPost(url, data);
+  if (response.code !== 0) throw new Error(response.msg || `SiYuan API failed (${response.code}): ${url}`);
+  return response.data;
+}
+
 // **************************************** Noteboook ****************************************
 
 export async function lsNotebooks(): Promise<IReslsNotebooks> {
@@ -374,7 +380,7 @@ export async function putFile(path: string, isDir: boolean, file: any) {
   form.append("modTime", Math.floor(Date.now() / 1000).toString());
   form.append("file", file);
   form.append("app", (window as any).siyuan?.appId || "");
-  return request("/api/file/putFile", form);
+  return checkedRequest("/api/file/putFile", form);
 }
 
 export async function removeFile(path: string) {
@@ -383,7 +389,15 @@ export async function removeFile(path: string) {
     app: (window as any).siyuan?.appId || '',
   };
   let url = "/api/file/removeFile";
-  return request(url, data);
+  return checkedRequest(url, data);
+}
+
+export async function renameFile(path: string, newPath: string) {
+  return checkedRequest('/api/file/renameFile', {
+    path,
+    newPath,
+    app: (window as any).siyuan?.appId || '',
+  })
 }
 
 export async function readDir(path: string): Promise<IResReadDir> {

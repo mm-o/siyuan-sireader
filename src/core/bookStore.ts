@@ -1,6 +1,9 @@
-import { putFile, readDir, removeFile } from '@/api'
+import { readDir } from '@/api'
 import { usePlugin } from '@/main'
 import { ensurePdfRecordMigrated, needsLegacyPdfTextAlign, normalizeEmbedPdfAnnotations, PDF_MIGRATION_VERSION } from './dataMigration'
+import { storageEngine, type StorageKey } from './storage/engine'
+import type { StorageOperation } from './storage/types'
+import { removeManagedFileTransactionally, writeManagedFile } from './storage/files'
 
 export const PUBLIC_ROOT = '/public/siyuan-sireader'
 export const SIYUAN_CLOUD_BASE = '/plugin/private/siyuan-cloud'
@@ -28,8 +31,6 @@ export interface EmbedPdfProgress {
   updatedAt: number
 }
 
-const MISSING_DATA = Symbol('sireader.missingData')
-
 export interface StoredBookRef {
   url: string
   path?: string
@@ -47,8 +48,7 @@ const isRemotePath = (path = '') => /^(https?:\/\/|file:\/\/)|^\/plugin\/private
 const isPublicPath = (path = '') => path.startsWith('/public/') || path.startsWith('/data/public/')
 const getRecordKey = (url: string) => `${RECORDS_DIR}/${hash(url)}.json`
 const getLegacyEmbedPdfRecordKey = (url: string) => `${RECORDS_DIR}/embedpdf/${hash(url)}.bin`
-const bookRecordCache = new Map<string, BookRecord | null>()
-const writeQueues = new Map<string, Promise<void>>()
+const operationId = (label: string) => `${label}:${globalThis.crypto?.randomUUID?.() || `${Date.now().toString(36)}:${Math.random().toString(36).slice(2)}`}`
 const req = (id: string) => { try { return (window as any).require?.(id) } catch { return null } }
 const normalizeStoragePath = (storageName = '') => {
   const resolved: string[] = []
@@ -60,7 +60,6 @@ const normalizeStoragePath = (storageName = '') => {
   return resolved.length ? resolved.join('/') : storageName.replace(/[\/\\]+/g, '')
 }
 const getPluginStoragePath = (key: string) => `${PLUGIN_STORAGE_ROOT}/${getPlugin().name}/${normalizeStoragePath(key)}`
-const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
 const isApiErrorPayload = (bytes?: Uint8Array | null) => {
   if (!bytes?.byteLength || bytes.byteLength > 512) return false
@@ -74,14 +73,6 @@ const isApiErrorPayload = (bytes?: Uint8Array | null) => {
   }
 }
 
-const parseStoredValue = <T = any>(value: any): T | null | typeof MISSING_DATA => {
-  if (value == null || value === '') return MISSING_DATA
-  if (typeof value === 'string') {
-    try { return JSON.parse(value) as T } catch { return value as T }
-  }
-  return value as T
-}
-
 const readFileResponse = async (path: string) => {
   if (!path) return null
   const target = path.startsWith('/public/') ? publicToDataPath(path) : path
@@ -92,37 +83,9 @@ const readFileResponse = async (path: string) => {
   }).catch(() => null)
 }
 
-const readPluginStorageRawOnce = async (key: string): Promise<string | typeof MISSING_DATA> => {
-  const res = await readFileResponse(getPluginStoragePath(key))
-  if (!res?.ok) return MISSING_DATA
-  const text = await res.text().catch(() => '')
-  if (!text) return MISSING_DATA
-  if (isApiErrorPayload(new TextEncoder().encode(text))) return MISSING_DATA
-  return text
-}
-
-const readPluginStorageRaw = async (key: string, retries = 0): Promise<string | typeof MISSING_DATA> => {
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    const raw = await readPluginStorageRawOnce(key)
-    if (raw !== MISSING_DATA || attempt === retries) return raw
-    await sleep(80 + attempt * 160)
-  }
-  return MISSING_DATA
-}
-
-const putPublicFile = async (blob: Blob, publicPath: string, name?: string) => {
-  const dataPath = publicToDataPath(publicPath)
-  const dirPath = dataPath.split('/').slice(0, -1).join('/')
-  const fileName = name || publicPath.split('/').pop() || 'file'
-  const file = new File([blob], fileName, { type: blob.type || 'application/octet-stream' })
-  try { await putFile(dirPath, true, new File([], '')) } catch {}
-  await putFile(dataPath, false, file)
-  return publicPath
-}
-
 export const isSupportedBookFile = (name = '') => new RegExp(`\\.(${SUPPORTED_BOOK_EXTS.join('|')})$`, 'i').test(name)
 export const filterSupportedBookFiles = (files: File[]) => files.filter(file => isSupportedBookFile(file.name))
-export const readDirEntries = async (path: string) => (await readDir(path).catch(() => ({ data: [] as any[] })))?.data || []
+export const readDirEntries = async (path: string) => ((await readDir(path).catch(() => ({ data: [] as any[] }))) as any)?.data || []
 
 const normalizeCloudOpenPath = (path = '/') => `/${path}`.replace(/\/+/g, '/').replace(/\/$/, '') || '/'
 const encodeCloudOpenPath = (path: string) => decodeURI(encodeURI(path)).replace(/#/g, '%23').replace(/\?/g, '%3F')
@@ -177,7 +140,7 @@ export const createLocalFileRef = (path: string, size: number, lastModified: num
     type: '',
     lastModified,
     path: normalized,
-  } as File
+  } as unknown as File
 }
 
 export const materializeNativeFile = (file: File): File => {
@@ -218,84 +181,105 @@ export const normalizeBookTitle = (title = '') => {
   return withoutExt.replace(/_[a-z0-9]{4,12}$/i, '') || withoutExt || trimmed
 }
 
-export const loadDataState = async <T = any>(key: string, options: { retries?: number } = {}): Promise<{ found: boolean; value: T | null }> => {
-  try {
-    // Critical reader state bypasses Plugin.data so SiYuan sync changes are visible immediately.
-    const raw = await readPluginStorageRaw(key, Math.max(0, Number(options.retries || 0)))
-    const value = parseStoredValue<T>(raw)
-    return value === MISSING_DATA ? { found: false, value: null } : { found: true, value: value as T }
-  } catch {
-    return { found: false, value: null }
-  }
-}
+const compatibilityKey = <T>(key: string): StorageKey<T | null> => ({ name: key, defaultValue: () => null })
+
+export const loadDataState = async <T = any>(key: string, _options: { retries?: number } = {}): Promise<{ found: boolean; value: T | null }> =>
+  storageEngine.readState(compatibilityKey<T>(key), true)
 
 export const loadData = async <T = any>(key: string): Promise<T | null> => {
   const state = await loadDataState<T>(key)
   return state.found ? state.value : null
 }
 
-export const saveData = async (key: string, data: any) => {
-  const plugin = getPlugin()
-  if (!plugin || typeof (plugin as any).saveData !== 'function') return
-  await plugin.saveData(key, data)
-  if ((plugin as any).data) (plugin as any).data[key] = data
-}
+export const saveData = async (key: string, data: any) => storageEngine.transact(compatibilityKey<any>(key), [
+  { id: operationId('compat:set'), type: 'set', path: [], value: data },
+])
 
-export const removeData = async (key: string) => {
-  const plugin = getPlugin()
-  if (!plugin || typeof (plugin as any).removeData !== 'function') return
-  await plugin.removeData(key)
-  if ((plugin as any).data) delete (plugin as any).data[key]
-}
+export const removeData = async (key: string) => storageEngine.remove(key)
 
-export const saveManagedFile = async (blob: Blob, path: string, name?: string) => putPublicFile(blob, path, name)
+export const saveManagedFile = async (blob: Blob, path: string, name?: string) => writeManagedFile(blob, path, name)
+
+export const bookRecordKey = (url: string): StorageKey<BookRecord> => ({
+  name: getRecordKey(url),
+  defaultValue: () => ({ version: 1, book: {}, annotations: [], updatedAt: 0 }),
+})
 
 export const readBookRecord = async (url: string): Promise<BookRecord | null> => {
-  const key = getRecordKey(url)
-  if (bookRecordCache.has(key)) return bookRecordCache.get(key) || null
-  const record = await loadData<BookRecord>(key)
-  bookRecordCache.set(key, record || null)
-  return record
+  const state = await storageEngine.readState(bookRecordKey(url))
+  return state.found ? state.value : null
 }
-export const writeBookRecord = async (url: string, record: BookRecord) => {
-  const key = getRecordKey(url)
-  const task = (writeQueues.get(key) || Promise.resolve()).catch(() => {}).then(async () => {
-    bookRecordCache.set(key, record)
-    await saveData(key, record)
+export const transactBookRecord = (url: string, operations: StorageOperation[], onCommit?: (record: BookRecord) => void) =>
+  storageEngine.transact(bookRecordKey(url), operations, onCommit)
+
+export const writeBookRecord = (url: string, record: BookRecord) => transactBookRecord(url, [
+  { id: operationId('record:replace'), type: 'set', path: [], value: record },
+])
+
+export const mergeMigratedBookRecord = (url: string, base: BookRecord | null, candidate: BookRecord) =>
+  storageEngine.mutate(bookRecordKey(url), operationId('record:migrate'), latest => {
+    if (!base) {
+      return {
+        ...candidate,
+        ...latest,
+        book: { ...(candidate.book || {}), ...(latest.book || {}) },
+        annotations: mergeAnnotationVersions([], candidate.annotations || [], latest.annotations || []),
+        progress: latest.progress || candidate.progress,
+        migration: { ...(latest.migration || {}), ...(candidate.migration || {}) },
+        updatedAt: Date.now(),
+      }
+    }
+    return {
+      ...latest,
+      ...candidate,
+      book: { ...(candidate.book || {}), ...(latest.book || {}) },
+      annotations: mergeAnnotationVersions(base.annotations || [], candidate.annotations || [], latest.annotations || []),
+      progress: JSON.stringify(latest.progress) === JSON.stringify(base.progress) ? candidate.progress : latest.progress,
+      migration: { ...(latest.migration || {}), ...(candidate.migration || {}) },
+      updatedAt: Date.now(),
+    }
   })
-  const queued = task.finally(() => {
-    if (writeQueues.get(key) === queued) writeQueues.delete(key)
-  })
-  writeQueues.set(key, queued)
-  return task
+
+const annotationId = (item: any) => (item?.annotation || item)?.id
+const mergeAnnotationVersions = (base: any[], candidate: any[], latest: any[]) => {
+  const entries = (items: any[]) => items.map(item => [annotationId(item), item] as const).filter(([id]) => !!id)
+  const baseById = new Map(entries(base))
+  const latestById = new Map(entries(latest))
+  const result = new Map(entries(candidate))
+  for (const [id] of baseById) if (!latestById.has(id)) result.delete(id)
+  for (const [id, item] of latestById) {
+    const original = baseById.get(id)
+    if (!original || JSON.stringify(original) !== JSON.stringify(item)) result.set(id, item)
+  }
+  const withoutIds = candidate.filter(item => !annotationId(item))
+  return [...result.values(), ...withoutIds]
 }
-const updateBookRecord = async (url: string, update: (record: BookRecord | null) => BookRecord | Promise<BookRecord>) => {
-  const key = getRecordKey(url)
-  const task = (writeQueues.get(key) || Promise.resolve()).catch(() => {}).then(async () => {
-    const current = await readBookRecord(url)
-    const next = await update(current)
-    bookRecordCache.set(key, next)
-    await saveData(key, next)
-  })
-  const queued = task.finally(() => {
-    if (writeQueues.get(key) === queued) writeQueues.delete(key)
-  })
-  writeQueues.set(key, queued)
-  return task
-}
+
+export const patchBookRecord = (url: string, patch: Partial<BookRecord>) => transactBookRecord(url, [
+  { id: operationId('record:patch'), type: 'patch', path: [], value: { ...patch, updatedAt: Date.now() } },
+])
+
+export const upsertBookAnnotation = (url: string, annotation: any, nestedId = false, onCommit?: (record: BookRecord) => void) => transactBookRecord(url, [
+  { id: operationId('annotation:upsert'), type: 'upsert', path: ['annotations'], itemKey: nestedId ? 'annotation.id' : 'id', value: annotation },
+  { id: operationId('record:touch'), type: 'set', path: ['updatedAt'], value: Date.now() },
+], onCommit)
+
+export const deleteBookAnnotation = (url: string, id: string, nestedId = false, onCommit?: (record: BookRecord) => void) => transactBookRecord(url, [
+  { id: operationId('annotation:delete'), type: 'delete', path: ['annotations'], itemKey: nestedId ? 'annotation.id' : 'id', itemValue: id },
+  { id: operationId('record:touch'), type: 'set', path: ['updatedAt'], value: Date.now() },
+], onCommit)
+
 export const removeBookRecord = async (url: string) => {
-  const key = getRecordKey(url)
-  bookRecordCache.delete(key)
-  return removeData(key)
+  return storageEngine.remove(getRecordKey(url))
 }
 const migratePdfRecordFor = (url: string, pageHeights: number[] = []) => ensurePdfRecordMigrated(url, {
   readRecord: readBookRecord,
-  writeRecord: writeBookRecord,
+  writeRecord: (url, record, base) => mergeMigratedBookRecord(url, base || null, record),
   readLegacyBlob: url => readFileBlob(getPluginStoragePath(getLegacyEmbedPdfRecordKey(url))),
-  removeLegacy: url => removeFile(getPluginStoragePath(getLegacyEmbedPdfRecordKey(url))),
+  removeLegacy: url => removeManagedFileTransactionally(getPluginStoragePath(getLegacyEmbedPdfRecordKey(url))),
 }, pageHeights)
 const writeEmbedPdfRecord = async (url: string, patch: Partial<BookRecord>) => {
-  await updateBookRecord(url, record => ({ version: 1, book: record?.book || {}, annotations: record?.annotations || [], progress: record?.progress, ...patch, migration: { ...(record?.migration || {}), pdfAnnotations: PDF_MIGRATION_VERSION }, updatedAt: Date.now() }))
+  const record = await readBookRecord(url)
+  await patchBookRecord(url, { ...patch, migration: { ...(record?.migration || {}), pdfAnnotations: PDF_MIGRATION_VERSION } })
 }
 export const readEmbedPdfAnnotations = async (url: string, pageHeights: number[] = []): Promise<any[] | null> => {
   const record = await migratePdfRecordFor(url, pageHeights)
@@ -303,6 +287,8 @@ export const readEmbedPdfAnnotations = async (url: string, pageHeights: number[]
   return record.annotations.length ? (record.migration?.pdfAnnotations === PDF_MIGRATION_VERSION || needsLegacyPdfTextAlign(record.annotations) ? record.annotations : normalizeEmbedPdfAnnotations(record.annotations)) : null
 }
 export const writeEmbedPdfAnnotations = (url: string, annotations: any[]) => writeEmbedPdfRecord(url, { annotations: normalizeEmbedPdfAnnotations(annotations) })
+export const upsertEmbedPdfAnnotation = (url: string, annotation: any, onCommit?: (record: BookRecord) => void) => upsertBookAnnotation(url, annotation, true, onCommit)
+export const deleteEmbedPdfAnnotation = (url: string, id: string, onCommit?: (record: BookRecord) => void) => deleteBookAnnotation(url, id, true, onCommit)
 export const readEmbedPdfProgress = async (url: string): Promise<EmbedPdfProgress | null> => {
   const record = await readBookRecord(url)
   return record?.progress || null
@@ -310,7 +296,7 @@ export const readEmbedPdfProgress = async (url: string): Promise<EmbedPdfProgres
 export const writeEmbedPdfProgress = (url: string, progress: EmbedPdfProgress) => writeEmbedPdfRecord(url, { progress })
 export const removeManagedFile = async (path = '') => {
   if (!path || path.startsWith('asset://') || isRemotePath(path)) return
-  try { await removeFile(isPublicPath(path) ? publicToDataPath(path) : path) } catch {}
+  try { await removeManagedFileTransactionally(isPublicPath(path) ? publicToDataPath(path) : path) } catch {}
 }
 
 export const saveBookFile = async (file: File, url: string) => {

@@ -4,6 +4,8 @@
 import type{Plugin}from'siyuan'
 import{Overlayer}from'foliate-js/overlayer.js'
 import { getDatabase, type Annotation, type AnnotationType } from './database'
+import { flushStorage } from './storage/engine'
+import { trackPending } from './storage/pending'
 const compactNumber = (value: number, digits = 1) => {
   const factor = 10 ** digits
   return Math.round(value * factor) / factor
@@ -27,7 +29,7 @@ export const listAnnotations=async(book:string,type?:AnnotationType)=>{
   const items=await(await db()).getAnnotations(book)
   return type?items.filter(item=>item.type===type):items
 }
-export const removeAnnotation=async(id:string)=>await(await db()).deleteAnnotation(id)
+export const removeAnnotation=async(id:string,book?:string)=>await(await db()).deleteAnnotation(id,book)
 export const syncAnnotations=async(book:string,types:AnnotationType[],annotations:Annotation[])=>{
   const database=await db()
   await database.saveAnnotations(book,types,annotations)
@@ -40,6 +42,15 @@ const getColorBg=(color?:HighlightColor)=>COLORS.find(c=>c.color===color)?.bg||'
 const cleanTooltips=(markId:string)=>document.querySelectorAll(`[data-note-tooltip][data-mark-id="${markId}"]`).forEach(el=>el.remove())
 const compactMarkRects=(rects?:Array<{page?:number;x:number;y:number;w:number;h:number}>)=>rects?.map(r=>({ ...r,x:compactNumber(r.x),y:compactNumber(r.y),w:compactNumber(r.w),h:compactNumber(r.h) }))
 const normalizeTags=(tags?:unknown[])=>Array.from(new Set((tags||[]).map(tag=>String(tag||'').trim()).filter(Boolean)))
+export const parseMarkTags=(value='')=>normalizeTags(value.split(/[#;\uFF1B,\uFF0C\u3001\n]/))
+export const formatMarkTags=(tags?:unknown[])=>normalizeTags(tags).join(', ')
+export const getMarkTags=(item:any)=>normalizeTags(item?.tags||[])
+export const collectMarkTags=(source:any[]|any=[],extra:unknown[]=[])=>{const items=Array.isArray(source)?source:source?.getAll?.()||[];return [...new Set([...items.flatMap(getMarkTags),...normalizeTags(extra)])].sort((a,b)=>a.localeCompare(b)).slice(0,24)}
+export const toggleMarkTags=(tags:unknown[]=[],next:unknown[]=[])=>{const base=normalizeTags(tags),items=normalizeTags(next);return normalizeTags(items.every(tag=>base.includes(tag))?base.filter(tag=>!items.includes(tag)):[...base,...items])}
+export type MarkTagGroup={name:string;tags:string[]}
+const UNGROUPED_TAG_GROUP='\u672A\u5206\u7EC4'
+export const parseMarkTagPresets=(value=''):MarkTagGroup[]=>value.split('\n').map(line=>{const [name,tags='']=line.split(/[:\uFF1A]/);return{name:name?.trim(),tags:parseMarkTags(tags)}}).filter(group=>group.name&&(group.tags.length||group.name===UNGROUPED_TAG_GROUP))
+export const collectMarkTagGroups=(source:any[]|any=[],extra:unknown[]=[],preset=(globalThis as any).window?.__sireader_settings?.annotationTagPresets||'')=>{const presetGroups=parseMarkTagPresets(preset),groups=presetGroups.filter(group=>group.name!==UNGROUPED_TAG_GROUP),ungroupedPreset=presetGroups.find(group=>group.name===UNGROUPED_TAG_GROUP),used=collectMarkTags(source,extra),presetTags=new Set(groups.flatMap(group=>group.tags)),ungrouped=normalizeTags([...(ungroupedPreset?.tags||[]),...used.filter(tag=>!presetTags.has(tag))]);return[...groups,{name:UNGROUPED_TAG_GROUP,tags:ungrouped}]}
 export const createTooltip=(config:{icon:string;iconColor:string;title:string;content:string;id?:string})=>{
   const{icon,iconColor,title,content,id}=config
   const header=`<div style="display:flex;align-items:center;gap:8px;padding:12px 14px;border-left:4px solid ${iconColor};background:linear-gradient(135deg,var(--b3-theme-surface) 0%,var(--b3-theme-background-light) 100%)"><svg style="width:16px;height:16px;color:${iconColor};flex-shrink:0;filter:drop-shadow(0 1px 2px ${iconColor}4d)"><use xlink:href="${icon}"/></svg><span style="font-size:13px;font-weight:600;color:var(--b3-theme-on-surface);text-shadow:0 1px 2px rgba(0,0,0,.05)">${title}</span>${id?`<span style="font-size:10px;color:var(--b3-theme-on-surface-variant);margin-left:auto;opacity:0.6;font-weight:400">${id}</span>`:''}</div>`
@@ -80,7 +91,8 @@ export class MarkManager{
   private marksMap=new Map<string,Mark>()
   private markIndex:Map<number,Mark[]>|null=null
   private undoStack:Mark[]=[]
-  private saveTimer:any
+  private persistenceQueue:Promise<void>=Promise.resolve()
+  private autoSyncQueue:Promise<void>=Promise.resolve()
   private dirty=false
   private reader:any
   private initialized=false
@@ -136,13 +148,7 @@ export class MarkManager{
     }catch(e){console.error('[Mark]',e)}
   }
 
-  private save(){clearTimeout(this.saveTimer);this.saveTimer=setTimeout(()=>this.saveNow(),300)}
-  
-  /** 保存标注到数据库 */
-  private async saveNow(){
-    if(!this.initialized||!this.dirty)return
-    try{
-      const toAnnotation=(m:Mark):Annotation=>({
+  private toAnnotation=(m:Mark):Annotation=>({
         id:m.id,
         book:this.bookUrl,
         type:m.type,
@@ -170,12 +176,25 @@ export class MarkManager{
         chapter:m.chapter||'',
         block:m.blockId||''
       })
-      const types=['highlight','note','vocab','bookmark'] as const
-      await syncAnnotations(this.bookUrl,[...types],this.marks.filter(m=>types.includes(m.type)).map(toAnnotation))
+
+  private save(targetAutoSyncMark?: Mark){
+    if(!this.initialized)return Promise.resolve()
+    const annotations=this.marks.map(mark=>this.toAnnotation(structuredClone(mark)))
+    this.persistenceQueue=this.persistenceQueue.catch(()=>undefined).then(async()=>{
+      const database=await db()
+      for(const annotation of annotations)await database.saveAnnotation(
+        annotation,
+        annotation.id===targetAutoSyncMark?.id ? ()=>void this.queueAutoSync(targetAutoSyncMark) : undefined,
+      )
       this.dirty=false
       window.dispatchEvent(new Event('sireader:marks-updated'))
-    }catch(e){console.error('[Mark]',e)}
+    })
+    this.persistenceQueue.catch(e=>console.error('[Mark]',e))
+    return this.persistenceQueue
   }
+
+  /** 等待已登记的标注操作持久化。 */
+  private async saveNow(){await this.persistenceQueue}
 
   private add(m:Partial<Mark>, dirty=false):Mark{
     const mark:Mark={id:m.id||`${m.type}-${Date.now()}-${Math.random().toString(36).slice(2,9)}`,format:this.format,type:m.type!,timestamp:Date.now(),...m,tags:normalizeTags(m.tags)}as Mark
@@ -220,10 +239,12 @@ export class MarkManager{
     this.marksMap.delete(id)
     this.markIndex=null
     // 从数据库删除
-    try{
-      await removeAnnotation(id)
-    }catch(e){console.error('[Mark] del:',e)}
-    return true
+    this.persistenceQueue=this.persistenceQueue.catch(()=>undefined).then(()=>removeAnnotation(id,this.bookUrl)).then(()=>{})
+    try{await this.persistenceQueue;return true}catch(e){
+      try{await flushStorage();return true}catch{}
+      console.error('[Mark] del:',e)
+      return false
+    }
   }
 
   private async loadCalibre(){
@@ -240,7 +261,7 @@ export class MarkManager{
           if(!existing)this.add({type:obj.notes?'note':'highlight',format:'epub',cfi,color:obj.style?.which||'yellow',note:obj.notes},true)
         }
       }
-      this.save()
+      await this.save()
     }catch(e){console.error('[Mark]',e)}
   }
 
@@ -319,9 +340,8 @@ export class MarkManager{
     this.undoStack.push({...m})
     if(this.undoStack.length>10)this.undoStack.shift()
     if(m.cfi)await this.view?.addAnnotation?.({value:m.cfi,color:m.color,note:m.note}).catch(()=>{})
-    this.save()
+    await this.save(m)
     window.dispatchEvent(new Event('sireader:marks-updated'))
-    this.tryAutoSync(m)
     return m
   }
 
@@ -330,9 +350,8 @@ export class MarkManager{
     this.undoStack.push({...m})
     if(this.undoStack.length>10)this.undoStack.shift()
     if(m.cfi)await this.view?.addAnnotation?.({value:m.cfi,color:m.color,note:m.note}).catch(()=>{})
-    this.save()
+    await this.save(m)
     window.dispatchEvent(new Event('sireader:marks-updated'))
-    this.tryAutoSync(m)
     return m
   }
 
@@ -346,7 +365,7 @@ export class MarkManager{
 
   async updateMark(keyOrMark:string|any,updates?:Partial<Mark>):Promise<boolean>{
     if(typeof keyOrMark==='object'&&keyOrMark?.type){
-      const{type,id}=keyOrMark
+      const{id}=keyOrMark
       keyOrMark=id
     }
     const m=this.marksMap.get(keyOrMark)
@@ -359,7 +378,7 @@ export class MarkManager{
       await this.view?.deleteAnnotation?.({value:m.cfi}).catch(()=>{})
       await this.view?.addAnnotation?.({value:m.cfi,color:m.color,note:m.note}).catch(()=>{})
     }
-    this.save()
+    await this.save()
     window.dispatchEvent(new Event('sireader:marks-updated'))
     return true
   }
@@ -367,14 +386,14 @@ export class MarkManager{
   /** 删除标注 */
   async deleteMark(idOrKey:string|any):Promise<boolean>{
     if(typeof idOrKey==='object'&&idOrKey?.type){
-      const{type,id}=idOrKey
+      const{id}=idOrKey
       idOrKey=id
     }
     const m=this.marksMap.get(idOrKey)
     if(!m||!await this.del(m.id))return false
     
-    // 同步删除文档块
-    if(m.blockId||m.blockIds?.length)import('@/utils/copy').then(({syncMarkOnDelete})=>syncMarkOnDelete(m)).catch(e=>console.error('[DeleteBlock]',e))
+    // 与新增同步共用队列，确保快速新增后删除不会留下孤儿文档块。
+    await this.queueAutoSyncDelete(m)
     
     // 清理渲染
     {
@@ -386,7 +405,7 @@ export class MarkManager{
     return true
   }
 
-  addBookmark(loc?:string|number,title?:string):Mark{
+  async addBookmark(loc?:string|number,title?:string):Promise<Mark>{
     const l=this.view?.lastLocation||this.reader?.getLocation?.()
     const useLoc=loc||(l?.cfi||l?.index)
     const existing=this.marks.find(m=>m.type==='bookmark'&&(m.cfi===useLoc||m.page===useLoc||m.section===useLoc))
@@ -394,7 +413,7 @@ export class MarkManager{
     const m=this.add({type:'bookmark',format:this.format,[typeof useLoc==='string'?'cfi':'section']:useLoc,title:title||l?.tocItem?.label||l?.label||`第${(useLoc||0)+1}章`,progress:Math.round((l?.fraction||0)*100)},true)
     this.undoStack.push({...m})
     if(this.undoStack.length>10)this.undoStack.shift()
-    this.save()
+    await this.save()
     window.dispatchEvent(new Event('sireader:marks-updated'))
     return m
   }
@@ -408,7 +427,7 @@ export class MarkManager{
     const useLoc=loc||(l?.cfi||l?.index)
     const existing=this.marks.find(m=>m.type==='bookmark'&&(m.cfi===useLoc||m.page===useLoc||m.section===useLoc))
     if(existing){await this.deleteBookmark(existing.id);return false}
-    this.addBookmark(useLoc,title)
+    await this.addBookmark(useLoc,title)
     return true
   }
 
@@ -424,7 +443,20 @@ export class MarkManager{
   getAll=()=>[...this.marks]
   async addImageMark(src:string,_text:string,cfi?:string,note='',tags?:string[]):Promise<Mark>{
     const loc=this.view?.lastLocation||this.reader?.getLocation?.(),useCfi=cfi||loc?.cfi||'',m=this.add({type:'note',format:'epub',...(await this.locMeta(useCfi)),cfi:useCfi,text:'',note,image:src,tags},true)
-    this.undoStack.push({...m});this.undoStack.length>10&&this.undoStack.shift();this.save();window.dispatchEvent(new Event('sireader:marks-updated'));this.tryAutoSync(m);return m
+    this.undoStack.push({...m});this.undoStack.length>10&&this.undoStack.shift();await this.save(m);window.dispatchEvent(new Event('sireader:marks-updated'));return m
+  }
+
+  private queueAutoSync(m:Mark){
+    this.autoSyncQueue=this.autoSyncQueue.catch(()=>undefined).then(()=>this.tryAutoSync(m))
+    return trackPending(this.autoSyncQueue)
+  }
+
+  private queueAutoSyncDelete(m:Mark){
+    this.autoSyncQueue=this.autoSyncQueue.catch(()=>undefined).then(async()=>{
+      if(m.type==='bookmark')return
+      try{await(await import('@/utils/copy')).syncMarkOnDelete(m)}catch(e){console.error('[DeleteBlock]',e)}
+    })
+    return trackPending(this.autoSyncQueue)
   }
   undo=async()=>{
     const m=this.undoStack.pop()
@@ -437,7 +469,8 @@ export class MarkManager{
   }
 
   async destroy(){
-    clearTimeout(this.saveTimer)
+    await this.saveNow()
+    await this.autoSyncQueue
     await this.saveNow()
     this.marks=[]
     this.marksMap.clear()

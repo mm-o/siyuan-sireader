@@ -3,7 +3,7 @@
     <ReaderSplash v-if="showOpeningSplash" ref="readerSplashRef" :book-info="props.bookInfo" :file-name="props.file?.name" status="opening" />
     <div v-if="loading || error" class="reader-loading"><div v-if="loading" class="spinner"></div><div>{{ error || 'Loading...' }}</div></div>
     <div v-if="showToc&&!loading" class="reader-overlay" @click="closePanels"/>
-    <EmbedPdfReader v-if="isEmbedPdfMode" ref="embedPdfReaderRef" :source="embedPdfSource" :book-url="currentBookUrl" :storage-key="props.bookInfo?.dataId || currentBookUrl" :settings="currentSettings" :theme="currentSettings?.theme" :custom-theme="currentSettings?.customTheme" :hide-annotations="embedPdfAnnotationsHidden" :i18n="i18n" class="viewer-container" @ready="handleEmbedPdfReady"/>
+    <EmbedPdfReader v-if="isEmbedPdfMode" ref="embedPdfReaderRef" :source="embedPdfSource" :book-url="currentBookUrl" :storage-key="props.bookInfo?.dataId || currentBookUrl" :settings="currentSettings" :theme="currentSettings?.theme" :custom-theme="currentSettings?.customTheme" :hide-annotations="embedPdfAnnotationsHidden" :i18n="i18n" :on-annotation-persisted="syncEmbedPdfEvent" class="viewer-container" @ready="handleEmbedPdfReady" @annotations-ready="handleEmbedPdfAnnotationsReady"/>
     <div v-else ref="viewerContainerRef" class="viewer-container"></div>
     <div v-if="!isEmbedPdfMode&&!loading" class="reader-progress" aria-hidden="true"><span :style="{transform:`scaleX(${readingProgress})`}"/></div>
     <Transition name="toc-popup">
@@ -71,10 +71,13 @@ import DockShell from './ui/DockShell.vue'
 import { gotoEPUB, pdfPageFromCfi } from '@/utils/jump'
 import { copyMark as copyMarkUtil } from '@/utils/copy'
 import { capturePdfAnnotationImage, isPdfImageAnnotation, taskToPromise } from '@/utils/embedPdfActions'
+import { flushStorage } from '@/core/storage/engine'
+import { trackPending } from '@/core/storage/pending'
 import { isUserEmbedPdfAnnotation } from '@/core/dataMigration'
 import { createKeyboardHandler, setupEpubKeyboard, shouldHandleReaderKeydown } from '@/utils/keyboard'
 import { getTTSController } from '@/services/TTSPlayer'
 import { useLicense } from '@/core/license'
+import { upsertEmbedPdfAnnotation } from '@/core/bookStore'
 const props = defineProps<{ file?: File; plugin: Plugin; settings?: ReaderSettings; url?: string; blockId?: string; bookInfo?: any; onReaderReady?: (r: FoliateReader) => void; i18n?: any }>()
 const i18n = computed(() => props.i18n || {})
 const { can, showUpgrade } = useLicense(i18n.value)
@@ -123,7 +126,7 @@ const handleSettingsUpdate=async(e:Event)=>{
 }
 const containerRef = ref<HTMLElement>()
 const viewerContainerRef = ref<HTMLElement>()
-const embedPdfReaderRef = ref<{ resize?: () => void } | null>(null)
+const embedPdfReaderRef = ref<{ resize?: () => void; flushAnnotations?: () => Promise<void> } | null>(null)
 const readerSplashRef = ref<{ dismiss: () => void; cleanup: () => void; isVisible: () => boolean } | null>(null)
 const loading = ref(true)
 const error = ref('')
@@ -204,28 +207,56 @@ const imageEmbedPdfMark=async(item:any)=>{
   }
   return item
 }
-const syncEmbedPdfEvent=async(event:any)=>{
-  const a=event?.annotation, mark=a&&embedPdfMark({annotation:a})
+const pdfSyncQueues=new Map<string,Promise<void>>()
+const pdfSyncedBlocks=new Map<string,{blockId?:string;blockIds?:string[]}>()
+const syncEmbedPdfEvent=(event:any)=>{
+  const a=event?.annotation,mark=a&&embedPdfMark({annotation:structuredClone(a)})
   if(!mark)return
-  try{const m=await import('@/utils/copy'),ctx={bookUrl:getBookUrl(),isPdf:true,marks:currentView.value?.marks},next=event?.type==='delete'?mark:await imageEmbedPdfMark(mark);event?.type==='delete'?await m.syncMarkOnDelete(next):event?.type==='update'&&next.blockId?await m.updateMarkInDoc(next,ctx):await m.syncMarkOnCreate(next,ctx)}catch(e){console.error('[PdfSync]',e)}
+  const key=`${getBookUrl()}:${mark.id}`,previous=pdfSyncQueues.get(key)||Promise.resolve()
+  const task=previous.catch(()=>undefined).then(async()=>{
+    try{
+      const m=await import('@/utils/copy'),ctx={bookUrl:getBookUrl(),isPdf:true,marks:currentView.value?.marks}
+      Object.assign(mark,pdfSyncedBlocks.get(key)||{})
+      const next=event?.type==='delete'?mark:await imageEmbedPdfMark(mark)
+      if(event?.type==='delete'){await m.syncMarkOnDelete(next);pdfSyncedBlocks.delete(key)}
+      else{
+        const liveMarks=currentView.value?.marks
+        const durableMarks={updateMark:async(item:any,updates:any)=>{
+          if(embedPdfAnnotations.value&&liveMarks?.updateMark)return liveMarks.updateMark(item,updates)
+          const annotation=item.annotation||a
+          await upsertEmbedPdfAnnotation(props.bookInfo?.dataId||getBookUrl(),{annotation:{...annotation,custom:{...(annotation.custom||{}),...updates}}})
+        }}
+        const durableCtx={...ctx,marks:durableMarks}
+        if(event?.type==='update'&&next.blockId)await m.updateMarkInDoc(next,durableCtx)
+        else await m.syncMarkOnCreate(next,durableCtx)
+      }
+      if(next.blockId||next.blockIds?.length)pdfSyncedBlocks.set(key,{blockId:next.blockId,blockIds:next.blockIds})
+    }catch(e){console.error('[PdfSync]',e)}
+  })
+  pdfSyncQueues.set(key,task)
+  void trackPending(task.finally(()=>{if(pdfSyncQueues.get(key)===task)pdfSyncQueues.delete(key)}))
 }
 const updateEmbedPdfMark=async(item:any,updates:any)=>{
-  const a=item.annotation||item
-  a.custom={...(a.custom||{}),...compact({text:updates.text,title:updates.title,note:updates.note,tags:updates.tags,style:updates.style,blockId:updates.blockId,blockIds:updates.blockIds})}
+  const requested=item.annotation||item
+  const current=embedPdfAnnotations.value?.getAnnotations?.().find((x:any)=>x.object?.id===requested.id)?.object||requested
+  const a={...current,custom:{...(current.custom||{})}}
+  a.custom={...a.custom,...compact({text:updates.text,title:updates.title,note:updates.note,tags:updates.tags,style:updates.style,blockId:updates.blockId,blockIds:updates.blockIds})}
   a.contents=updates.note??updates.text??a.contents
   if(updates.style)a.type=PDF_MARKUP_TYPES[updates.style]||a.type
   if(updates.color)a.strokeColor=a.color=updates.color
   Object.assign(item,updates,{style:embedPdfStyle(a.type,a.custom),color:embedPdfColor(a.strokeColor||a.color||'')})
   await embedPdfAnnotations.value.updateAnnotation(a.pageIndex,a.id,compact({type:a.type,contents:a.contents,custom:a.custom,strokeColor:a.strokeColor,color:a.color}))
+  await embedPdfReaderRef.value?.flushAnnotations?.()
   await loadEmbedPdfMarks()
 }
-const deleteEmbedPdfMark=async(item:any)=>{const a=item.annotation||item;await embedPdfAnnotations.value.deleteAnnotation(a.pageIndex,a.id);await loadEmbedPdfMarks();return true}
+const deleteEmbedPdfMark=async(item:any)=>{const a=item.annotation||item;await embedPdfAnnotations.value.deleteAnnotation(a.pageIndex,a.id);await embedPdfReaderRef.value?.flushAnnotations?.();return true}
 const toggleEmbedPdfBookmark=async(loc:any,title?:string)=>{
   const page=typeof loc==='string'?pdfPageFromCfi(loc):Number(loc||0), found=embedPdfMarks.value.find(item=>item.type==='bookmark'&&item.page===page)
   if(!page)return false
   if(found)return await deleteEmbedPdfMark(found),false
   const text=title||`第${page}页`, now=new Date()
   embedPdfAnnotations.value.createAnnotation(page-1,{id:`bookmark-${Date.now()}`,type:1,pageIndex:page-1,rect:{origin:{x:0,y:0},size:{width:1,height:1}},contents:text,created:now,modified:now,flags:['hidden','noView'],custom:{type:'bookmark',title:text}})
+  await embedPdfReaderRef.value?.flushAnnotations?.()
   await loadEmbedPdfMarks()
   return true
 }
@@ -241,6 +272,7 @@ const initEmbedPdfMode=async(loadSource:()=>Promise<File|string|null>)=>{
   setActiveReader(currentView.value,null,getSettings())
 }
 const handleEmbedPdfReady=(registry:any)=>{
+  embedPdfPersistenceReady=false
   const documentId='sireader-document'
   const scroll=registry.getPlugin('scroll').provides()
   embedPdfPages.value=scroll.forDocument(documentId)
@@ -249,7 +281,7 @@ const handleEmbedPdfReady=(registry:any)=>{
   const emitPage=(page:number)=>window.dispatchEvent(new CustomEvent('sireader:pdf-page',{detail:{bookUrl:getBookUrl(),page}}))
   const offPage=scroll.onPageChange?.((event:any)=>event.documentId===documentId&&emitPage(event.pageNumber))
   const rememberNative=()=>embedPdfNativeIds=new Set(embedPdfAnnotations.value?.getAnnotations?.().map((item:any)=>item.object?.id).filter(Boolean)||[])
-  const offAnno=embedPdfAnnotations.value.onAnnotationEvent?.((event:any)=>{if(event?.type==='loaded')rememberNative();if(['create','update','delete'].includes(event?.type))void syncEmbedPdfEvent(event);if(['loaded','create','update','delete'].includes(event?.type))void loadEmbedPdfMarks()})
+  const offAnno=embedPdfAnnotations.value.onAnnotationEvent?.((event:any)=>{if(event?.type==='loaded')rememberNative();if(['loaded','create','update','delete'].includes(event?.type))requestAnimationFrame(()=>void loadEmbedPdfMarks())})
   cleanupEmbedPdfEvents?.()
   cleanupEmbedPdfEvents=()=>{offPage?.();offAnno?.()}
   emitPage(embedPdfPages.value?.getCurrentPage?.()||1)
@@ -295,6 +327,8 @@ const copyImageAsPng=async(src:string)=>{
     if(blob) await navigator.clipboard.write([new ClipboardItem({'image/png':blob})])
   }catch{showMessage('复制图片失败',2000,'error')}
 }
+let embedPdfPersistenceReady=false
+const handleEmbedPdfAnnotationsReady=()=>{embedPdfPersistenceReady=true;void loadEmbedPdfMarks()}
 const openImageViewer=async({item}:any)=>{
   if(!item?.image)return
   await loadViewer().catch(()=>{})
@@ -465,15 +499,15 @@ const resize=()=>{
 }
 defineExpose({ resize })
 onMounted(()=>{init();containerRef.value?.focus();events.forEach(([e,h])=>window.addEventListener(e,h as any));window.addEventListener('keydown',handleKeydown);window.addEventListener('unhandledrejection',suppressError);window.addEventListener('blur',handleWindowBlur);window.addEventListener('focus',handleWindowFocus);document.addEventListener('visibilitychange',handleVisibilityChange);setupTabObserver();const c=containerRef.value;c&&(c.addEventListener('focusin',handleFocusIn),c.addEventListener('focusout',handleFocusOut));bindTouchPaging(c);bindTouchPaging(viewerContainerRef.value);window.dispatchEvent(new CustomEvent('reader:open',{detail:{bookUrl:getBookUrl()}}));syncReaderFocus(true)})
-onUnmounted(async()=>{
+onUnmounted(()=>{void trackPending((async()=>{
   const view=currentView.value,c=containerRef.value
-  syncReaderFocus(false);window.dispatchEvent(new CustomEvent('reader:close'));savePosition();readerSplashRef.value?.cleanup();clearActiveReader(view);closeMediaMenu()
+  syncReaderFocus(false);window.dispatchEvent(new CustomEvent('reader:close'));await Promise.resolve(savePosition());await embedPdfReaderRef.value?.flushAnnotations?.().catch(()=>undefined);await flushStorage().catch(error=>console.error('[Reader storage flush]',error));readerSplashRef.value?.cleanup();clearActiveReader(view);closeMediaMenu()
   events.forEach(([e,h])=>window.removeEventListener(e,h as any));window.removeEventListener('keydown',handleKeydown);window.removeEventListener('unhandledrejection',suppressError);window.removeEventListener('blur',handleWindowBlur);window.removeEventListener('focus',handleWindowFocus);document.removeEventListener('visibilitychange',handleVisibilityChange);(c as any)?.__observer?.disconnect();c&&(c.removeEventListener('focusin',handleFocusIn),c.removeEventListener('focusout',handleFocusOut));unbindTouchPaging()
   try{await reader?.destroy();view?.cleanup?.()}catch{}
   await markManager.value?.destroy()
-  const{bookshelfManager}=await import('@/core/bookshelf');bookshelfManager.cleanup();await bookshelfManager.flush()
+  const{bookshelfManager}=await import('@/core/bookshelf');await bookshelfManager.cleanup();await bookshelfManager.flush()
   setTimeout(()=>viewerContainerRef.value&&(viewerContainerRef.value.innerHTML=''),50)
-})
+})())})
 </script>
 <style scoped lang="scss">
 .reader-container{position:relative;width:100%;height:100%;outline:none;user-select:text;-webkit-user-select:text;isolation:isolate;display:flex;flex-direction:column;background:var(--b3-theme-background)}

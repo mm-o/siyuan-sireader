@@ -104,37 +104,13 @@
 </template>
 
 <script lang="ts">
-const normalizeMarkTags = (tags?: unknown[]) => Array.from(new Set((tags || []).map(tag => String(tag || '').trim()).filter(Boolean)))
-export const parseMarkTags = (value = '') => normalizeMarkTags(value.split(/[#;\uFF1B,\uFF0C\u3001\n]/))
-export const formatMarkTags = (tags?: unknown[]) => normalizeMarkTags(tags).join(', ')
-export const getMarkTags = (item: any) => normalizeMarkTags(item?.tags || [])
-export const collectMarkTags = (source: any[] | any = [], extra: unknown[] = []) => {
-  const items = Array.isArray(source) ? source : source?.getAll?.() || []
-  return [...new Set([...items.flatMap(getMarkTags), ...normalizeMarkTags(extra)])].sort((a, b) => a.localeCompare(b)).slice(0, 24)
-}
-export const toggleMarkTags = (tags: unknown[] = [], next: unknown[] = []) => {
-  const base = normalizeMarkTags(tags), items = normalizeMarkTags(next)
-  return normalizeMarkTags(items.every(tag => base.includes(tag)) ? base.filter(tag => !items.includes(tag)) : [...base, ...items])
-}
-export type MarkTagGroup = { name: string; tags: string[] }
-const UNGROUPED_TAG_GROUP = '\u672A\u5206\u7EC4'
-export const parseMarkTagPresets = (value = ''): MarkTagGroup[] => value.split('\n').map(line => {
-  const [name, tags = ''] = line.split(/[:\uFF1A]/)
-  return { name: name?.trim(), tags: parseMarkTags(tags) }
-}).filter(group => group.name && (group.tags.length || group.name === UNGROUPED_TAG_GROUP))
-export const collectMarkTagGroups = (source: any[] | any = [], extra: unknown[] = [], preset = (globalThis as any).window?.__sireader_settings?.annotationTagPresets || '') => {
-  const presetGroups = parseMarkTagPresets(preset)
-  const groups = presetGroups.filter(group => group.name !== UNGROUPED_TAG_GROUP), ungroupedPreset = presetGroups.find(group => group.name === UNGROUPED_TAG_GROUP)
-  const used = collectMarkTags(source, extra)
-  const presetTags = new Set(groups.flatMap(group => group.tags))
-  const ungrouped = normalizeMarkTags([...(ungroupedPreset?.tags || []), ...used.filter(tag => !presetTags.has(tag))])
-  return [...groups, { name: UNGROUPED_TAG_GROUP, tags: ungrouped }]
-}
+export * from '@/core/MarkManager'
 </script>
 
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import { focusMobileEditable } from '@/utils/mobile'
+import type { MarkTagGroup } from '@/core/MarkManager'
 
 type ColorOption = { key: string; value: string; bg: string }
 type StyleOption = { value: string; label: string; icon?: string }

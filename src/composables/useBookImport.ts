@@ -163,7 +163,7 @@ const nodeDownloadFile = ({ url, fileName, headers = [], onProgress }: RemoteDow
         loaded += chunk.byteLength
         onProgress?.(total ? `下载中 ${Math.floor((loaded / total) * 100)}%` : `下载中 ${formatBytes(loaded)}`)
       })
-      response.on('end', () => resolve(new File(chunks, fileName, { type: String(response.headers?.['content-type'] || 'application/octet-stream') })))
+      response.on('end', () => resolve(new File(chunks as BlobPart[], fileName, { type: String(response.headers?.['content-type'] || 'application/octet-stream') })))
     })
     request.on('error', reject)
     request.setTimeout(30000, () => request.destroy(new Error('下载超时')))

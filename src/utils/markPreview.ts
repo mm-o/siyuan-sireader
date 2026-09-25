@@ -70,7 +70,8 @@ const getOfflineView = async (ctx: PreviewContext) => {
       const view = document.createElement('foliate-view') as any
       host.appendChild(view)
       document.body.appendChild(host)
-      await view.open((ctx.book?.format || '').toLowerCase() === 'txt' ? await createTxtBook(file) : file)
+      const source = file instanceof Blob && !(file instanceof File) ? new File([file], 'preview.epub', { type: file.type }) : file
+      await view.open((ctx.book?.format || '').toLowerCase() === 'txt' ? await createTxtBook(source) : source)
       return view
     })())
   }

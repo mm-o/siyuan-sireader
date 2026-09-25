@@ -1,6 +1,6 @@
 import { computed, onScopeDispose, ref } from 'vue'
 import { showMessage } from 'siyuan'
-import { loadData, saveData } from './bookStore'
+import { storageEngine, type StorageKey } from './storage/engine'
 
 export interface LicenseInfo {
   userId: string
@@ -46,8 +46,13 @@ const LEVELS: Record<string, number> = { free: 0, trial: 1, monthly: 2, annual: 
 
 export class LicenseManager {
   static readonly API = 'https://vip.745201.xyz'
+  static readonly USAGE_API = 'https://api.745201.xyz/simedia'
   static readonly KEY = 'sireader_license'
+  static readonly USAGE_DAY_KEY = 'sireader_usage_report_day'
   static readonly REFRESH_INTERVAL = 7 * 24 * 60 * 60 * 1000
+  private static readonly licenseKey: StorageKey<LicenseInfo | null> = { name: LicenseManager.KEY, defaultValue: () => null }
+  private static readonly usageDayKey: StorageKey<string> = { name: LicenseManager.USAGE_DAY_KEY, defaultValue: () => '' }
+  private static operationId(label: string) { return `${label}:${Date.now().toString(36)}:${Math.random().toString(36).slice(2)}` }
 
   private static async requestJson(url: string, init: RequestInit = {}) {
     try {
@@ -89,10 +94,14 @@ export class LicenseManager {
     try {
       const license = await this.loadStored()
       if (!license || !this.isUsable(license)) return null
-      if (Date.now() - license.lastVerifiedAt < this.REFRESH_INTERVAL) return license
+      if (Date.now() - license.lastVerifiedAt < this.REFRESH_INTERVAL) {
+        void this.reportUsage(license.userId)
+        return license
+      }
       const fresh = await this.verifyFromServer()
       if (!fresh) return license
       await this.save(fresh)
+      void this.reportUsage(fresh.userId)
       return fresh
     }
     catch {
@@ -122,7 +131,24 @@ export class LicenseManager {
       if (response.status === 404) return null
       throw new Error(response.data?.message || response.data?.error || `会员信息读取失败（${response.status}）`)
     }
-    return this.fromMemberships(response.data, account)
+    const license = this.fromMemberships(response.data, account)
+    if (license) void this.reportUsage(account.userId)
+    return license
+  }
+
+  private static async reportUsage(userId: string) {
+    const day = new Date().toISOString().slice(0, 10)
+    const reportedDay = await storageEngine.read(this.usageDayKey).catch(() => '')
+    if (reportedDay === day) return
+    try {
+      const response = await fetch(`${this.USAGE_API}/report`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, product: 'sireader' }),
+      })
+      if (response.ok) await storageEngine.transact(this.usageDayKey, [{ id: this.operationId('usage-day'), type: 'set', path: [], value: day }])
+    }
+    catch { /* usage reporting must never block license verification */ }
   }
 
   static async createMiniProgramBindingQr(account?: { userId?: string; userName?: string }) {
@@ -175,7 +201,7 @@ export class LicenseManager {
   }
 
   static async save(license: LicenseInfo) {
-    await saveData(this.KEY, this.normalizeLicense(license))
+    await storageEngine.transact(this.licenseKey, [{ id: this.operationId('license'), type: 'set', path: [], value: this.normalizeLicense(license) }])
   }
 
   static async getUserAvatar(): Promise<string | null> {
@@ -231,7 +257,8 @@ export class LicenseManager {
   }
 
   private static async loadStored(): Promise<LicenseInfo | null> {
-    const raw = await loadData<any>(this.KEY)
+    const state = await storageEngine.readState(this.licenseKey)
+    const raw: any = state.found ? state.value : null
     if (!raw || typeof raw !== 'object' || raw.encrypted || !raw.userId || !raw.type) return null
     return this.normalizeLicense(raw)
   }
@@ -240,11 +267,20 @@ export class LicenseManager {
     const memberships = Array.isArray(data)
       ? data
       : Array.isArray(data.memberships) ? data.memberships : Array.isArray(data.data?.memberships) ? data.data.memberships : []
-    const item = memberships.find((membership: any) => {
+    const item = memberships.filter((membership: any) => {
       if (String(membership?.product || '').toLowerCase() !== 'sireader') return false
       const status = String(membership?.status || '').toLowerCase()
       return status === 'active'
-    })
+    }).sort((a: any, b: any) => {
+      const rank = (value: any) => ({ trial: 1, monthly: 2, annual: 3, lifetime: 4 }[String(value?.plan || value?.type || '').toLowerCase()] || 0)
+      const rankDiff = rank(b) - rank(a)
+      if (rankDiff) return rankDiff
+      const expiry = (value: any) => Number(value?.expiresAt ?? value?.expires_at ?? 0)
+      const aExpiry = expiry(a); const bExpiry = expiry(b)
+      if (aExpiry === 0 && bExpiry !== 0) return -1
+      if (bExpiry === 0 && aExpiry !== 0) return 1
+      return bExpiry - aExpiry
+    })[0]
     if (!item) return null
 
     const binding = data.binding || data.data?.binding

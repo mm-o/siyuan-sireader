@@ -2,8 +2,10 @@
 import { defineComponent, h, ref, toRaw } from 'vue'
 import { showMessage, fetchSyncPost } from 'siyuan'
 import type { Plugin } from 'siyuan'
-import { putFile, readDir, removeFile, searchDocs as apiSearchDocs } from '@/api'
+import { readDir, searchDocs as apiSearchDocs } from '@/api'
 import { bookshelfManager } from '@/core/bookshelf'
+import { removeManagedFileTransactionally, writeManagedFile } from '@/core/storage/files'
+import { diffLeaves } from '@/core/storage/types'
 
 export type PageTurnStyle = 'push' | 'slide' | 'curl'
 export type ViewMode = 'single' | 'double' | 'scroll'
@@ -20,7 +22,7 @@ export interface ParagraphSettings { lineHeight: number; paragraphSpacing: numbe
 export interface LayoutSettings { gap?: number; headerFooterMargin?: number; marginTopPx: number; marginBottomPx: number; marginLeftPx: number; marginRightPx: number; gapPercent: number; showHeader: boolean; showFooter: boolean; showProgressInfo: boolean; progressStyle: 'fraction' | 'percentage' | 'reference'; referencePageCount: number; showCurrentTime: boolean; use24HourClock: boolean }
 export interface VisualSettings { brightness: number; contrast: number; sepia: number; saturate: number; invert: boolean }
 export interface TTSVoice { name: string; displayName: string; locale: string; isLocal?: boolean }
-export interface TTSSettings { enabled: boolean; voice: string; rate: number; pitch: number; sentenceGap: number; paragraphGap: number; autoTurnPage: boolean; highlightText: boolean; favoriteVoices: TTSVoice[] }
+export interface TTSSettings { enabled: boolean; voice: string; rate: number; pitch: number; sentenceGap: number; paragraphGap: number; autoTurnPage: boolean; highlightText: boolean; favoriteVoices?: TTSVoice[] }
 export interface TranslationSettings { autoOnSelection: boolean; engine: 'google' | 'azure' | 'transmart' | 'youdao' | 'volcengine' | 'wechat' | 'mymemory' | 'ai' }
 export interface ReaderSettings { enabled: boolean; openMode: 'newTab' | 'rightTab' | 'bottomTab' | 'newWindow'; navPosition: NavPosition; pageAnimation: PageTurnStyle; viewMode: ViewMode; theme: string; customTheme: ReadTheme; backgroundImage?: string; notebookId?: string; parentDoc?: DocInfo; noteInsertTarget: NoteInsertTarget; noteInsertMode: NoteInsertMode; linkFormat: string; annotationTagPresets: string; annotationSyncOnAdd: boolean; annotationSyncOnDelete: boolean; bookshelfCoverSize: number; bookshelfHiddenItems: string[]; openDocAssets: boolean; docAssetExcludeRegex: string; showWereadTopBar: boolean; epubOpeningSplash: boolean; toolbarOpacity: number; pdfZoomLevel?: 'automatic' | 'fit-page' | 'fit-width' | number; pdfAnnotationToolDefaults?: Record<string, Record<string, any>>; quickSendDocs?: DocInfo[]; navItems?: NavItem[]; textSettings: TextSettings; paragraphSettings: ParagraphSettings; layoutSettings: LayoutSettings; visualSettings: VisualSettings; translation: TranslationSettings; tts?: TTSSettings }
 
@@ -145,8 +147,7 @@ export const SettingRows = defineComponent({
 })
 export const savePublicImage = async (file: File, folder = 'backgrounds') => {
   const ext = file.name.split('.').pop() || 'png', name = `${folder}-${Date.now()}.${ext}`, dir = `/data/public/siyuan-sireader/${folder}`
-  await putFile(dir, true, new File([], ''))
-  await putFile(`${dir}/${name}`, false, file)
+  await writeManagedFile(file, `${dir}/${name}`, name)
   return `/public/siyuan-sireader/${folder}/${name}`
 }
 export interface PublicImageInfo { name: string; url: string }
@@ -162,7 +163,7 @@ export const scanPublicImages = async (force = false): Promise<PublicImageInfo[]
   return publicImageTask
 }
 export const deletePublicImage = async (name: string) => {
-  await removeFile(`/data/public/siyuan-sireader/backgrounds/${name}`)
+  await removeManagedFileTransactionally(`/data/public/siyuan-sireader/backgrounds/${name}`)
   publicImages = publicImages.filter(image => image.name !== name)
 }
 export const uploadPublicImage = async (file: File) => {
@@ -256,9 +257,12 @@ export const useConfirm = (f: () => void) => { const c = ref(false); return { co
 
 // ===== 设置管理 =====
 const merge = (d: any, s: any): any => { const r = { ...d }; for (const k in s) if (s[k] !== undefined && s[k] !== null) r[k] = typeof s[k] === 'object' && !Array.isArray(s[k]) && d[k] ? merge(d[k], s[k]) : s[k]; return r; };
+let persistedSettings: ReaderSettings | null = null
+const cloneSettings = <T>(value: T): T => JSON.parse(JSON.stringify(toRaw(value)))
 export const settingsManager = {
-  get: async (): Promise<ReaderSettings> => { const s = await bookshelfManager.getSetting('reader_settings'); const v = s ? merge(DEFAULT_SETTINGS, s) : { ...DEFAULT_SETTINGS }; if (!v.backgroundImage && v.customTheme?.bgImg) v.backgroundImage = v.customTheme.bgImg; const old = s?.layoutSettings?.headerFooterMargin; if (old > 0 && s.layoutSettings?.marginTopPx == null) Object.assign(v.layoutSettings, { marginTopPx: old, marginBottomPx: old, marginLeftPx: old, marginRightPx: old }); if (v.layoutSettings.gapPercent == null) v.layoutSettings.gapPercent = v.layoutSettings.gap || 5; if (v.layoutSettings.showHeader && v.layoutSettings.marginTopPx <= 0) v.layoutSettings.marginTopPx = 44; if (v.layoutSettings.showFooter && v.layoutSettings.marginBottomPx <= 0) v.layoutSettings.marginBottomPx = 44; v.linkFormat = normalizeLinkFormat(v.linkFormat); return (window as any).__sireader_settings = v; },
-  save: async (settings: ReaderSettings) => { const v = JSON.parse(JSON.stringify(toRaw(settings))); await bookshelfManager.saveSetting('reader_settings', v); (window as any).__sireader_settings = v; window.dispatchEvent(new CustomEvent('sireaderSettingsUpdated', { detail: v })); }
+  get: async (): Promise<ReaderSettings> => { const s = await bookshelfManager.getSetting('reader_settings'); const v = s ? merge(DEFAULT_SETTINGS, s) : { ...DEFAULT_SETTINGS }; if (!v.backgroundImage && v.customTheme?.bgImg) v.backgroundImage = v.customTheme.bgImg; const old = s?.layoutSettings?.headerFooterMargin; if (old > 0 && s.layoutSettings?.marginTopPx == null) Object.assign(v.layoutSettings, { marginTopPx: old, marginBottomPx: old, marginLeftPx: old, marginRightPx: old }); if (v.layoutSettings.gapPercent == null) v.layoutSettings.gapPercent = v.layoutSettings.gap || 5; if (v.layoutSettings.showHeader && v.layoutSettings.marginTopPx <= 0) v.layoutSettings.marginTopPx = 44; if (v.layoutSettings.showFooter && v.layoutSettings.marginBottomPx <= 0) v.layoutSettings.marginBottomPx = 44; v.linkFormat = normalizeLinkFormat(v.linkFormat); persistedSettings = cloneSettings(v); return (window as any).__sireader_settings = v; },
+  save: async (settings: ReaderSettings) => { const v = cloneSettings(settings); const baseline = persistedSettings; const patch = (baseline ? diffLeaves(v as unknown as Record<string, unknown>, baseline as unknown as Record<string, unknown>) : v) as Record<string, unknown>; if (Object.keys(patch).length) await bookshelfManager.patchSetting('reader_settings', patch); persistedSettings = cloneSettings(merge(baseline || DEFAULT_SETTINGS, patch)); const current = merge((window as any).__sireader_settings || DEFAULT_SETTINGS, patch); (window as any).__sireader_settings = current; window.dispatchEvent(new CustomEvent('sireaderSettingsUpdated', { detail: current })); },
+  patch: async (patch: Partial<ReaderSettings>) => { const value = cloneSettings(patch); await bookshelfManager.patchSetting('reader_settings', value); const v = merge((window as any).__sireader_settings || DEFAULT_SETTINGS, value); persistedSettings = cloneSettings(merge(persistedSettings || DEFAULT_SETTINGS, value)); (window as any).__sireader_settings = v; window.dispatchEvent(new CustomEvent('sireaderSettingsUpdated', { detail: v })); return v; }
 };
 export const collectAnnotationTagPresets = async (tags: unknown[] = []) => {
   const settings = (window as any).__sireader_settings as ReaderSettings
@@ -299,14 +303,13 @@ export function useSetting(plugin: Plugin) {
   const uploadCustomFonts = async (files: FileList | File[]) => {
     const fonts = Array.from(files).filter(file => /\.(ttf|otf|woff2?)$/i.test(file.name))
     if (!fonts.length) return 0
-    await putFile(CUSTOM_FONT_DIR, true, new File([], ''))
-    await Promise.all(fonts.map(file => putFile(`${CUSTOM_FONT_DIR}/${file.name}`, false, file)))
+    await Promise.all(fonts.map(file => writeManagedFile(file, `${CUSTOM_FONT_DIR}/${file.name}`, file.name)))
     cachedFonts = null
     await loadCustomFonts(true)
     return fonts.length
   }
   const deleteCustomFont = async (name: string) => {
-    await removeFile(`${CUSTOM_FONT_DIR}/${name}`)
+    await removeManagedFileTransactionally(`${CUSTOM_FONT_DIR}/${name}`)
     cachedFonts = null
     await loadCustomFonts(true)
   }

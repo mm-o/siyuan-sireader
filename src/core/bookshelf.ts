@@ -148,7 +148,8 @@ export class BookshelfManager {
     this.withBook(url, async book => {
       const patch = await mutate(book);
       if (!patch || patch === book) return false;
-      await this.saveBookData({ ...book, ...patch }, notify);
+      await this.useDb(db => db.patchBook(url, patch));
+      if (notify) this.notify();
       return true;
     }, fallback);
   
@@ -206,11 +207,12 @@ export class BookshelfManager {
   async getBook(url: string) { return this.useDb(async db => { for (const key of bookUrlCandidates(url)) { const book = await db.getBook(key); if (book) return book } return null }); }
   async getSetting<T = any>(key: string, fallback?: T) { const value = await this.useDb(db => db.getSetting<T>(key)); return (value ?? fallback) as T; }
   async saveSetting(key: string, value: any) { await this.useDb(db => db.saveSetting(key, value)); }
+  async patchSetting(key: string, patch: Record<string, unknown>) { await this.useDb(db => db.patchSetting(key, patch)); }
   async flush() { await this.useDb(db => db.cleanup()); }
   async recordReading(bookUrl: string, duration: number) {
     if (!bookUrl || duration <= 0) return;
     await this.useDb(db => db.saveDailyReading(bookUrl, duration));
-    await this.mutateBook(bookUrl, book => ({ time: (book.time || 0) + duration, read: Date.now() }), false, false);
+    await this.useDb(db => db.incrementBook(bookUrl, 'time', duration, { read: Date.now() }));
   }
   hasBook = async (url: string) => !!(await this.getBook(url))
   
@@ -254,7 +256,6 @@ export class BookshelfManager {
   async getDailyReading(year: number, month?: number) { return this.useDb(db => db.getDailyReading(year, month)); }
   
   // ===== 进度管理 =====
-  private progressTimer: any = null
   // 更新阅读进度
   async updateProgress(url:string,progress:number,chapter?:number,cfi?:string){
     const b=await this.getBook(url);if(!b)return false
@@ -266,13 +267,9 @@ export class BookshelfManager {
   
   // 自动更新进度（防抖）
   async updateProgressAuto(url:string,reader?:any,view?:any){
-    clearTimeout(this.progressTimer)
-    this.progressTimer=setTimeout(async()=>{
-      try{
-        const loc=reader?.getLocation?.()??view?.lastLocation;if(!loc)return
-        loc.fraction!==undefined&&this.updateProgress(url,Math.round(loc.fraction*100),loc.index,loc.cfi)
-      }catch{}
-    },2000)
+    const loc=reader?.getLocation?.()??view?.lastLocation
+    if(!loc||loc.fraction===undefined)return false
+    return this.updateProgress(url,Math.round(loc.fraction*100),loc.index,loc.cfi)
   }
   
   // 恢复阅读进度
@@ -286,11 +283,11 @@ export class BookshelfManager {
   }
   
   // 清理资源
-  cleanup(){clearTimeout(this.progressTimer)}
+  cleanup(){}
   
   updateRating=async(url:string,rating:number)=>this.updateBook(url,{rating:rating?Math.max(1,Math.min(5,rating)):undefined}); // 更新评分(1-5星)
   updateStatus=async(url:string,status:BookStatus)=>this.updateBook(url,{status,...(status==='finished'&&{finished:Date.now(),progress:100})}); // 更新状态(未读/在读/已读)
-  updateReadTime=async(url:string,seconds:number)=>this.mutateBook(url,book=>({time:(book.time||0)+seconds}),false,false); // 累加阅读时长
+  updateReadTime=async(url:string,seconds:number)=>this.useDb(db=>db.incrementBook(url,'time',seconds)); // 累加阅读时长
   
   // ===== 标签管理 =====
   manageTags = async (url: string, action: 'add' | 'remove' | 'set', data: string | string[]) => {
@@ -378,7 +375,7 @@ export class BookshelfManager {
     const GID='assets-pdf',gs=await this.getGroups()
     if(!gs.find(g=>g.id===GID))await this.saveGroups([...gs,{id:GID,name:'Assets PDF',order:gs.length,type:'folder'}])
     const files = await readDirEntries('/data/assets')
-    const assets=new Set(files.filter((f:any)=>!f.isDir&&f.name.endsWith('.pdf')).map((f:any)=>`asset://assets/${f.name}`)),all=new Set((await this.getBooks()).map(b=>b.url)),grp=new Set((await this.getGroupBooks(GID)).map(b=>b.url))
+    const assets=new Set<string>(files.filter((f:any)=>!f.isDir&&f.name.endsWith('.pdf')).map((f:any)=>`asset://assets/${f.name}`)),all=new Set<string>((await this.getBooks()).map(b=>b.url)),grp=new Set<string>((await this.getGroupBooks(GID)).map(b=>b.url))
     let add=0,del=0
     for(const u of assets){if(all.has(u)){grp.has(u)||await this.manageGroup(u,GID,'add');continue}try{const n=u.split('/').pop()!;await this.addAssetBook(`assets/${n}`,new File([await(await fetch(`/assets/${n}`)).blob()],n,{type:'application/pdf'}));await this.manageGroup(u,GID,'add');add++}catch{}}
     for(const b of await this.getGroupBooks(GID))assets.has(b.url)||await this.removeBook(b.url)&&del++
@@ -516,7 +513,7 @@ export class BookshelfManager {
     configure({ useWebWorkers: false })
     const reader = new ZipReader(new BlobReader(file))
     try {
-      const entries = new Map((await reader.getEntries()).map((e: any) => [e.filename, e]))
+      const entries = new Map<string, any>((await reader.getEntries()).map((e: any) => [e.filename, e] as [string, any]))
       const entry = (p = '') => entries.get(p) || entries.get(decodeURIComponent(p))
       const text = async (p: string) => await entry(p)?.getData(new TextWriter())
       const blob = async (p: string, type = '') => await entry(p)?.getData(new BlobWriter(type))

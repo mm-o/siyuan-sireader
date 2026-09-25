@@ -1,4 +1,7 @@
-import { loadDataState, readBookRecord as loadBookRecord, removeBookRecord, saveData, type BookRecord, writeBookRecord as saveBookRecord } from './bookStore'
+import { bookRecordKey, deleteBookAnnotation, readBookRecord as loadBookRecord, removeBookRecord, transactBookRecord, type BookRecord, upsertBookAnnotation } from './bookStore'
+import { flushStorage, storageEngine, type StorageKey } from './storage/engine'
+import { runAtomic, storageTransactionStep } from './storage/wal'
+import { deepMerge, leafEntries } from './storage/types'
 
 const BOOK_INDEX_KEY = 'bookshelf.json'
 const SETTINGS_KEY = 'settings.json'
@@ -75,6 +78,10 @@ export interface Annotation {
 type StoredIndex = Record<string, Book>
 type StoredSettings = Record<string, any>
 type DailyReadingStore = Record<string, Record<string, number>>
+const booksKey: StorageKey<StoredIndex> = { name: BOOK_INDEX_KEY, defaultValue: () => ({}) }
+const settingsKey: StorageKey<StoredSettings> = { name: SETTINGS_KEY, defaultValue: () => ({}) }
+const dailyKey: StorageKey<DailyReadingStore> = { name: DAILY_READING_KEY, defaultValue: () => ({}) }
+const operationId = (label: string) => `${label}:${globalThis.crypto?.randomUUID?.() || `${Date.now().toString(36)}:${Math.random().toString(36).slice(2)}`}`
 
 const emptyBook = (book: Partial<Book> & Pick<Book, 'url' | 'title' | 'format' | 'status'>): Book => ({
   url: book.url,
@@ -104,21 +111,16 @@ const emptyBook = (book: Partial<Book> & Pick<Book, 'url' | 'title' | 'format' |
 export class ReaderDatabase {
   private ready = false
   private initPromise: Promise<void> | null = null
-  private saveQueue = Promise.resolve()
-  private saveTimer: any = null
   private books: StoredIndex = {}
   private settings: StoredSettings = {}
   private dailyReading: DailyReadingStore = {}
-  private booksDirty = false
-  private settingsDirty = false
-  private dailyDirty = false
   private annotationCountRebuildPending = false
 
   private async readStorageState() {
     const [booksRaw, settingsRaw, dailyRaw] = await Promise.all([
-      loadDataState<any>(BOOK_INDEX_KEY, { retries: 2 }),
-      loadDataState<any>(SETTINGS_KEY, { retries: 2 }),
-      loadDataState<any>(DAILY_READING_KEY, { retries: 2 }),
+      storageEngine.readState(booksKey, true),
+      storageEngine.readState(settingsKey, true),
+      storageEngine.readState(dailyKey, true),
     ])
     return { booksRaw, settingsRaw, dailyRaw }
   }
@@ -132,9 +134,9 @@ export class ReaderDatabase {
 
   private async reloadStorage() {
     const { booksRaw, settingsRaw, dailyRaw } = await this.readStorageState()
-    if (booksRaw.found) this.books = parseJson(booksRaw.value, {})
-    if (settingsRaw.found) this.settings = parseJson(settingsRaw.value, {})
-    if (dailyRaw.found) this.dailyReading = parseJson(dailyRaw.value, {})
+    this.books = booksRaw.found ? parseJson(booksRaw.value, {}) : {}
+    this.settings = settingsRaw.found ? parseJson(settingsRaw.value, {}) : {}
+    this.dailyReading = dailyRaw.found ? parseJson(dailyRaw.value, {}) : {}
   }
 
   async init() {
@@ -158,64 +160,22 @@ export class ReaderDatabase {
     this.ready = true
   }
 
-  private async persist() {
-    const tasks: Promise<any>[] = []
-    if (this.booksDirty) {
-      this.booksDirty = false
-      tasks.push(saveData(BOOK_INDEX_KEY, this.books))
-    }
-    if (this.settingsDirty) {
-      this.settingsDirty = false
-      tasks.push(saveData(SETTINGS_KEY, this.settings))
-    }
-    if (this.dailyDirty) {
-      this.dailyDirty = false
-      tasks.push(saveData(DAILY_READING_KEY, this.dailyReading))
-    }
-    if (tasks.length) await Promise.all(tasks)
-  }
-
-  private async save() {
-    this.saveQueue = this.saveQueue.catch(() => {}).then(() => this.persist())
-    return this.saveQueue
-  }
-
   async saveNow() {
-    clearTimeout(this.saveTimer)
-    this.saveTimer = null
-    await this.save()
+    await flushStorage()
   }
 
   async cleanup() {
-    const hadPendingTimer = !!this.saveTimer
-    clearTimeout(this.saveTimer)
-    this.saveTimer = null
-    if (hadPendingTimer) {
-      await this.save()
-      return
-    }
-    await this.saveQueue.catch(() => {})
-  }
-
-  private markDirty(type: 'books' | 'settings' | 'daily', delay = 200) {
-    if (type === 'books') this.booksDirty = true
-    if (type === 'settings') this.settingsDirty = true
-    if (type === 'daily') this.dailyDirty = true
-    clearTimeout(this.saveTimer)
-    this.saveTimer = setTimeout(() => {
-      this.saveTimer = null
-      void this.save()
-    }, delay)
+    await flushStorage()
   }
 
   private readRawSetting<T = any>(key: string): T | null {
     return Object.prototype.hasOwnProperty.call(this.settings, key) ? this.settings[key] as T : null
   }
 
-  private writeRawSetting(key: string, value: any) {
+  private async writeRawSetting(key: string, value: any) {
     if (same(this.settings[key], value)) return
+    await storageEngine.transact(settingsKey, [{ id: operationId('setting:set'), type: 'set', path: [key], value }])
     this.settings[key] = value
-    this.markDirty('settings', 0)
   }
 
   private stripBookForIndex(book: Partial<Book> & Pick<Book, 'url' | 'title' | 'format' | 'status'>): Book {
@@ -247,11 +207,11 @@ export class ReaderDatabase {
     }
   }
 
-  private persistBookIndex(book: Book) {
+  private async persistBookIndex(book: Book) {
     const indexBook = this.stripBookForIndex(book)
     if (same(this.books[indexBook.url], indexBook)) return indexBook
+    await storageEngine.transact(booksKey, [{ id: operationId('book:set'), type: 'set', path: [indexBook.url], value: indexBook }])
     this.books[indexBook.url] = indexBook
-    this.markDirty('books')
     return indexBook
   }
 
@@ -262,9 +222,6 @@ export class ReaderDatabase {
 
   private readBookRecord = async (book: Book) =>
     await loadBookRecord(this.dataKey(book)) || await loadBookRecord(book.url) || { version: 1, book: { ...book }, annotations: [], updatedAt: Date.now() } as BookRecord
-
-  private writeBookRecord = async (book: Book, annotations: any[], progress?: BookRecord['progress']) =>
-    await saveBookRecord(this.dataKey(book), { version: 1, book: { ...book }, annotations, progress, updatedAt: Date.now() })
 
   private listBooks = (orderBy = 'read DESC') => {
     const books = Object.values(this.books)
@@ -294,7 +251,7 @@ export class ReaderDatabase {
       ...this.mergeRecordBook(book, record?.book),
       annotationCount: record?.annotations?.length || 0,
     }
-    if (!book.cover && full.cover) this.persistBookIndex(full)
+    if (!book.cover && full.cover) await this.persistBookIndex(full)
     return full
   }
 
@@ -302,13 +259,20 @@ export class ReaderDatabase {
     return (await Promise.all(books.map(async book => (await this.readBookRecord(book))?.annotations?.length || 0))).reduce((sum, count) => sum + count, 0)
   }
 
-  private getCachedAnnotationCount = () => Number(this.readRawSetting(ANNOTATION_COUNT_KEY) || 0)
   private setCachedAnnotationCount = (count: number) => this.writeRawSetting(ANNOTATION_COUNT_KEY, Math.max(0, count))
-  private bumpCachedAnnotationCount = (delta: number) => delta && this.setCachedAnnotationCount(this.getCachedAnnotationCount() + delta)
+  private async bumpCachedAnnotationCount(delta: number) {
+    if (!delta) return
+    const stored = await storageEngine.transact(settingsKey, [{
+      id: operationId('annotation-count'), type: 'increment', path: [ANNOTATION_COUNT_KEY], value: delta,
+    }, {
+      id: operationId('annotation-count-floor'), type: 'max', path: [ANNOTATION_COUNT_KEY], value: 0,
+    }])
+    this.settings[ANNOTATION_COUNT_KEY] = Number(stored[ANNOTATION_COUNT_KEY] || 0)
+  }
 
   private async rebuildAnnotationCount() {
     const total = await this.countRecordAnnotations(this.listBooks('added DESC'))
-    this.setCachedAnnotationCount(total)
+    await this.setCachedAnnotationCount(total)
     return total
   }
 
@@ -332,9 +296,9 @@ export class ReaderDatabase {
 
   async saveBook(book: Partial<Book> & Pick<Book, 'url' | 'title' | 'format' | 'status'>) {
     await this.init()
-    const indexBook = this.books[book.url]
+    const existingIndexBook = this.books[book.url]
     const record = await loadBookRecord(book.dataId || book.url) || await loadBookRecord(book.url)
-    const current = indexBook ? this.mergeRecordBook(indexBook, record?.book) : null
+    const current = existingIndexBook ? this.mergeRecordBook(existingIndexBook, record?.book) : null
     const hasPath = Object.prototype.hasOwnProperty.call(book, 'path')
     const hasCover = Object.prototype.hasOwnProperty.call(book, 'cover')
     const fullBook = {
@@ -346,22 +310,84 @@ export class ReaderDatabase {
       groups: book.groups || current?.groups || record?.book?.groups || [],
     } as Book
     const prevBook = current ? { ...current } : null
-    this.persistBookIndex(fullBook)
-    if (!same(prevBook, fullBook)) await this.writeBookRecord(fullBook, record?.annotations || [], record?.progress)
+    if (same(prevBook, fullBook)) return
+    const indexBook = this.stripBookForIndex(fullBook)
+    const recordKey = bookRecordKey(this.dataKey(fullBook))
+    await runAtomic('book-save', [
+      storageTransactionStep('book-index', { name: booksKey.name, defaultValue: booksKey.defaultValue() }, [
+        { id: operationId('book:set'), type: 'set', path: [indexBook.url], value: indexBook },
+      ]),
+      storageTransactionStep('book-record', { name: recordKey.name, defaultValue: recordKey.defaultValue() }, [
+        { id: operationId('record-book:patch'), type: 'patch', path: ['book'], value: fullBook as unknown as Record<string, unknown> },
+        { id: operationId('record:touch'), type: 'set', path: ['updatedAt'], value: Date.now() },
+      ]),
+    ])
+    this.books[indexBook.url] = indexBook
+  }
+
+  async patchBook(url: string, patch: Partial<Book>) {
+    await this.init()
+    const current = this.books[url]
+    if (!current) return false
+    const merged = { ...current, ...patch } as Book
+    const nextIndex = this.stripBookForIndex(merged)
+    const indexPatch = Object.fromEntries(Object.entries(nextIndex).filter(([key, value]) => !same((current as any)[key], value)))
+    const dataKey = this.dataKey(merged)
+    const steps = []
+    if (Object.keys(indexPatch).length) steps.push(storageTransactionStep('book-index', {
+      name: booksKey.name,
+      defaultValue: booksKey.defaultValue(),
+    }, [{ id: operationId('book:patch'), type: 'patch', path: [url], value: indexPatch }]))
+    const recordKey = bookRecordKey(dataKey)
+    steps.push(storageTransactionStep('book-record', {
+      name: recordKey.name,
+      defaultValue: recordKey.defaultValue(),
+    }, [{ id: operationId('record-book:patch'), type: 'patch', path: ['book'], value: patch as Record<string, unknown> }]))
+    await runAtomic('book-patch', steps)
+    this.books[url] = nextIndex
+    return true
+  }
+
+  async incrementBook(url: string, field: 'time', value: number, patch: Partial<Book> = {}) {
+    await this.init()
+    const current = this.books[url]
+    if (!current) return false
+    const next = { ...current, ...patch, [field]: Number((current as any)[field] || 0) + value } as Book
+    const dataKey = this.dataKey(next)
+    const indexOps: any[] = [{ id: operationId('book:increment'), type: 'increment', path: [url, field], value }]
+    const recordOps: any[] = [{ id: operationId('record-book:increment'), type: 'increment', path: ['book', field], value }]
+    if (Object.keys(patch).length) {
+      indexOps.push({ id: operationId('book:patch'), type: 'patch', path: [url], value: patch })
+      recordOps.push({ id: operationId('record-book:patch'), type: 'patch', path: ['book'], value: patch })
+    }
+    const recordKey = bookRecordKey(dataKey)
+    await runAtomic('book-increment', [
+      storageTransactionStep('book-index', { name: booksKey.name, defaultValue: booksKey.defaultValue() }, indexOps),
+      storageTransactionStep('book-record', { name: recordKey.name, defaultValue: recordKey.defaultValue() }, recordOps),
+    ])
+    this.books[url] = next
+    return true
   }
 
   async deleteBook(url: string, deleteData = false) {
     await this.init()
     const book = this.books[url]
     const annotationCount = deleteData ? (await loadBookRecord(book ? this.dataKey(book) : url))?.annotations?.length || 0 : 0
+    const dailyDeletes = Object.entries(this.dailyReading).flatMap(([date, items]) => {
+      if (!Object.prototype.hasOwnProperty.call(items, url)) return []
+      return [{ id: operationId('daily:delete'), type: 'delete' as const, path: [date, url] }]
+    })
+    const steps = [storageTransactionStep('book-index', { name: booksKey.name, defaultValue: booksKey.defaultValue() }, [
+      { id: operationId('book:delete'), type: 'delete', path: [url] },
+    ])]
+    if (dailyDeletes.length) steps.push(storageTransactionStep('daily-reading', { name: dailyKey.name, defaultValue: dailyKey.defaultValue() }, dailyDeletes))
+    await runAtomic('book-delete', steps)
     delete this.books[url]
     Object.values(this.dailyReading).forEach(items => delete items[url])
-    this.markDirty('books')
-    this.markDirty('daily')
     if (deleteData) {
       if (book?.dataId) await removeBookRecord(book.dataId)
       await removeBookRecord(url)
-      this.bumpCachedAnnotationCount(-annotationCount)
+      await this.bumpCachedAnnotationCount(-annotationCount)
     }
     await this.saveNow()
   }
@@ -372,7 +398,7 @@ export class ReaderDatabase {
     return (await loadBookRecord(item ? this.dataKey(item) : book) || await loadBookRecord(book))?.annotations || []
   }
 
-  async saveAnnotation(annotation: Partial<Annotation> & Pick<Annotation, 'id' | 'book' | 'type'>) {
+  async saveAnnotation(annotation: Partial<Annotation> & Pick<Annotation, 'id' | 'book' | 'type'>, onCommit?: () => void) {
     await this.init()
     if (!annotation.book) throw new Error('book required')
     if (!annotation.id) throw new Error('id required')
@@ -382,12 +408,34 @@ export class ReaderDatabase {
       const duration = Number(data.duration || 0)
       if (!date || duration <= 0) return
       const items = this.dailyReading[date] || {}
+      await storageEngine.transact(dailyKey, [{ id: operationId('daily:max'), type: 'max', path: [date, annotation.book], value: duration }])
       items[annotation.book] = Math.max(Number(items[annotation.book] || 0), duration)
       this.dailyReading[date] = items
-      this.markDirty('daily')
       return
     }
-    await this.saveAnnotations(annotation.book, [annotation.type], [annotation])
+    const book = await this.getBook(annotation.book)
+    if (!book) throw new Error('book not found')
+    if (book.format === 'pdf') return
+    const record = await this.readBookRecord(book)
+    const old = (record.annotations || []).find(item => item.id === annotation.id)
+    const now = Date.now()
+    const item = {
+      id: annotation.id,
+      book: annotation.book,
+      type: annotation.type,
+      loc: annotation.loc || '',
+      text: annotation.text || '',
+      note: annotation.note || '',
+      tags: Array.from(new Set((annotation.tags || []).map(tag => String(tag || '').trim()).filter(Boolean))),
+      color: annotation.color || '',
+      data: annotation.data || {},
+      created: annotation.created || old?.created || now,
+      updated: now,
+      chapter: annotation.chapter || '',
+      block: annotation.block || '',
+    } as Annotation
+    await upsertBookAnnotation(this.dataKey(book), item, false, onCommit)
+    if (!old) await this.bumpCachedAnnotationCount(1)
   }
 
   async saveAnnotations(bookUrl: string, types: AnnotationType[], annotations: Array<Partial<Annotation> & Pick<Annotation, 'id' | 'type'>>) {
@@ -425,26 +473,41 @@ export class ReaderDatabase {
       }),
     ].sort((a, b) => (a.created || 0) - (b.created || 0))
     if (same(current, next)) return
-    await this.writeBookRecord(record.book ? { ...book, ...record.book } : book, next, record.progress)
-    this.bumpCachedAnnotationCount(next.length - current.length)
+    const nextIds = new Set(next.filter(item => allow.has(item.type)).map(item => item.id))
+    const operations = [
+      ...current.filter(item => allow.has(item.type) && !nextIds.has(item.id)).map(item => ({
+        id: operationId('annotation:delete'), type: 'delete' as const, path: ['annotations'], itemKey: 'id', itemValue: item.id,
+      })),
+      ...next.filter(item => allow.has(item.type)).map(item => ({
+        id: operationId('annotation:upsert'), type: 'upsert' as const, path: ['annotations'], itemKey: 'id', value: item,
+      })),
+      { id: operationId('record:touch'), type: 'set' as const, path: ['updatedAt'], value: Date.now() },
+    ]
+    await transactBookRecord(this.dataKey(book), operations)
+    await this.bumpCachedAnnotationCount(next.length - current.length)
   }
 
-  async deleteAnnotation(id: string) {
+  async deleteAnnotation(id: string, bookUrl?: string) {
     await this.init()
-    for (const book of this.listBooks('added DESC')) {
+    const knownBook = bookUrl
+      ? this.books[bookUrl] || Object.values(this.books).find(book => book.dataId === bookUrl)
+      : null
+    const books = knownBook ? [knownBook] : this.listBooks('added DESC')
+    for (const book of books) {
       if (book.format === 'pdf') {
         const record = await loadBookRecord(this.dataKey(book)) || await loadBookRecord(book.url)
         const annotations = record?.annotations || []
-        const next = annotations.filter(item => (item.annotation || item).id !== id)
-        if (next.length === annotations.length) continue
-        await this.writeBookRecord(record?.book ? { ...book, ...record.book } : book, next, record?.progress)
-        this.bumpCachedAnnotationCount(-1)
+        const existed = annotations.some(item => (item.annotation || item).id === id)
+        if (!knownBook && !existed) continue
+        await deleteBookAnnotation(this.dataKey(book), id, true)
+        if (existed) await this.bumpCachedAnnotationCount(-1)
         break
       }
       const record = await loadBookRecord(this.dataKey(book)) || await loadBookRecord(book.url)
-      if (!record?.annotations?.some(item => item.id === id)) continue
-      await this.writeBookRecord(record.book ? { ...book, ...record.book } : book, record.annotations.filter(item => item.id !== id), record.progress)
-      this.bumpCachedAnnotationCount(-1)
+      const existed = !!record?.annotations?.some(item => item.id === id)
+      if (!knownBook && !existed) continue
+      await deleteBookAnnotation(this.dataKey(book), id, false)
+      if (existed) await this.bumpCachedAnnotationCount(-1)
       break
     }
   }
@@ -457,8 +520,19 @@ export class ReaderDatabase {
   async saveSetting(key: string, value: any) {
     await this.init()
     if (same(this.settings[key], value)) return
+    await storageEngine.transact(settingsKey, [{ id: operationId('setting:set'), type: 'set', path: [key], value }])
     this.settings[key] = value
-    this.markDirty('settings')
+  }
+
+  async patchSetting(key: string, patch: Record<string, unknown>) {
+    await this.init()
+    const current = this.settings[key]
+    const merged = deepMerge(current && typeof current === 'object' ? current : {}, patch)
+    const operations = leafEntries(patch).map(([path, value]) => ({
+      id: operationId('setting:set'), type: 'set' as const, path: [key, ...path], value,
+    }))
+    if (operations.length) await storageEngine.transact(settingsKey, operations)
+    this.settings[key] = merged
   }
 
   async getGroups() {
@@ -555,17 +629,26 @@ export class ReaderDatabase {
     await this.init()
     const date = new Date().toISOString().split('T')[0]
     const current = this.dailyReading[date] || {}
+    await storageEngine.transact(dailyKey, [{ id: operationId('daily:increment'), type: 'increment', path: [date, bookUrl], value: duration }])
     current[bookUrl] = Number(current[bookUrl] || 0) + duration
     this.dailyReading[date] = current
-    this.markDirty('daily')
   }
 
   async deleteGroup(gid: string) {
     await this.init()
-    Object.values(this.books).forEach(book => { book.groups = (book.groups || []).filter(group => group !== gid) })
+    const nextBooks = Object.fromEntries(Object.entries(this.books).map(([url, book]) => [url, { ...book, groups: (book.groups || []).filter(group => group !== gid) } as Book]))
     const configs = await this.getGroups()
-    await this.saveGroups(configs.filter((group: any) => group.id !== gid))
-    this.markDirty('books')
+    const nextGroups = configs.filter((group: any) => group.id !== gid)
+    await runAtomic('group-delete', [
+      storageTransactionStep('settings', { name: settingsKey.name, defaultValue: settingsKey.defaultValue() }, [
+        { id: operationId('groups:set'), type: 'set', path: ['book_groups'], value: nextGroups },
+      ]),
+      storageTransactionStep('book-index', { name: booksKey.name, defaultValue: booksKey.defaultValue() }, Object.values(nextBooks).map(book => ({
+        id: operationId('book:groups'), type: 'set' as const, path: [book.url], value: this.stripBookForIndex(book),
+      }))),
+    ])
+    this.settings.book_groups = nextGroups
+    this.books = nextBooks
   }
 
 }

@@ -120,7 +120,7 @@ const normalizeFileName = (value = 'book') =>
 
 const mergeSources = (saved: HttpSourceConfig[] = [], privateSources: HttpSourceConfig[] = []) => [
   ...[...DEFAULT_SOURCES, ...privateSources].map(source => {
-    const savedSource = saved.find(item => item.id === source.id) || {}
+    const savedSource: Partial<HttpSourceConfig> = saved.find(item => item.id === source.id) || {}
     const domains = source.domains ? uniqueValues([...(source.domains || []), ...(savedSource.domains || [])]) : savedSource.domains || source.domains
     const next = { ...source, ...savedSource, domains }
     return { ...next, filters: { extensions: normalizeExtensions(next.filters?.extensions || []) } }
@@ -326,7 +326,7 @@ export class HttpSourceManager {
           sourceId: source.id,
         }
       })
-      .filter((book): book is HttpBook => !!book)
+      .filter(Boolean) as HttpBook[]
   }
 
   private parseAnnaMd5Results(doc: Document, domain: string, source: HttpSourceConfig): HttpBook[] {
@@ -375,7 +375,7 @@ export class HttpSourceManager {
           sourceId: source.id,
         }
       })
-      .filter((book): book is HttpBook => !!book)
+      .filter(Boolean) as HttpBook[]
   }
 
   private async searchGutenberg(keyword: string, source: HttpSourceConfig): Promise<HttpBook[]> {
@@ -403,7 +403,7 @@ export class HttpSourceManager {
             sourceId: source.id,
           }
         })
-        .filter((book): book is HttpBook => !!book)
+        .filter(Boolean) as HttpBook[]
     } catch {
       return []
     }
@@ -434,7 +434,7 @@ export class HttpSourceManager {
             sourceId: source.id,
           }
         })
-        .filter((book): book is HttpBook => !!book)
+        .filter(Boolean) as HttpBook[]
     } catch {
       return []
     }
@@ -468,7 +468,7 @@ export class HttpSourceManager {
             sourceId: source.id,
           }
         })
-        .filter((book): book is HttpBook => !!book)
+        .filter(Boolean) as HttpBook[]
     } catch {
       return []
     }

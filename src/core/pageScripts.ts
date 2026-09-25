@@ -40,6 +40,21 @@ export interface PageScriptToolbarItem {
   menu?: PageScriptMenuItem[]
 }
 
+import { storageEngine, type StorageKey } from './storage/engine'
+
+type PageScriptSettings = Record<string, Record<string, unknown>>
+const pageScriptSettingsKey: StorageKey<PageScriptSettings> = { name: 'page-scripts.json', defaultValue: () => ({}) }
+export const loadPageScriptSettings = () => storageEngine.read(pageScriptSettingsKey)
+export const persistPageScriptSettings = (settings: PageScriptSettings) => storageEngine.transact(
+  pageScriptSettingsKey,
+  Object.entries(settings).map(([scriptId, value]) => ({
+    id: `page-scripts:${globalThis.crypto?.randomUUID?.() || `${Date.now().toString(36)}:${Math.random().toString(36).slice(2)}`}`,
+    type: 'patch' as const,
+    path: [scriptId],
+    value,
+  })),
+)
+
 const escapeRegExp = (value: string) => value.replace(/[|\\{}()[\]^$+?.]/g, '\\$&')
 const wildcardToRegExp = (pattern: string) => new RegExp(`^${pattern.split('*').map(escapeRegExp).join('.*')}$`, 'i')
 const matchesPattern = (url: string, pattern: string) => wildcardToRegExp(pattern).test(url)
@@ -73,11 +88,33 @@ export const setPageScriptEnabled = (id: string, enabled: boolean) => {
 
 export const getRuntimePageScriptsForUrl = (url: string) => runtimeScripts.filter(script => scriptMatchesUrl(script, url))
 
-export const createPageBridgeScript = () => `(() => {
+export const createPageBridgeScript = (storedSettings: PageScriptSettings = {}) => `(() => {
   const root = window.__sireaderPageBridge || {
     toolbarItems: [],
     state: {},
+    settings: ${JSON.stringify(storedSettings)},
     commands: {},
+  }
+  root.settings = { ...(root.settings || {}), ...${JSON.stringify(storedSettings)} }
+  root.legacySettingKeys = []
+  try {
+    const prefix = 'sireader.script.'
+    for (let i = 0; i < localStorage.length; i++) {
+      const storageKey = localStorage.key(i)
+      if (!storageKey || !storageKey.startsWith(prefix)) continue
+      const suffix = storageKey.slice(prefix.length)
+      const separator = suffix.indexOf('.')
+      if (separator <= 0 || separator === suffix.length - 1) continue
+      const scriptId = suffix.slice(0, separator), key = suffix.slice(separator + 1)
+      let value = localStorage.getItem(storageKey)
+      try { value = JSON.parse(value) } catch {}
+      root.settings[scriptId] = root.settings[scriptId] || {}
+      if (root.settings[scriptId][key] === undefined) root.settings[scriptId][key] = value
+      root.legacySettingKeys.push(storageKey)
+    }
+  } catch {}
+  root.clearLegacySettings = () => {
+    try { root.legacySettingKeys.forEach(key => localStorage.removeItem(key)); root.legacySettingKeys = [] } catch {}
   }
   const clone = value => JSON.parse(JSON.stringify(value ?? null))
   const emit = type => {
@@ -94,6 +131,7 @@ export const createPageBridgeScript = () => `(() => {
   root.dump = () => clone({
     toolbarItems: root.toolbarItems,
     state: root.state,
+    settings: root.settings,
   })
   root.runCommand = async (id, payload) => {
     const fn = root.commands[id]
@@ -108,24 +146,16 @@ export const createPageBridgeScript = () => `(() => {
     scriptId: script.id,
     url: location.href,
     getSetting(key, fallback) {
-      const raw = localStorage.getItem('sireader.script.' + script.id + '.' + key)
-      if (raw == null) return fallback
-      try { return JSON.parse(raw) } catch { return raw }
+      const value = root.settings?.[script.id]?.[key]
+      return value === undefined ? fallback : clone(value)
     },
     setSetting(key, value) {
-      localStorage.setItem('sireader.script.' + script.id + '.' + key, JSON.stringify(value))
-      return value
+      root.settings = root.settings || {}
+      root.settings[script.id] = { ...(root.settings[script.id] || {}), [key]: clone(value) }
+      return clone(value)
     },
     getSettings() {
-      const prefix = 'sireader.script.' + script.id + '.'
-      const out = {}
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i)
-        if (!key || !key.startsWith(prefix)) continue
-        const shortKey = key.slice(prefix.length)
-        try { out[shortKey] = JSON.parse(localStorage.getItem(key)) } catch { out[shortKey] = localStorage.getItem(key) }
-      }
-      return out
+      return clone(root.settings?.[script.id] || {})
     },
     setSettings(patch) {
       Object.entries(patch || {}).forEach(([key, value]) => this.setSetting(key, value))

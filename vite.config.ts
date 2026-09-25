@@ -64,6 +64,11 @@ export default defineConfig(({
   const privateSources = resolve(__dirname, "private-sources/src/privateSources.ts")
 
   return {
+    test: {
+      include: ['tests/**/*.test.ts'],
+      exclude: ['node_modules/**', 'dist/**', 'dev/**', 'docs/**'],
+    },
+
     resolve: {
       alias: {
         "@": resolve(__dirname, "src"),

@@ -10,7 +10,7 @@
 import { computed, createApp, nextTick, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 import { Dialog, showMessage } from 'siyuan'
 import { bookshelfManager } from '@/core/bookshelf'
-import { readEmbedPdfAnnotations, readEmbedPdfProgress, writeEmbedPdfAnnotations, writeEmbedPdfProgress } from '@/core/bookStore'
+import { deleteEmbedPdfAnnotation, readEmbedPdfAnnotations, readEmbedPdfProgress, upsertEmbedPdfAnnotation, writeEmbedPdfAnnotations, writeEmbedPdfProgress } from '@/core/bookStore'
 import { alignLegacyPdfAnnotations, needsLegacyPdfTextAlign } from '@/core/dataMigration'
 import { createTooltip, showTooltip } from '@/core/MarkManager'
 import { copyMark } from '@/utils/copy'
@@ -20,14 +20,15 @@ import { settingsManager, type ReaderSettings, type ReadTheme } from '@/composab
 import { isMobile } from '@/utils/mobile'
 import Translate from './Translate.vue'
 import { pdfQuickSendCommandId } from '@/utils/keyboard'
+import { trackPending } from '@/core/storage/pending'
 
 type EmbedPdfContainer = any
 type PluginRegistry = any
 type PdfAssets = { wasmUrl: string; stampManifests: any[] }
 type PdfCommandDefinition = { id: string; label: string; icon?: string; categories?: string[]; action: (context?: any) => void | Promise<void>; active?: (context?: any) => boolean; visible?: (context?: any) => boolean; disabled?: (context?: any) => boolean }
-const props = defineProps<{ source: File | string | null; settings?: ReaderSettings; theme?: string; customTheme?: ReadTheme; bookUrl?: string; storageKey?: string; hideAnnotations?: boolean; i18n?: any }>()
+const props = defineProps<{ source: File | string | null; settings?: ReaderSettings; theme?: string; customTheme?: ReadTheme; bookUrl?: string; storageKey?: string; hideAnnotations?: boolean; i18n?: any; onAnnotationPersisted?: (event: any) => void }>()
 const storageKey = () => props.storageKey || props.bookUrl || ''
-const emit = defineEmits<{ ready: [registry: PluginRegistry] }>()
+const emit = defineEmits<{ ready: [registry: PluginRegistry]; 'annotations-ready': [] }>()
 const documentSource = shallowRef<any>(null)
 const pdfAssets = shallowRef<PdfAssets | null>(null)
 const pdfLoadError = ref('')
@@ -49,12 +50,10 @@ const preparePdfAssets = async () => {
   ])
   return (pdfAssets.value = { wasmUrl, stampManifests })
 }
-let annotationSaveTimer: any = null
-let progressSaveTimer: any = null
-let pendingProgress: { pageNumber: number; totalPages: number } | null = null
 let activeRegistry: PluginRegistry | null = null
 let activeContainer: EmbedPdfContainer | null = null
 let activeAnnotationScope: any = null
+let annotationPersistenceQueue: Promise<void> = Promise.resolve()
 let activeScrollScope: any = null
 let pdfTooltip: HTMLElement | null = null
 let pdfTooltipAnnotations: any[] = []
@@ -684,27 +683,8 @@ const savePdfZoomLevel = (level: unknown) => {
   clearTimeout(zoomSaveTimer)
   zoomSaveTimer = setTimeout(() => {
     zoomSaveTimer = null
-    void settingsManager.save({ ...settings, pdfZoomLevel })
+    void settingsManager.patch({ pdfZoomLevel })
   }, 400)
-}
-
-const saveAnnotations = async (registry: PluginRegistry) => {
-  if (!storageKey()) return
-  const annotation = getCapability<any>(registry, 'annotation')?.forDocument(documentId)
-  if (!annotation?.exportAnnotations) return
-  const items = await annotation.exportAnnotations().toPromise().catch(() => null)
-  if (!items) return
-  const managed = nativePdfAnnotationIds.size ? items.filter(item => !nativePdfAnnotationIds.has((item.annotation || item)?.id)) : items
-  await writeEmbedPdfAnnotations(storageKey(), managed)
-  window.dispatchEvent(new Event('sireader:marks-updated'))
-}
-
-const queueAnnotationSave = (registry: PluginRegistry) => {
-  clearTimeout(annotationSaveTimer)
-  annotationSaveTimer = setTimeout(() => {
-    annotationSaveTimer = null
-    void saveAnnotations(registry)
-  }, 600)
 }
 
 const saveProgress = async (page: { pageNumber: number; totalPages: number }) => {
@@ -716,13 +696,7 @@ const saveProgress = async (page: { pageNumber: number; totalPages: number }) =>
 }
 
 const queueProgressSave = (page: { pageNumber: number; totalPages: number }) => {
-  pendingProgress = page
-  clearTimeout(progressSaveTimer)
-  progressSaveTimer = setTimeout(() => {
-    progressSaveTimer = null
-    pendingProgress = null
-    void saveProgress(page)
-  }, 600)
+  void trackPending(saveProgress(page)).catch(error => console.error('[PDF progress storage]', error))
 }
 
 const handleInit = (container: EmbedPdfContainer) => {
@@ -785,7 +759,7 @@ const handleReady = async (registry: PluginRegistry) => {
     if (!settings) return
     const pdfAnnotationToolDefaults = readToolDefaults()
     if (JSON.stringify(settings.pdfAnnotationToolDefaults || {}) === JSON.stringify(pdfAnnotationToolDefaults || {})) return
-    void settingsManager.save({ ...settings, pdfAnnotationToolDefaults })
+    void settingsManager.patch({ pdfAnnotationToolDefaults })
   }
   if (annotationRoot) {
     applyToolDefaults(readerSettings()?.pdfAnnotationToolDefaults)
@@ -812,6 +786,7 @@ const handleReady = async (registry: PluginRegistry) => {
   setupPdfDoubleTapZoom(registry)
   setupPdfCapture(registry)
   let annotationsLoaded = false
+  let annotationPersistenceReady = false
   const storedAnnotationIds = new Set<string>()
   const annotation = activeAnnotationScope
   const annotationIds = () => new Set(annotation?.getAnnotations?.()?.map((item: any) => item.object?.id).filter(Boolean) || [])
@@ -819,6 +794,8 @@ const handleReady = async (registry: PluginRegistry) => {
     if (annotationsLoaded) return
     annotationsLoaded = true
     if (!storageKey() || !annotation?.createAnnotation) {
+      annotationPersistenceReady = true
+      emit('annotations-ready')
       window.dispatchEvent(new Event('sireader:marks-updated'))
       refreshPdfTooltipAnnotations()
       return
@@ -843,6 +820,8 @@ const handleReady = async (registry: PluginRegistry) => {
         }
       }
     }
+    annotationPersistenceReady = true
+    emit('annotations-ready')
     window.dispatchEvent(new Event('sireader:marks-updated'))
     refreshPdfTooltipAnnotations()
   }
@@ -856,8 +835,23 @@ const handleReady = async (registry: PluginRegistry) => {
       if (event?.type === 'loaded') {
         nativePdfAnnotationIds = new Set([...annotationIds()].filter(id => !storedAnnotationIds.has(id)))
         void loadAnnotations()
-      } else if (['create', 'update', 'delete'].includes(event?.type) && !nativePdfAnnotationIds.has(id)) {
-        queueAnnotationSave(registry)
+      } else if (annotationPersistenceReady && ['create', 'update', 'delete'].includes(event?.type) && id && !nativePdfAnnotationIds.has(id)) {
+        const current = event.type === 'delete'
+          ? null
+          : annotation.getAnnotations?.().find((item: any) => item.object?.id === id)?.object || event.annotation
+        const persistedEvent = {
+          type: event.type,
+          annotation: structuredClone(event.type === 'delete' ? event.annotation : current),
+        }
+        const onCommit = () => props.onAnnotationPersisted?.(persistedEvent)
+        const task = event.type === 'delete'
+          ? deleteEmbedPdfAnnotation(storageKey(), id, onCommit)
+          : upsertEmbedPdfAnnotation(storageKey(), { annotation: structuredClone(current) }, onCommit)
+        annotationPersistenceQueue = annotationPersistenceQueue.catch(() => undefined).then(async () => {
+          await task
+          window.dispatchEvent(new Event('sireader:marks-updated'))
+        })
+        annotationPersistenceQueue.catch(error => console.error('[PDF annotation storage]', error))
       }
       if (activeToolId) restorePdfAnnotationTool(annotation, activeToolId)
       refreshPdfTooltipAnnotations()
@@ -969,14 +963,6 @@ const themeObserver = new MutationObserver(() => requestAnimationFrame(applyPdfT
 ;[document.documentElement, document.body].forEach(el => themeObserver.observe(el, { attributes: true, attributeFilter: ['class', 'style', 'data-theme-mode'] }))
 
 onBeforeUnmount(() => {
-  if (annotationSaveTimer && activeRegistry) {
-    clearTimeout(annotationSaveTimer)
-    void saveAnnotations(activeRegistry)
-  }
-  if (progressSaveTimer && pendingProgress) {
-    clearTimeout(progressSaveTimer)
-    void saveProgress(pendingProgress)
-  }
   clearTimeout(zoomSaveTimer)
   cleanupAnnotationEvents?.()
   cleanupDocumentEvents?.()
@@ -1008,7 +994,8 @@ const resize = () => {
   }
 }
 
-defineExpose({ resize })
+const flushAnnotations = () => annotationPersistenceQueue
+defineExpose({ resize, flushAnnotations })
 </script>
 
 <style scoped>

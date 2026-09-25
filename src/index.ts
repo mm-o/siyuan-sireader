@@ -3,6 +3,7 @@ import '@/index.scss'
 import PluginInfoString from '@/../plugin.json'
 import { destroy, init, usePlugin } from '@/main'
 import { PDF_SHORTCUT_COMMANDS } from '@/utils/keyboard'
+import { invalidateStorage } from '@/core/storage/engine'
 
 const { version } = PluginInfoString
 
@@ -12,13 +13,16 @@ export default class PluginSample extends Plugin {
   public isLocal: boolean
   public isElectron: boolean
   public isInWindow: boolean
-  public platform: SyFrontendTypes
+  public platform: ReturnType<typeof getFrontend>
   public readonly version = version
-  private readonly handleStorageChanged = () => window.dispatchEvent(new CustomEvent('sireader:storage-changed'))
+  private readonly handleStorageChanged = () => {
+    invalidateStorage()
+    window.dispatchEvent(new CustomEvent('sireader:storage-changed'))
+  }
 
   async onload() {
     const frontEnd = getFrontend()
-    this.platform = frontEnd as SyFrontendTypes
+    this.platform = frontEnd
     this.isMobile = frontEnd === 'mobile' || frontEnd === 'browser-mobile'
     this.isBrowser = frontEnd.includes('browser')
     this.isLocal = location.href.includes('127.0.0.1') || location.href.includes('localhost')
@@ -34,13 +38,13 @@ export default class PluginSample extends Plugin {
     }
 
     usePlugin(this)
-    init(this)
+    await init(this)
     this.eventBus.on('sync-end', this.handleStorageChanged)
     this.eventBus.on('ws-main', this.handleWsMain)
     this.addHotkeys()
   }
 
-  onDataChanged() {}
+  onDataChanged() { this.handleStorageChanged() }
 
   private handleWsMain = (event: CustomEvent) => {
     const cmd = event.detail?.cmd
@@ -59,7 +63,7 @@ export default class PluginSample extends Plugin {
       this.addCommand({ langKey: k, langText: (this.i18n as any)?.[k] || text, hotkey, callback }),
     )
     PDF_SHORTCUT_COMMANDS.forEach(([id, text]) => this.addCommand({
-      langKey: 'pdf-' + id.replaceAll(':', '-'),
+      langKey: 'pdf-' + id.replace(/:/g, '-'),
       langText: 'PDF ' + text,
       hotkey: '',
       callback: () => window.dispatchEvent(new CustomEvent('sireader:pdf-command', { detail: id })),
@@ -69,7 +73,7 @@ export default class PluginSample extends Plugin {
   async onunload() {
     this.eventBus.off('sync-end', this.handleStorageChanged)
     this.eventBus.off('ws-main', this.handleWsMain)
-    destroy()
+    await destroy()
   }
 
   async uninstall() {
@@ -82,6 +86,6 @@ export default class PluginSample extends Plugin {
   }
 
   openSetting() {
-    window._sy_plugin_sample.openSetting()
+    ;(window as any)._sy_plugin_sample.openSetting()
   }
 }

@@ -71,11 +71,11 @@
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { showMessage } from 'siyuan'
 import type { HighlightColor, Mark, MarkManager } from '@/core/MarkManager'
-import { COLORS, STYLES } from '@/core/MarkManager'
+import { COLORS, STYLES, collectMarkTagGroups, formatMarkTags, getMarkTags, parseMarkTags, toggleMarkTags } from '@/core/MarkManager'
 import { hideFloat, openBlock, showFloat } from '@/utils/copy'
 import { jump } from '@/utils/jump'
 import { isMobile } from '@/utils/mobile'
-import MarkCard, { collectMarkTagGroups, formatMarkTags, getMarkTags, parseMarkTags, toggleMarkTags } from './MarkCard.vue'
+import MarkCard from './MarkCard.vue'
 import Translate from './Translate.vue'
 
 interface MarkSelection {

@@ -6,7 +6,7 @@ import { bookshelfManager } from '@/core/bookshelf'
 import { pdfMarkFromAnnotation } from '@/utils/embedPdfActions'
 import { copyMark as copyMarkUtil, hideFloat, openBlock, showFloat } from '@/utils/copy'
 import { jump, markTarget } from '@/utils/jump'
-import { collectMarkTagGroups, formatMarkTags, getMarkTags, parseMarkTags, toggleMarkTags } from '@/components/MarkCard.vue'
+import { collectMarkTagGroups, formatMarkTags, getMarkTags, parseMarkTags, toggleMarkTags } from '@/core/MarkManager'
 
 type MarkSort = 'time' | 'date' | 'chapter' | 'page' | 'name' | 'custom'
 type MarkType = 'highlight' | 'note' | 'bookmark'
@@ -60,8 +60,8 @@ const isTextMark = (item: any) => item?.type === 'highlight' || item?.type === '
 const getKey = (item: any) => item?.id || item?.groupId || item?.cfi || `${item?.type}-${item?.page || item?.section || 0}`
 const getType = (item: any): MarkType => item?.type === 'note' ? 'note' : item?.type === 'bookmark' ? 'bookmark' : 'highlight'
 const rawColor = (item: any) => item?.color || item?.paths?.find((path: any) => path?.color)?.color || ''
-const colorBucket = (item: any) => COLOR_BUCKETS.find(bucket => bucket.aliases.includes(rawColor(item)))?.value || ''
-const toggleArray = (list: string[], value: string) => list.includes(value) ? list.splice(list.indexOf(value), 1) : list.push(value)
+const colorBucket = (item: any) => COLOR_BUCKETS.find(bucket => (bucket.aliases as readonly string[]).includes(rawColor(item)))?.value || ''
+const toggleArray = (list: string[], value: string) => { if (list.includes(value)) list.splice(list.indexOf(value), 1); else list.push(value) }
 export const useReaderMarks = (i18n?: any, context?: any) => {
   const globalReaderState = useReaderState()
   const getContext = () => typeof context === 'function' ? context() : context
@@ -379,8 +379,8 @@ export const useReaderMarks = (i18n?: any, context?: any) => {
     void loadLibraryBooks()
   }
 
-  const isMarkFilterActive = (key: MarkFilterKey, value: string) => key === 'note' ? markFilter.value.note === value : markFilter.value[key].includes(value)
-  const toggleMarkFilterItem = (key: MarkFilterKey, value: string) => key === 'note' ? markFilter.value.note = value as MarkNoteFilter : toggleArray(markFilter.value[key], value)
+  const isMarkFilterActive = (key: MarkFilterKey, value: string) => key === 'note' ? markFilter.value.note === value : (markFilter.value[key] as string[]).includes(value)
+  const toggleMarkFilterItem = (key: MarkFilterKey, value: string) => { if (key === 'note') markFilter.value.note = value as MarkNoteFilter; else toggleArray(markFilter.value[key] as string[], value) }
   const resetMarkOrganize = () => { markFilter.value = createFilter(); markReverse.value = false }
   const cycleTypeFilter = () => {
     const index = TYPE_CYCLE.findIndex(item => item.value === (markFilter.value.types.length === 1 ? markFilter.value.types[0] : null))

@@ -29,6 +29,8 @@ import { clearActiveReader, setActiveReader } from '@/core/epub/state'
 import {
   createPageBridgeScript,
   getRuntimePageScriptsForUrl,
+  loadPageScriptSettings,
+  persistPageScriptSettings,
   type PageScript,
   type PageScriptMenuItem,
   type PageScriptToolbarItem,
@@ -127,6 +129,10 @@ const syncPageBridge = async () => {
   if (!snapshot || typeof snapshot !== 'object') return
   toolbarItems.value = Array.isArray(snapshot.toolbarItems) ? snapshot.toolbarItems : []
   pageState.value = snapshot.state || {}
+  if (snapshot.settings && typeof snapshot.settings === 'object') {
+    await persistPageScriptSettings(snapshot.settings)
+    await executePageScript('window.__sireaderPageBridge?.clearLegacySettings?.()').catch(() => {})
+  }
 }
 
 const runPageScripts = async () => {
@@ -135,7 +141,8 @@ const runPageScripts = async () => {
   if (runId !== pageScriptRunId || !frame) return
   const url = currentFrameUrl()
   const scripts = await executableScripts(url)
-  await executePageScript(createPageBridgeScript()).catch(() => {})
+  const storedSettings = await loadPageScriptSettings().catch(() => ({}))
+  await executePageScript(createPageBridgeScript(storedSettings)).catch(() => {})
   for (const script of scripts) {
     if (runId !== pageScriptRunId || !frame) return
     await executePageScript(wrapPageScript(script)).catch(() => {})
@@ -150,6 +157,10 @@ const runScriptCommand = async (command?: string, payload: Record<string, unknow
   if (snapshot && typeof snapshot === 'object') {
     toolbarItems.value = Array.isArray(snapshot.toolbarItems) ? snapshot.toolbarItems : toolbarItems.value
     pageState.value = snapshot.state || pageState.value
+    if (snapshot.settings && typeof snapshot.settings === 'object') {
+      await persistPageScriptSettings(snapshot.settings)
+      await executePageScript('window.__sireaderPageBridge?.clearLegacySettings?.()').catch(() => {})
+    }
   } else {
     await syncPageBridge()
   }

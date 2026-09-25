@@ -113,7 +113,7 @@ const isFootnoteClick = (target: Element | null) => {
   return !!target?.closest?.(`sup,${footnoteSelector}`) || /\b(doc-)?(note|noteref|footnote|endnote|rearnote|biblio(ref|entry)?)\b|fn\d/i.test(key)
 }
 
-const mediaTarget = (target: Element | null) => {
+const mediaTarget = (target: (Element & { title?: string }) | null) => {
   if (!target || isFootnoteClick(target)) return null
   if (target.localName === 'img') return { type: 'image', el: target, image: (target as HTMLImageElement).currentSrc || (target as HTMLImageElement).src, text: (target as HTMLImageElement).alt || target.title || '图片标注' }
   const svgImage = target.localName === 'image' ? target : target.closest('image') || target.closest('svg')?.querySelector('image')
@@ -125,7 +125,7 @@ const mediaTarget = (target: Element | null) => {
 
 const recoverTransformErrors = (book: any) => book?.transformTarget?.addEventListener('data', (event: Event) => {
   const { detail } = event as CustomEvent
-  detail.data = Promise.resolve(detail.data).catch(e => (console.error(new Error(`Failed to load ${detail.name}`, { cause: e })), ''))
+  detail.data = Promise.resolve(detail.data).catch(e => { const error = new Error(`Failed to load ${detail.name}`) as Error & { cause?: unknown }; error.cause = e; console.error(error); return '' })
 })
 let openQueue = Promise.resolve()
 const enqueueOpen = <T>(task: () => Promise<T>) => {

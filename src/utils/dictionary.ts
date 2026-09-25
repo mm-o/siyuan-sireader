@@ -1,5 +1,6 @@
 import type { Plugin } from 'siyuan'
-import { getFile, putFile, removeFile } from '@/api'
+import { getFile } from '@/api'
+import { removeManagedFileTransactionally, writeManagedFile } from '@/core/storage/files'
 
 const BASE_URL='https://dictionary.cambridge.org'
 const MXNZP_ID='guuhjloujpkfenn1',MXNZP_SECRET='izYrfPlqfRMxrXHUCf5vEbD4WSxnjSow'
@@ -83,7 +84,7 @@ const decompressFile=async(file:File,format='gzip')=>{
 }
 const readIfoName=async(file?:File)=>file?extractIfoName(await readDictionaryFileText(file).catch(()=>'')):''
 const readDictConfig=async():Promise<DictConfig>=>await getFile(apiPath(CONFIG_PATH)).catch(()=>null)||{dicts:[]}
-const writeDictConfig=(config:DictConfig)=>putFile(apiPath(CONFIG_PATH),false,new File([JSON.stringify(config,null,2)],'config.json',{type:'application/json'}))
+const writeDictConfig=(config:DictConfig)=>writeManagedFile(new Blob([JSON.stringify(config,null,2)],{type:'application/json'}),apiPath(CONFIG_PATH),'config.json')
 
 // ===== 离线词典管理器 =====
 class OfflineDictManager{
@@ -97,7 +98,6 @@ class OfflineDictManager{
     plugin=p
     this.initialized=true
     try{
-      await putFile(apiPath(DICT_PUBLIC_ROOT),true,new File([],''))
       const config=await getFile(apiPath(CONFIG_PATH))
       if(config?.dicts?.length){
         this.dicts=config.dicts.map(cfg=>({id:cfg.id,name:cfg.name,type:cfg.type as any,enabled:cfg.enabled,files:cfg.files||{}}))
@@ -201,11 +201,10 @@ class OfflineDictManager{
       if(!isUsableDictGroup(group))continue
       try{
         const id=`dict_${Date.now()}_${Math.random().toString(36).slice(2,9)}`,dictPath=`${DICT_PUBLIC_ROOT}/${id}`,savedFiles:OfflineDict['files']={}
-        await putFile(apiPath(dictPath),true,new File([],''))
         for(const[key,file]of Object.entries(group)){
           if(file){
             const publicPath=`${dictPath}/${safePathPart(file.name)}`
-            await putFile(apiPath(publicPath),false,file)
+            await writeManagedFile(file,apiPath(publicPath),file.name)
             savedFiles[key as OfflineDictFileKey]=publicPath
           }
         }
@@ -221,11 +220,11 @@ class OfflineDictManager{
   async removeDict(id:string){
     const idx=this.dicts.findIndex(d=>d.id===id)
     if(idx>=0){
-      await removeFile(apiPath(`${DICT_PUBLIC_ROOT}/${id}`)).catch(()=>{})
       this.dicts.splice(idx,1)
       this.loaded.delete(id)
       this.dictDataLoaded.delete(id)
       await this.saveConfig()
+      await removeManagedFileTransactionally(apiPath(`${DICT_PUBLIC_ROOT}/${id}`)).catch(()=>{})
     }
   }
   
@@ -236,11 +235,9 @@ class OfflineDictManager{
   
   private async saveConfig(){
     if(!plugin)return
-    try{
-      const config=await readDictConfig()
-      config.dicts=this.dicts.map(({id,name,type,enabled,files})=>({id,name,type,enabled,files}))
-      await writeDictConfig(config)
-    }catch{}
+    const config=await readDictConfig()
+    config.dicts=this.dicts.map(({id,name,type,enabled,files})=>({id,name,type,enabled,files}))
+    await writeDictConfig(config)
   }
 }
 
@@ -481,14 +478,13 @@ function parseOfflineDict(results:any[]):DictCardData{
 }
 
 // ===== 查询窗口 =====
-import{Dialog,showMessage}from'siyuan'
+import{Dialog}from'siyuan'
 
 let dialog:Dialog|null=null
 let state:{word:string;dictId:string;data?:DictCardData}={word:'',dictId:''}
-let selectionInfo:{cfi?:string;section?:number;page?:number;rects?:any[];text:string}|null=null
 export async function openDict(word:string,_x?:number,_y?:number,selection?:{cfi?:string;section?:number;page?:number;rects?:any[];text:string}){
+  void selection
   state={word,dictId:'',data:undefined}
-  selectionInfo=selection||null
   dialog?.destroy()
   
   const offlineDicts=offlineDictManager.getDicts().filter(d=>d.enabled)

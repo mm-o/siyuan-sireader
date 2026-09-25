@@ -13,7 +13,7 @@ Use this file as the first-stop map before opening large Vue files.
 - Language: TypeScript
 - UI: Vue 3 single-file components
 - Build: Vite library build, output as a CommonJS SiYuan plugin bundle
-- Storage: SiYuan plugin `loadData/saveData/removeData` plus files under `/public/siyuan-sireader`
+- Storage: verified transaction envelopes over SiYuan plugin data plus recoverable files under `/public/siyuan-sireader`
 - Local data layer: JSON-backed `ReaderDatabase` in [`src/core/database.ts`](../src/core/database.ts)
 - Ebook parsing/rendering: `foliate-js`, EmbedPDF, `jszip`
 - Tests: Vitest
@@ -77,17 +77,19 @@ Important files:
 
 ## Storage Model
 
-There are two storage layers:
+There are two storage layers, both coordinated by `src/core/storage`:
 
-- Structured plugin data via `plugin.loadData/saveData/removeData`
+- Structured plugin data uses per-key ordered operations, revisioned envelopes, checksums, write-after-read verification, and Web Locks when available.
   - main keys: `bookshelf.json`, `settings.json`, `daily.json`
   - per-book records: `records/<hash>.json`
   - other feature keys include license/OCR/source/settings records
-- Binary/public assets under `/public/siyuan-sireader`
+- Binary/public assets under `/public/siyuan-sireader` are staged and published through a recoverable write-ahead log.
   - stored book files: `/public/siyuan-sireader/books`
   - covers/backgrounds: `/public/siyuan-sireader/covers` and related folders
 
-`bookStore.ts` intentionally reads critical storage through `/api/file/getFile` so SiYuan sync changes are visible without trusting only the in-memory plugin data cache.
+Legacy naked JSON remains readable. Startup recovery runs before repository/UI initialization, backs up legacy values under `backups/storage-v1`, migrates them to verified envelopes, and resumes incomplete file transactions. Sync and plugin-data change events invalidate committed caches; pending operations always reread and rebase on the latest disk revision while holding the key lock.
+
+Business code must submit `set`, `patch`, `upsert`, `delete`, `increment`, or `max` operations through the storage engine. Do not add direct `Plugin.saveData`, `putFile`, or whole-record annotation saves outside `src/core/storage`. PDF and EPUB annotation changes are ID-based operations; full annotation replacement is reserved for validated import/migration/repair.
 
 When modifying import/storage logic, preserve the current `/public/siyuan-sireader` managed-file model and backward compatibility for old stored paths.
 

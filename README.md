@@ -7,7 +7,7 @@
 Transform SiYuan Notes into a professional eBook reader  
 Professional eBook reader for EPUB/PDF/MOBI/TXT/online novels. PDFs support highlights, ink, shapes, forms, stamps, signatures, images, screenshots, search, printing, export, and backlinks, with annotation notes, dictionary, translation, themes, and bookshelf management.
 
-[![Version](https://img.shields.io/badge/version-2.3.1-blue.svg)](https://github.com/your-repo/siyuan-sireader)
+[![Version](https://img.shields.io/badge/version-2.3.2-blue.svg)](https://github.com/your-repo/siyuan-sireader)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![SiYuan](https://img.shields.io/badge/SiYuan-3.0+-orange.svg)](https://github.com/siyuan-note/siyuan)
 
@@ -18,6 +18,24 @@ Professional eBook reader for EPUB/PDF/MOBI/TXT/online novels. PDFs support high
 ---
 
 ## 📝 Latest Updates
+
+### v2.3.2 (2026.9.25)
+
+### Fixed
+
+- Reworked PDF and EPUB annotation persistence to perform creates, updates, and deletions in annotation-ID order, preventing delayed full snapshots from restoring deleted annotations or overwriting newer notes during repeated create, delete, and refresh cycles.
+- Fixed automatic SiYuan document synchronization writing block IDs back through a stale PDF annotation object; block IDs are now merged into the latest annotation data without overwriting changes the user just made.
+- Fixed PDF annotations temporarily remaining in the left-hand list after deletion; the list now reloads after the reader event has settled.
+- Fixed annotations reappearing when an initial save failed, the annotation was immediately deleted, and the failed operation was later replayed; deletion is now reliably executed as an ordered operation on the same record.
+
+### Improved
+
+- Added a unified transactional storage layer with revisions, checksums, per-file ordered queues, cross-window locks, write-after-read verification, cache invalidation, and pending-task draining during shutdown.
+- Settings, license state, reading statistics, page-script settings, bookshelf indexes, reading progress, and annotation records now use transactional reads and writes, reducing inconsistencies caused by concurrent overwrites or abnormal exits.
+- Failed writes are retried and replayed before later operations on the same record; automatic PDF/EPUB insertion into SiYuan documents runs only after the corresponding annotation has been reliably written and verified.
+- Cross-file changes use recoverable write-ahead logs under `transactions/`; unfinished transactions are recovered during startup and their logs are removed after a successful commit.
+- Managed books, covers, backgrounds, fonts, and dictionaries now use temporary writes, file-size verification, and atomic publication, preventing interrupted writes from leaving incomplete files.
+- When upgrading from legacy JSON storage for the first time, the original data is backed up once to `backups/storage-v1/<timestamp>/` and verified before migration. This directory is a static migration snapshot, is not continuously updated, and is not the active data source.
 
 ### v2.3.1 (2026.9.23)
 

@@ -19,7 +19,6 @@ export const createKeyboardHandler = (handlers: KeyboardHandlers) => {
     }
 
     const k = e.key
-    const key = k.length === 1 ? k.toLowerCase() : k
     const c = e.ctrlKey || e.metaKey
 
     // 通用快捷键
