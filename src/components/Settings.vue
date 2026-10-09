@@ -232,7 +232,7 @@ const clearBgImage = async () => {
   settings.value.backgroundImage = ''
   await save()
 }
-const exportDiagnosticLog = () => { exportDiagnostics({ source: 'settings' }); showMessage('诊断日志已导出', 2000, 'info') }
+const exportDiagnosticLog = () => { exportDiagnostics({ source: 'settings' }); showMessage(props.i18n.diagnosticsExported || 'Diagnostic logs exported', 2000, 'info') }
 const bgNoneRows = computed(() => [{
   key: 'bg-none',
   text: props.i18n.none || '无',
@@ -347,10 +347,12 @@ const dictAddRows = computed(() => [{
   ]
 }])
 const confirmDeleteHint = (text:string, id:string) => removingDict.value === id ? `${text} · ${props.i18n.confirmDelete || '再次点击删除'}` : text
+const dictNameKey: Record<string, string> = { youdao: 'dictYoudao', bing: 'dictBing', cambridge: 'dictCambridge', haici: 'dictHaici', mxnzp: 'dictMxnzp', ciyu: 'dictCiyu', zdic: 'dictZdic' }
+const dictDescKey: Record<string, string> = { youdao: 'dictYoudaoDesc', bing: 'dictBingDesc', cambridge: 'dictCambridgeDesc', haici: 'dictHaiciDesc', mxnzp: 'dictMxnzpDesc', ciyu: 'dictCiyuDesc', zdic: 'dictZdicDesc' }
 const dictRows = (section:any) => section.items.map((d:any, idx:number) => ({
   key: d.id,
-  text: d.name,
-  hint: confirmDeleteHint(section.desc(d), d.id),
+  text: props.i18n[dictNameKey[d.id]] || d.name,
+  hint: confirmDeleteHint(props.i18n[dictDescKey[d.id]] || section.desc(d), d.id),
   graphic: '⋮⋮',
   draggable: true,
   dragstart: (e:DragEvent) => dragStart(e, idx),
@@ -424,17 +426,17 @@ onUnmounted(() => window.removeEventListener('sireaderSettingsUpdated', syncAnno
               </div>
               <span class="fn__space fn__hidden"></span>
               <div class="fn__flex sr-license-actions">
-                <button class="b3-button b3-button--outline" :disabled="processing" @click.stop="bindLicense"><svg><use xlink:href="#lucide-qr-code"></use></svg>{{ license ? '扫码恢复权益' : '扫码绑定会员' }}</button>
-                <button class="b3-button b3-button--text" :disabled="processing" @click.stop="recoverLicense"><svg><use xlink:href="#lucide-refresh-cw"></use></svg>恢复权益</button>
+                <button class="b3-button b3-button--outline" :disabled="processing" @click.stop="bindLicense"><svg><use xlink:href="#lucide-qr-code"></use></svg>{{ license ? (i18n.scanQr || 'Scan to Recover') : (i18n.scanQr || 'Scan QR Code') }}</button>
+                <button class="b3-button b3-button--text" :disabled="processing" @click.stop="recoverLicense"><svg><use xlink:href="#lucide-refresh-cw"></use></svg>{{ i18n.recoverLicense || 'Recover License' }}</button>
               </div>
             </li>
             <li v-if="qr" class="b3-list-item sr-license-qr">
               <div class="sr-license-qr-frame">
-                <div v-if="!qr.data" class="sr-license-qr-loading">正在获取二维码...</div>
-                <img v-else :src="qr.data" alt="思阅会员绑定小程序码">
+                <div v-if="!qr.data" class="sr-license-qr-loading">{{ i18n.loadingQr || 'Loading QR code...' }}</div>
+                <img v-else :src="qr.data" :alt="i18n.membershipQr || 'Membership QR code'">
               </div>
-              <span class="ft__secondary">{{ license ? '扫码后自动恢复思阅会员权益' : '扫码后自动绑定并同步思阅会员权益' }}</span>
-              <button class="b3-button b3-button--text" @click.stop="cancelLicenseBind">取消</button>
+              <span class="ft__secondary">{{ license ? (i18n.recoverLicense || 'Scan to automatically recover membership') : (i18n.scanQr || 'Scan to bind and sync membership') }}</span>
+              <button class="b3-button b3-button--text" @click.stop="cancelLicenseBind">{{ i18n.cancel || 'Cancel' }}</button>
             </li>
           </template>
         </ul>
@@ -495,6 +497,7 @@ onUnmounted(() => window.removeEventListener('sireaderSettingsUpdated', syncAnno
               @change="value => (settings[group.title][item.key] = value, item.type === 'checkbox' ? save() : debouncedSave())"
               @input="value => (settings[group.title][item.key] = value, debouncedSave())"
             />
+            <SettingItem v-if="group.title === 'textSettings'" :item="{key:'overrideFont',type:'checkbox'}" :model-value="settings.textSettings.overrideFont || false" :label="i18n.overrideFont || 'Override book font'" :hint="i18n.overrideFontDesc || ''" :i18n="i18n" @change="value => (settings.textSettings.overrideFont = value, save())" />
             <template v-if="group.title === 'textSettings'">
               <SectionTitle :title="i18n.customFont || '自定义字体'" :icon="settingSectionIcon('sub', 'customFont')" :open="isSubOpen('customFont')" @toggle="toggleSub('customFont')" />
               <template v-if="isSubOpen('customFont')">
@@ -566,10 +569,10 @@ onUnmounted(() => window.removeEventListener('sireaderSettingsUpdated', syncAnno
                   <SettingRows :rows="section.rows" :empty="section.empty" :load-label="section.loadLabel" :loading="loadingTTS" :i18n="i18n" @load="!loadingTTS && loadTTS()" />
                 </template>
               </template>
-              <SectionTitle title="离线语音包" :icon="settingSectionIcon('voice', 'ttsOffline')" :open="isSubOpen('ttsOffline')" aria-label="下载后可供离线 TTS 引擎使用" @toggle="toggleSub('ttsOffline')" />
+              <SectionTitle :title="i18n.ttsOfflinePack || 'Offline Voice Pack'" :icon="settingSectionIcon('voice', 'ttsOffline')" :open="isSubOpen('ttsOffline')" :aria-label="i18n.ttsOfflinePackDesc || 'Download for offline TTS'" @toggle="toggleSub('ttsOffline')" />
               <div v-if="isSubOpen('ttsOffline')" class="sr-tts-pack">
                 <div class="ft__secondary">{{ OFFLINE_TTS_PACK.name }} · {{ formatBytes(OFFLINE_TTS_PACK.size) }}</div>
-                <button class="b3-button" :disabled="offlineTTSLoading || offlineTTSInstalled" @click="downloadOfflineTTS">{{ offlineTTSLoading ? `下载中 ${Math.round(offlineTTSProgress)}%` : offlineTTSInstalled ? '已下载' : '下载语音包' }}</button>
+                <button class="b3-button" :disabled="offlineTTSLoading || offlineTTSInstalled" @click="downloadOfflineTTS">{{ offlineTTSLoading ? `${i18n.downloading || 'Downloading'} ${Math.round(offlineTTSProgress)}%` : offlineTTSInstalled ? (i18n.downloaded || 'Downloaded') : (i18n.downloadVoicePack || 'Download Voice Pack') }}</button>
               </div>
             </template>
             <SettingRows v-else :rows="[]" :empty="i18n.ttsNotConfigured || '语音未配置'" :i18n="i18n" />
@@ -581,7 +584,7 @@ onUnmounted(() => window.removeEventListener('sireaderSettingsUpdated', syncAnno
           <button class="b3-button" @click="handleReset">{{ i18n.confirm || '确认' }}</button>
         </template>
         <button v-else class="b3-button" @click="handleReset">{{ i18n.resetDefault || '恢复默认' }}</button>
-        <button class="b3-button b3-button--outline" @click="exportDiagnosticLog">导出诊断日志</button>
+        <button class="b3-button b3-button--outline" @click="exportDiagnosticLog">{{ i18n.exportDiagnostics || 'Export Diagnostic Logs' }}</button>
       </div>
     </div>
   </div>

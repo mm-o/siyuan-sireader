@@ -62,7 +62,7 @@
             <template #actions>
               <div class="sr-head-actions">
                 <button class="b3-tooltips b3-tooltips__nw" :aria-label="props.i18n?.copy || '复制'" @click.stop="copyMark(row.mark)"><svg><use xlink:href="#iconCopy" /></svg></button>
-                <button v-if="row.mark.blockId && row.mark.type !== 'bookmark'" class="b3-tooltips b3-tooltips__nw" aria-label="打开块" @click.stop="openBlock(row.mark.blockId)" @mouseenter="onBlockEnter($event, row.mark.blockId)" @mouseleave="hideFloat"><svg><use xlink:href="#iconRef" /></svg></button>
+                <button v-if="row.mark.blockId && row.mark.type !== 'bookmark'" class="b3-tooltips b3-tooltips__nw" :aria-label="props.i18n?.openBlock || 'Open block'" @click.stop="openBlock(row.mark.blockId)" @mouseenter="onBlockEnter($event, row.mark.blockId)" @mouseleave="hideFloat"><svg><use xlink:href="#iconRef" /></svg></button>
                 <button v-else-if="canImport(row.mark)" class="b3-tooltips b3-tooltips__nw" :aria-label="props.i18n?.import || '导入'" @click.stop="importMark(row.mark)"><svg><use xlink:href="#iconDownload" /></svg></button>
                 <button v-if="canDelete(row.mark)" class="b3-tooltips b3-tooltips__nw" :aria-label="props.i18n?.delete || '删除'" @click.stop="deleteMark(row.mark)"><svg><use xlink:href="#iconTrashcan" /></svg></button>
               </div>
@@ -73,26 +73,26 @@
           </MarkCard>
         </div>
       </template>
-      <button v-if="visibleMarkRows.hasMore" class="sr-more" type="button" @click="loadMoreMarks">加载更多</button>
+      <button v-if="visibleMarkRows.hasMore" class="sr-more" type="button" @click="loadMoreMarks">{{ props.i18n?.loadMore || 'Load more' }}</button>
     </div>
 
     <template #overlay>
       <Transition name="fade">
         <div v-if="showOrganize" class="sr-manage-panel" @click.stop>
           <header class="sr-modal__head">
-            <span>筛选标注</span>
-            <span class="block__icon block__icon--show sr-icon-btn" aria-label="关闭" @click="showOrganize = false"><svg><use xlink:href="#lucide-x" /></svg></span>
+            <span>{{ props.i18n?.filterAnnotations || 'Filter annotations' }}</span>
+            <span class="block__icon block__icon--show sr-icon-btn" :aria-label="props.i18n?.close || 'Close'" @click="showOrganize = false"><svg><use xlink:href="#lucide-x" /></svg></span>
           </header>
           <div class="sr-modal__body">
             <label class="sr-form-item">
-              <span class="ft__secondary">排序</span>
+              <span class="ft__secondary">{{ props.i18n?.sort || 'Sort' }}</span>
               <div class="sr-chips">
-                <button v-for="opt in MARK_SORT_OPTIONS" :key="opt.value" class="sr-chip" :class="{ 'is-active': markFilter.sort === opt.value }" type="button" @click="markFilter.sort = opt.value">
+                <button v-for="opt in markSortOptions" :key="opt.value" class="sr-chip" :class="{ 'is-active': markFilter.sort === opt.value }" type="button" @click="markFilter.sort = opt.value">
                   {{ opt.label }}
                 </button>
               </div>
               <div class="sr-chips">
-                <button class="sr-chip" :class="{ 'is-active': markReverse }" type="button" @click="markReverse = !markReverse">反向排序</button>
+                <button class="sr-chip" :class="{ 'is-active': markReverse }" type="button" @click="markReverse = !markReverse">{{ props.i18n?.reverseSort || 'Reverse sort' }}</button>
               </div>
             </label>
 
@@ -113,8 +113,8 @@
             </label>
 
             <div class="sr-row sr-actions-end sr-section-line">
-              <button class="b3-button b3-button--outline" type="button" @click="resetMarkOrganize">重置筛选</button>
-              <button class="b3-button b3-button--outline" type="button" @click="showOrganize = false">完成</button>
+              <button class="b3-button b3-button--outline" type="button" @click="resetMarkOrganize">{{ props.i18n?.resetFilter || 'Reset filters' }}</button>
+              <button class="b3-button b3-button--outline" type="button" @click="showOrganize = false">{{ props.i18n?.done || 'Done' }}</button>
             </div>
           </div>
         </div>
@@ -132,7 +132,7 @@ import { useReaderMarks } from '@/composables/useReaderMarks'
 const props = withDefaults(defineProps<{ i18n?: any; context?: any }>(), { i18n: () => ({}) })
 
 const {
-  MARK_SORT_OPTIONS,
+  MARK_SORT_OPTIONS: markSortOptions,
   keyword,
   searchPlaceholder,
   toolbarMenuAction,

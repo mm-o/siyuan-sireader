@@ -1,6 +1,6 @@
 ﻿<template>
   <Stats :visible="showStats" @close="showStats=false" @open="handleOpenBook" />
-  <TTSMini />
+  <TTSMini :i18n="plugin.i18n" />
 </template>
 
 <script setup lang="ts">
@@ -190,7 +190,7 @@ const fetchFile = async (url: string) => {
 }
 
 const showReaderError = (element: HTMLElement) => {
-  element.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--b3-theme-error)">加载失败</div>'
+  element.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--b3-theme-error)">${plugin.i18n?.loadFailed || 'Failed to load'}</div>`
 }
 
 const createReaderApp = async (props: any) => {
@@ -269,10 +269,10 @@ const handleEbookLink = async (e: MouseEvent) => {
   const parsed = parseBookLink(url)
   if (parsed) {
     e.preventDefault(), e.stopPropagation()
-    if (!parsed.bookUrl) return showMessage('无效的书籍链接', 3000, 'error')
+    if (!parsed.bookUrl) return showMessage(plugin.i18n?.invalidBookLink || 'Invalid book link', 3000, 'error')
     if (await openWereadReaderLink(parsed.bookUrl, parsed.cfi, parsed.id)) return
     const book = await bookshelfManager.getBook(parsed.bookUrl)
-    if (!book) return showMessage('书籍不存在', 3000, 'error')
+    if (!book) return showMessage(plugin.i18n?.bookNotFound || 'Book not found', 3000, 'error')
     return openOrActivateBook(plugin, book, settings.value, () =>
       window.dispatchEvent(new CustomEvent('sireader:goto', { detail: { cfi: parsed.cfi, id: parsed.id, bookUrl: book.url } }))
     )
@@ -292,13 +292,13 @@ const handleEbookLink = async (e: MouseEvent) => {
     if (!settings.value.openDocAssets) return // 设置关闭时不处理
     e.preventDefault(), e.stopPropagation()
     const file = await fetchFile(cleanUrl)
-    if (!file) return showMessage('文件不存在', 3000, 'error')
+    if (!file) return showMessage(plugin.i18n?.fileNotFound || 'File not found', 3000, 'error')
     if (!shouldAddDocAssetToShelf(url, settings.value.docAssetExcludeRegex)) {
       const title = file.name.replace(/\.[^.]+$/, '') || 'Reader'
       return openReaderTab(plugin, title, { file, bookInfo: { title, url: `asset://${url}`, temporary: true } }, `${plugin.name}epub_reader`, settings.value)
     }
     const book = await getOrAddAssetBook(bookshelfManager, url, file)
-    if (!book) return showMessage('添加失败', 3000, 'error')
+    if (!book) return showMessage(plugin.i18n?.addFailed || 'Failed to add', 3000, 'error')
     return openOrActivateBook(plugin, book, settings.value)
   }
   
@@ -352,7 +352,7 @@ plugin.addDock({
     container.style.cssText = 'width:100%;height:100%;overflow:hidden'
     this.element.appendChild(container)
     if (!isLoaded.value) {
-      container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--b3-theme-on-surface)">加载中...</div>'
+      container.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--b3-theme-on-surface)">${plugin.i18n?.loading || 'Loading'}...</div>`
       await waitForSettings()
       container.innerHTML = ''
     }
@@ -368,7 +368,7 @@ plugin.addDock({
   destroy() { settingsApp?.unmount(); settingsApp = null }
 })
 
-plugin.addTopBar({ icon: `<svg><use xlink:href="#${iconId}"/></svg>`, title: '思阅', callback: openSetting })
+plugin.addTopBar({ icon: `<svg><use xlink:href="#${iconId}"/></svg>`, title: plugin.i18n?.name || 'SiReader', callback: openSetting })
 
 // 启用底部右下角的阅读统计功能
 const statsInstance = useStats(plugin)
@@ -381,7 +381,7 @@ const ttsBar = document.createElement('div')
 ttsBar.className = 'toolbar__item b3-tooltips b3-tooltips__n'
 ttsBar.id = 'tts-btn'
 ttsBar.innerHTML = '<svg class="toolbar__icon"><use xlink:href="#lucide-volume-2"></use></svg>'
-ttsBar.setAttribute('aria-label', '朗读播放')
+ttsBar.setAttribute('aria-label', plugin.i18n?.ttsPlay || 'Start reading')
 ttsBar.style.cssText = 'cursor:pointer;display:none'
 const toggleTts = () => window.dispatchEvent(new CustomEvent('tts:toggle-mini', { detail: { open: true } }))
 ttsBar.addEventListener('click', toggleTts)
@@ -391,7 +391,7 @@ const syncTtsBar = () => {
   const playing = ttsController.isActive.value && !ttsController.paused.value
   ttsBar.style.display = active ? 'flex' : 'none'
   ttsBar.classList.toggle('toolbar__item--active', playing)
-  ttsBar.setAttribute('aria-label', ttsController.isActive.value ? (ttsController.paused.value ? '继续朗读' : '朗读中') : '朗读播放')
+  ttsBar.setAttribute('aria-label', ttsController.isActive.value ? (ttsController.paused.value ? (plugin.i18n?.ttsResume || 'Resume reading') : (plugin.i18n?.ttsReading || 'Reading aloud')) : (plugin.i18n?.ttsPlay || 'Start reading'))
 }
 watch([ttsController.isActive, ttsController.paused], syncTtsBar, { immediate: true })
 window.addEventListener('sireader:reader-state', syncTtsBar)
@@ -402,13 +402,13 @@ const handleStatsToggle = () => showStats.value = !showStats.value
 const handleOpenWeread = openWereadTab
 const handleOpenOnlineReader = async (e: CustomEvent) => {
   const { title, url, context } = e.detail || {}
-  if (!url) return showMessage('在线阅读地址为空', 2000, 'error')
-  openOnlineReaderTab(plugin, title || '在线阅读', url, settings.value, undefined, context)
+  if (!url) return showMessage(plugin.i18n?.onlineUrlEmpty || 'Online reading URL is empty', 2000, 'error')
+  openOnlineReaderTab(plugin, title || plugin.i18n?.readOnline || 'Online Reading', url, settings.value, undefined, context)
 }
 const handleOpenBook = async (book: any) => {
   showStats.value = false
   const full = await bookshelfManager.getBook(book.url)
-  if (!full) return showMessage('加载失败', 3000, 'error')
+  if (!full) return showMessage(plugin.i18n?.loadFailed || 'Failed to load', 3000, 'error')
   openOrActivateBook(plugin, full, settings.value)
 }
 

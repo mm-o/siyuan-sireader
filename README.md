@@ -7,7 +7,7 @@
 Transform SiYuan Notes into a professional eBook reader  
 Professional eBook reader for EPUB/PDF/MOBI/TXT/online novels. PDFs support highlights, ink, shapes, forms, stamps, signatures, images, screenshots, search, printing, export, and backlinks, with annotation notes, dictionary, translation, themes, and bookshelf management.
 
-[![Version](https://img.shields.io/badge/version-2.5.2-blue.svg)](https://github.com/your-repo/siyuan-sireader)
+[![Version](https://img.shields.io/badge/version-2.5.3-blue.svg)](https://github.com/your-repo/siyuan-sireader)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![SiYuan](https://img.shields.io/badge/SiYuan-3.0+-orange.svg)](https://github.com/siyuan-note/siyuan)
 
@@ -19,19 +19,25 @@ Professional eBook reader for EPUB/PDF/MOBI/TXT/online novels. PDFs support high
 
 ## 📝 Latest Updates
 
-## v2.5.2 (2026-10-07)
+## v2.5.3 (2026-10-09)
 
 ### Added
 
 - Added a SiYuan kernel-plugin network bridge for WeRead, book-source search and downloads, translation, dictionaries, and other online requests across desktop, server, and Docker deployments.
+- Added an EPUB “Override book font” setting that can optionally replace the book’s font family.
 
 ### Improved
 
+- Aligned EPUB font handling with Readest: native book fonts and carefully designed font sizes are preserved by default, with font-family overriding applied only when enabled. Removed the legacy Foliate-internal header and footer injection so the outer reader owns their display.
 - Aligned EPUB typography with Readest's default rules: Chinese books use 2em first-line indentation by default while preserving the book's native heading hierarchy, fonts, font sizes, bold text, paragraph styles, and inline formatting. Paragraph wrapping, alignment, code fonts, and image-paragraph exceptions now follow the same baseline.
+- PDF language switching now uses EmbeddedPDF's native locale configuration.
 
 ### Fixed
 
 - Fixed server-mode group covers being rendered with a different path treatment from book covers.
+- Fixed [Issue #59](https://github.com/mm-o/siyuan-sireader/issues/59) by completing global Chinese and English i18n, including the bookshelf “Unknown author” label and the reader TOC button when switching SiYuan's language.
+- Fixed the PDF interface not following SiYuan's language setting.
+- Large scanned PDFs may still trigger `Sibling task failed` when searching again after clearing a search; this has been reported upstream and is tracked in [Issue #853](https://github.com/embedpdf/embed-pdf-viewer/issues/853).
 
 ## v2.5.1 (2026-10-04)
 

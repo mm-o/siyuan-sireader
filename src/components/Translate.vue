@@ -1,26 +1,26 @@
 <template>
   <div class="tr-section">
-    <div class="tr-head"><span>原文</span></div>
+    <div class="tr-head"><span>{{ props.i18n?.sourceText || 'Source text' }}</span></div>
     <div class="tr-text tr-src">{{ text }}</div>
   </div>
   <div class="tr-section">
     <div class="tr-head">
-      <span>译文</span>
-      <select v-model="tgt" class="b3-select tr-select" aria-label="目标语言" @change="translate">
+      <span>{{ props.i18n?.translatedText || 'Translation' }}</span>
+      <select v-model="tgt" class="b3-select tr-select" :aria-label="props.i18n?.targetLanguage || 'Target language'" @change="translate">
         <option v-for="[code, name] in langs" :key="code" :value="code">{{ name }}</option>
       </select>
     </div>
-    <div class="tr-text tr-tgt">{{ loading ? '翻译中...' : (result || '翻译失败') }}</div>
+    <div class="tr-text tr-tgt">{{ loading ? (props.i18n?.translating || 'Translating...') : (result || props.i18n?.translationFailed || 'Translation failed') }}</div>
   </div>
   <div class="tr-controls">
-    <span>翻译引擎</span>
-    <select v-model="eng" class="b3-select tr-select" aria-label="翻译引擎" @change="setEngine">
+    <span>{{ props.i18n?.translationEngine || 'Translation engine' }}</span>
+    <select v-model="eng" class="b3-select tr-select" :aria-label="props.i18n?.translationEngine || 'Translation engine'" @change="setEngine">
       <option v-for="(engine, key) in engines" :key="key" :value="key">{{ engine.name }}</option>
     </select>
   </div>
   <div v-if="props.onAddToAnnotation" class="tr-actions">
     <button class="b3-button b3-button--outline" :disabled="loading || !result || adding || added" @click="addToAnnotation">
-      {{ added ? '已添加批注' : (adding ? '正在添加...' : '添加为批注') }}
+      {{ added ? (props.i18n?.annotationAdded || 'Annotation added') : (adding ? (props.i18n?.adding || 'Adding...') : (props.i18n?.addAsAnnotation || 'Add as annotation')) }}
     </button>
   </div>
 </template>
@@ -29,7 +29,7 @@
 import { ref, watch } from 'vue'
 import { translators } from '@/services/translator'
 
-const props = defineProps<{ text: string; onAddToAnnotation?: (translation: string) => void | Promise<void> }>()
+const props = defineProps<{ text: string; onAddToAnnotation?: (translation: string) => void | Promise<void>; i18n?: any }>()
 
 const langs = [['zh-CN', '中文'], ['en', 'English'], ['ja', '日本語'], ['ko', '한국어'], ['fr', 'Français'], ['de', 'Deutsch'], ['es', 'Español'], ['ru', 'Русский']]
 const engines = translators

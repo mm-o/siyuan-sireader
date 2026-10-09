@@ -1,10 +1,12 @@
 ﻿<template>
   <div ref="containerRef" class="reader-container" tabindex="0" :style="{'--toolbar-opacity':(1-((currentSettings?.toolbarOpacity??70)/100))*.55}">
-    <ReaderSplash v-if="showOpeningSplash" ref="readerSplashRef" :book-info="props.bookInfo" :file-name="props.file?.name" status="opening" />
+    <ReaderSplash v-if="showOpeningSplash" ref="readerSplashRef" :book-info="props.bookInfo" :file-name="props.file?.name" :i18n="i18n" status="opening" />
     <div v-if="loading || error" class="reader-loading"><div v-if="loading" class="spinner"></div><div>{{ error || 'Loading...' }}</div></div>
     <div v-if="showToc&&!loading" class="reader-overlay" @click="closePanels"/>
     <EmbedPdfReader v-if="isEmbedPdfMode" ref="embedPdfReaderRef" :source="embedPdfSource" :book-url="currentBookUrl" :storage-key="props.bookInfo?.dataId || currentBookUrl" :settings="currentSettings" :theme="currentSettings?.theme" :custom-theme="currentSettings?.customTheme" :hide-annotations="embedPdfAnnotationsHidden" :i18n="i18n" :on-annotation-persisted="syncEmbedPdfEvent" class="viewer-container" @ready="handleEmbedPdfReady" @annotations-ready="handleEmbedPdfAnnotationsReady"/>
-    <div v-else ref="viewerContainerRef" class="viewer-container"></div>
+    <div v-if="!isEmbedPdfMode&&!loading&&currentSettings?.layoutSettings.showHeader" class="reader-header" :style="{height:`${currentSettings.layoutSettings.marginTopPx||44}px`,paddingLeft:`${(currentSettings.layoutSettings.marginLeftPx||16)+8}px`,paddingRight:`${(currentSettings.layoutSettings.marginRightPx||16)+8}px`}">{{ chapterTitle }}</div>
+    <div v-if="!isEmbedPdfMode" ref="viewerContainerRef" class="viewer-container"></div>
+    <div v-if="!isEmbedPdfMode&&!loading&&currentSettings?.layoutSettings.showFooter" class="reader-footer" :style="{height:`${currentSettings.layoutSettings.marginBottomPx||44}px`,paddingLeft:`${(currentSettings.layoutSettings.marginLeftPx||16)+8}px`,paddingRight:`${(currentSettings.layoutSettings.marginRightPx||16)+8}px`}">{{ footerInfo }}</div>
     <div v-if="!isEmbedPdfMode&&!loading" class="reader-progress" aria-hidden="true"><span :style="{transform:`scaleX(${readingProgress})`}"/></div>
     <Transition name="toc-popup">
       <div v-if="showToc&&!loading" class="reader-toc-popup" @click.stop>
@@ -15,12 +17,12 @@
     </Transition>
     <div v-if="!loading" class="reader-toolbar-group">
       <div v-if="showSearch" class="reader-panel" @click.stop>
-        <input v-model="searchQuery" class="search-input" :placeholder="i18n.searchPlaceholder||'搜索...'" @keydown.enter="handleSearch" @keydown.esc="showSearch=false" ref="searchInputRef">
-        <button class="toolbar-btn b3-tooltips b3-tooltips__n" @click="handleSearch" aria-label="搜索"><svg><use xlink:href="#iconSearch"/></svg></button>
-        <button class="toolbar-btn b3-tooltips b3-tooltips__n" @click="handleSearchPrev" :disabled="!hasSearchResults" aria-label="上一个"><svg><use xlink:href="#iconUp"/></svg></button>
-        <button class="toolbar-btn b3-tooltips b3-tooltips__n" @click="handleSearchNext" :disabled="!hasSearchResults" aria-label="下一个"><svg><use xlink:href="#iconDown"/></svg></button>
+        <input v-model="searchQuery" class="search-input" :placeholder="i18n.searchPlaceholder||'Search...'" @keydown.enter="handleSearch" @keydown.esc="showSearch=false" ref="searchInputRef">
+        <button class="toolbar-btn b3-tooltips b3-tooltips__n" @click="handleSearch" :aria-label="i18n.search || 'Search'"><svg><use xlink:href="#iconSearch"/></svg></button>
+        <button class="toolbar-btn b3-tooltips b3-tooltips__n" @click="handleSearchPrev" :disabled="!hasSearchResults" :aria-label="i18n.previousResult || 'Previous result'"><svg><use xlink:href="#iconUp"/></svg></button>
+        <button class="toolbar-btn b3-tooltips b3-tooltips__n" @click="handleSearchNext" :disabled="!hasSearchResults" :aria-label="i18n.nextResult || 'Next result'"><svg><use xlink:href="#iconDown"/></svg></button>
         <span class="search-count">{{ searchCount }}</span>
-        <button class="toolbar-btn b3-tooltips b3-tooltips__n" @click="handleSearchClear" aria-label="清除"><svg><use xlink:href="#iconClose"/></svg></button>
+        <button class="toolbar-btn b3-tooltips b3-tooltips__n" @click="handleSearchClear" :aria-label="i18n.clear || 'Clear'"><svg><use xlink:href="#iconClose"/></svg></button>
       </div>
       <div v-if="showQuickMark" class="reader-panel" @click.stop>
         <div class="mark-colors">
@@ -34,13 +36,13 @@
         </div>
       </div>
       <div v-if="!isEmbedPdfMode" class="reader-toolbar" :class="{'is-visible':toolbarVisible}">
-        <button v-if="!isEmbedPdfMode" class="toolbar-btn b3-tooltips b3-tooltips__n" @click.stop="handlePrev" :aria-label="i18n.prevChapter||'上一章'"><svg><use xlink:href="#iconLeft"/></svg></button>
-        <input v-model="progressJump" class="reader-progress-jump" type="number" min="0" max="100" step="1" placeholder="%" aria-label="跳转到阅读进度" @focus="progressJump=String(Math.round(readingProgress*100))" @keydown.enter.prevent="submitProgressJump">
-                <button v-if="!isEmbedPdfMode" class="toolbar-btn b3-tooltips b3-tooltips__n" @click.stop="handleNext" :aria-label="i18n.nextChapter||'下一章'"><svg><use xlink:href="#iconRight"/></svg></button>
-        <button v-if="!isEmbedPdfMode" class="toolbar-btn b3-tooltips b3-tooltips__n" @click.stop="openToc" :aria-label="i18n.toc||'目录'"><svg><use xlink:href="#iconList"/></svg></button>
-        <button v-if="!isEmbedPdfMode" class="toolbar-btn b3-tooltips b3-tooltips__n" :class="{active:hasBookmark}" @click.stop="toggleBookmark" :aria-label="hasBookmark?(i18n.removeBookmark||'删除书签'):(i18n.addBookmark||'添加书签')"><svg><use xlink:href="#iconBookmark"/></svg></button>
-        <button v-if="!isEmbedPdfMode" class="toolbar-btn b3-tooltips b3-tooltips__n" :class="{active:showSearch}" @click.stop="toggleSearch" :aria-label="i18n.search||'搜索'"><svg><use xlink:href="#iconSearch"/></svg></button>
-        <button v-if="!isEmbedPdfMode" class="toolbar-btn toolbar-mark-btn b3-tooltips b3-tooltips__n" :class="{active:quickMarkMode}" @click.stop="toggleQuickMark" :aria-label="quickMarkMode?'退出快速标注':'快速标注'">
+        <button v-if="!isEmbedPdfMode" class="toolbar-btn b3-tooltips b3-tooltips__n" @click.stop="handlePrev" :aria-label="i18n.prevChapter||'Previous chapter'"><svg><use xlink:href="#iconLeft"/></svg></button>
+        <input v-model="progressJump" class="reader-progress-jump" type="number" min="0" max="100" step="1" placeholder="%" :aria-label="i18n.jumpToProgress || 'Jump to reading progress'" @focus="progressJump=String(Math.round(readingProgress*100))" @keydown.enter.prevent="submitProgressJump">
+                <button v-if="!isEmbedPdfMode" class="toolbar-btn b3-tooltips b3-tooltips__n" @click.stop="handleNext" :aria-label="i18n.nextChapter||'Next chapter'"><svg><use xlink:href="#iconRight"/></svg></button>
+        <button v-if="!isEmbedPdfMode" class="toolbar-btn b3-tooltips b3-tooltips__n" @click.stop="openToc" :aria-label="i18n.toc||'Table of contents'"><svg><use xlink:href="#iconList"/></svg></button>
+        <button v-if="!isEmbedPdfMode" class="toolbar-btn b3-tooltips b3-tooltips__n" :class="{active:hasBookmark}" @click.stop="toggleBookmark" :aria-label="hasBookmark?(i18n.removeBookmark||'Remove bookmark'):(i18n.addBookmark||'Add bookmark')"><svg><use xlink:href="#iconBookmark"/></svg></button>
+        <button v-if="!isEmbedPdfMode" class="toolbar-btn b3-tooltips b3-tooltips__n" :class="{active:showSearch}" @click.stop="toggleSearch" :aria-label="i18n.search||'Search'"><svg><use xlink:href="#iconSearch"/></svg></button>
+        <button v-if="!isEmbedPdfMode" class="toolbar-btn toolbar-mark-btn b3-tooltips b3-tooltips__n" :class="{active:quickMarkMode}" @click.stop="toggleQuickMark" :aria-label="quickMarkMode ? (i18n.exitQuickMark || 'Exit quick annotation') : (i18n.quickMark || 'Quick annotation')">
           <svg><use xlink:href="#iconMark"/></svg>
           <span class="mark-indicator" :style="{background:COLORS[quickMarkColor].bg}"></span>
         </button>
@@ -123,6 +125,7 @@ const handleSettingsUpdate=async(e:Event)=>{
   const s=(e as CustomEvent).detail
   const prev=currentSettings.value
   updateSettingsState(s)
+  syncReadingProgress()
   hasSettingChanged(prev,s,['theme','customTheme','backgroundImage','textSettings','paragraphSettings','layoutSettings','visualSettings','viewMode','pageAnimation'])&&reader?.updateSettings?.(s)
     JSON.stringify(prev?.tts)!==JSON.stringify(s?.tts)&&await syncTTS()
 }
@@ -133,6 +136,10 @@ const readerSplashRef = ref<{ dismiss: () => void; cleanup: () => void; isVisibl
 const loading = ref(true)
 const error = ref('')
 const readingProgress = ref(0)
+const chapterTitle = ref('')
+const footerInfo = ref('')
+const battery = ref<any>(null)
+let footerTimer: number | undefined
 const progressJump = ref('')
 const hasBookmark = ref(false)
 const currentBookUrl = ref('')
@@ -174,15 +181,15 @@ const ttsController = getTTSController()
 const ttsEnabled = computed(() => currentSettings.value?.tts?.enabled || false)
 const ttsPlaying = computed(() => ttsController.isActive.value && !ttsController.paused.value)
 const clearReadingSelection=()=>{try{reader?.getView?.()?.renderer?.getContents?.()?.forEach(({doc}:any)=>doc.defaultView?.getSelection()?.removeAllRanges());document.getSelection()?.removeAllRanges()}catch{}}
-const syncReadingProgress=(detail?:any)=>{const f=detail?.fraction??reader?.getLocation?.()?.fraction??currentView.value?.lastLocation?.fraction;readingProgress.value=Number.isFinite(f)?Math.max(0,Math.min(1,f)):0}
+const syncReadingProgress=(detail?:any)=>{const location=detail||(reader as any)?.getProgress?.()||currentView.value?.lastLocation||reader?.getLocation?.();const f=location?.fraction??0;readingProgress.value=Number.isFinite(f)?Math.max(0,Math.min(1,f)):0;chapterTitle.value=location?.tocItem?.label||location?.tocItem?.title||props.bookInfo?.title||getBookName();const layout=currentSettings.value?.layoutSettings;const renderer=reader?.getView?.()?.renderer as any;const page=Number(renderer?.page);const pages=Number(renderer?.pages);const progress=layout?.showProgressInfo&&Number.isFinite(page)&&Number.isFinite(pages)&&pages>0?(layout.progressStyle==='percentage'?`${Math.round(((page+1)/pages)*100)}%`:layout.progressStyle==='reference'&&layout.referencePageCount>0?`${Math.max(1,Math.round(f*layout.referencePageCount))}/${layout.referencePageCount}`:`${Math.min(pages,Math.max(1,page+1))}/${pages}`):'';const minutes=Number(location?.time?.section);const remaining=layout?.showRemainingTime&&Number.isFinite(minutes)&&minutes>0?(i18n.value.chapterRemaining||'Chapter remaining: {minutes} min').replace(/\{minutes\}/g,String(Math.max(1,Math.round(minutes)))):'';const clock=layout?.showCurrentTime?new Date().toLocaleTimeString([], { hour:'2-digit', minute:'2-digit', hour12:layout.use24HourClock?false:undefined }):'';const level=Number(battery.value?.level);const batteryInfo=layout?.showCurrentBatteryStatus&&Number.isFinite(level)?`${i18n.value.batteryStatus||'Battery'} ${Math.round(Math.max(0,Math.min(1,level))*100)}%`:'';footerInfo.value=[remaining,clock,batteryInfo,progress].filter(Boolean).join(' · ')}
 const submitProgressJump=async()=>{
   const value=Number(progressJump.value)
   if(!Number.isFinite(value))return
   const fraction=Math.max(0,Math.min(100,value))/100
   progressJump.value=String(Math.round(fraction*100))
-  try{await reader?.goToFraction(fraction)}catch{showMessage('跳转失败',1500,'error')}
+  try{await reader?.goToFraction(fraction)}catch{showMessage(i18n.value.jumpFailed || 'Jump failed',1500,'error')}
 }
-const toggleTTS = () => {if (!can.value('tts')) return showUpgrade('TTS朗读'); clearReadingSelection(); ttsController.toggle(() => reader, currentSettings.value?.tts, undefined, getBookName())}
+const toggleTTS = () => {if (!can.value('tts')) return showUpgrade(i18n.value.ttsReading || 'Read aloud'); clearReadingSelection(); ttsController.toggle(() => reader, currentSettings.value?.tts, undefined, getBookName())}
 const syncTTS = async () => ttsController.sync(currentSettings.value?.tts?.enabled || false)
 const marks=computed(()=>markManager.value)
 const isEmbedPdfMode=computed(()=>currentView.value?.engine==='embedpdf')
@@ -195,7 +202,7 @@ const embedPdfColor=(color='')=>(COLORS.find(item=>item.color===color)?.bg||colo
 const embedPdfStyle=(type:number,custom?:any)=>type===PDF_REDACT_TYPE?'redaction':custom?.style||Object.entries(PDF_MARKUP_TYPES).find(([,value])=>value===type)?.[0]||'highlight'
 const embedPdfMark=(item:any)=>{
   const a=item?.annotation||item, page=(a.pageIndex??0)+1, bookmark=a.custom?.type==='bookmark', redaction=a.type===PDF_REDACT_TYPE
-  const text=a.custom?.title||a.custom?.text||a.contents||(redaction?'遮蔽':i18n.value.annotation||i18n.value.mark||'Annotation')
+  const text=a.custom?.title||a.custom?.text||a.contents||(redaction?i18n.value.redaction||'Redaction':i18n.value.annotation||i18n.value.mark||'Annotation')
   const color=[a.strokeColor,a.color,a.fontColor,a.backgroundColor].map(embedPdfColor).find(c=>c&&c!=='transparent')||'#ffcd45'
   return Object.assign(item,{id:a.id,type:bookmark?'bookmark':redaction?'redaction':a.type===1||a.type===3?'note':'highlight',format:'pdf',readOnly:embedPdfNativeIds.has(a.id)||a.flags?.includes('readOnly'),page,cfi:`#page-${page}`,title:bookmark?text:a.custom?.title,text:bookmark?text:a.custom?.text||a.contents||text,note:bookmark||redaction?'':a.custom?.note||a.contents||'',tags:a.custom?.tags||[],blockId:a.custom?.blockId,blockIds:a.custom?.blockIds,color,style:embedPdfStyle(a.type,a.custom),timestamp:new Date(a.created||a.modified||Date.now()).getTime(),chapter:bookmark?'':a.custom?.chapter||`${i18n.value.page||'Page '}${page}${i18n.value.pageSuffix||''}`,customOrder:a.custom?.customOrder})
 }
@@ -272,7 +279,7 @@ const toggleEmbedPdfBookmark=async(loc:any,title?:string)=>{
   const page=typeof loc==='string'?pdfPageFromCfi(loc):Number(loc||0), found=embedPdfMarks.value.find(item=>item.type==='bookmark'&&item.page===page)
   if(!page)return false
   if(found)return await deleteEmbedPdfMark(found),false
-  const text=title||`第${page}页`, now=new Date()
+  const text=title||`${i18n.value.page || 'Page'} ${page}${i18n.value.pageSuffix || ''}`, now=new Date()
   embedPdfAnnotations.value.createAnnotation(page-1,{id:`bookmark-${Date.now()}`,type:1,pageIndex:page-1,rect:{origin:{x:0,y:0},size:{width:1,height:1}},contents:text,created:now,modified:now,flags:['hidden','noView'],custom:{type:'bookmark',title:text}})
   await embedPdfReaderRef.value?.flushAnnotations?.()
   await loadEmbedPdfMarks()
@@ -280,7 +287,7 @@ const toggleEmbedPdfBookmark=async(loc:any,title?:string)=>{
 }
 const initEmbedPdfMode=async(loadSource:()=>Promise<File|string|null>)=>{
   const file=await loadSource()
-  if(!file)throw new Error('PDF file is missing')
+  if(!file)throw new Error(i18n.value.pdfFileMissing || 'PDF file is missing')
   embedPdfSource.value=file
   embedPdfNativeIds=new Set()
   embedPdfMarks.value=[]
@@ -318,7 +325,7 @@ const handleEmbedPdfReady=(registry:any)=>{
   currentView.value.executePdfCommand=(id:string)=>{
     if (!id || !isThisActiveReader()) return
     try { registry.getPlugin('commands')?.provides?.()?.execute?.(id, documentId, 'siyuan') }
-    catch (error:any) { showMessage(error?.message || 'PDF 操作失败', 2000, 'error') }
+    catch (error:any) { showMessage(error?.message || i18n.value.pdfOperationFailed || 'PDF operation failed', 2000, 'error') }
   }
   window.dispatchEvent(new CustomEvent('sireader:tab-switched'))
 }
@@ -331,9 +338,9 @@ const closeMediaMenu=()=>{activeMediaMenu?.element?.remove?.();activeMediaMenu=n
 const notifyHostClick=()=>document.body?.dispatchEvent(new MouseEvent('click',{bubbles:true,view:window}))
 const openMediaMenu=(x:number,y:number,setup:(m:Menu)=>void)=>{closeMediaMenu();const m=new Menu('sireader-media-menu',()=>activeMediaMenu=null);setup(m);activeMediaMenu=m;m.open({x,y})}
 const openImageMenu = ({ item, x, y }: any) => openMediaMenu(x, y, m => {
-  m.addItem({ icon: 'iconCopy', label: '复制图片', click: () => handleCopyToClipboard(item) })
-  m.addItem({ icon: 'iconUpload', label: '导出图片', click: () => handleCopy(item) })
-  m.addItem({ icon: 'iconMark', label: '标注图片', click: async () => markPanelRef.value?.showCard(await (markManager.value as any)?.addImageMark(item.image, item.text, item.cfi), x, y, true) })
+  m.addItem({ icon: 'iconCopy', label: i18n.value.copyImage || 'Copy Image', click: () => handleCopyToClipboard(item) })
+  m.addItem({ icon: 'iconUpload', label: i18n.value.exportImage || 'Export Image', click: () => handleCopy(item) })
+  m.addItem({ icon: 'iconMark', label: i18n.value.markImage || 'Annotate Image', click: async () => markPanelRef.value?.showCard(await (markManager.value as any)?.addImageMark(item.image, item.text, item.cfi), x, y, true) })
 })
 const copyImageAsPng=async(src:string)=>{
   try{
@@ -344,7 +351,7 @@ const copyImageAsPng=async(src:string)=>{
     canvas.getContext('2d')?.drawImage(image,0,0)
     const blob=await new Promise<Blob|null>(resolve=>canvas.toBlob(resolve,'image/png'))
     if(blob) await navigator.clipboard.write([new ClipboardItem({'image/png':blob})])
-  }catch{showMessage('复制图片失败',2000,'error')}
+  }catch{showMessage(i18n.value.copyImageFailed || 'Copy image failed',2000,'error')}
 }
 let embedPdfPersistenceReady=false
 const handleEmbedPdfAnnotationsReady=()=>{embedPdfPersistenceReady=true;void loadEmbedPdfMarks()}
@@ -360,12 +367,12 @@ const openImageViewer=async({item}:any)=>{
   images.some((src:any,index)=>{if(item.image.endsWith(encodeURI(src))||item.image.endsWith(src)){initialViewIndex=index;return true}return false})
   let cleaned=false
   const close=()=>{viewer.destroy();if(!cleaned)cleaned=true}
-  const viewer=(window as any).siyuan.viewer=new (window as any).Viewer(root,{initialViewIndex:item.image?initialViewIndex:0,title:[1,(image:HTMLImageElement,data:any)=>{let name=image.alt||image.src.substring(image.src.lastIndexOf('/')+1);name=name.substring(0,name.lastIndexOf('.')).replace(/-\d{14}-\w{7}$/,'');return `${name} [${data.naturalWidth} × ${data.naturalHeight}]`}],button:false,transition:false,ready:()=>{const languages=(window as any).siyuan.languages||{};const labels:any={'zoom-in':languages.zoomIn||'放大','zoom-out':languages.zoomOut||'缩小','one-to-one':languages.pageScaleActual||'原始大小',reset:languages.reset||'重置',prev:languages.previous||'上一张',play:languages.imageViewerPlay||'播放',next:languages.next||'下一张','rotate-left':languages.rotateCcw||'逆时针旋转','rotate-right':languages.rotateCw||'顺时针旋转','flip-horizontal':languages.imageFlipHorizontal||'水平翻转','flip-vertical':languages.imageFlipVertical||'垂直翻转',copy:languages.copyAsPNG||'复制为 PNG','copy-file':languages.copyFile||'复制文件',close:languages.close||'关闭'};const copy=viewer.toolbar.querySelector('.viewer-copy');if(copy)copy.innerHTML='<svg><use xlink:href="#iconImage"></use></svg>';const copyFile=viewer.toolbar.querySelector('.viewer-copy-file');if(copyFile){copyFile.innerHTML='<svg><use xlink:href="#iconFile"></use></svg>';copyFile.classList.add('fn__none')}Object.entries(labels).forEach(([action,label])=>{const button=viewer.toolbar.querySelector(`.viewer-${action}`);button?.classList.add('ariaLabel');button?.setAttribute('aria-label',label as string);button?.setAttribute('data-position','north')})},hidden:close,view:()=>viewer.toolbar.querySelector('.viewer-copy-file')?.classList.add('fn__none'),viewed:()=>viewer.toolbar.querySelector('.viewer-copy-file')?.classList.add('fn__none'),toolbar:{zoomIn:true,zoomOut:true,oneToOne:true,reset:true,prev:true,play:true,next:true,rotateLeft:true,rotateRight:true,flipHorizontal:true,flipVertical:true,copy:()=>viewer.viewed&&viewer.image&&copyImageAsPng(viewer.image.src),copyFile:()=>{},close}})
+  const viewer=(window as any).siyuan.viewer=new (window as any).Viewer(root,{initialViewIndex:item.image?initialViewIndex:0,title:[1,(image:HTMLImageElement,data:any)=>{let name=image.alt||image.src.substring(image.src.lastIndexOf('/')+1);name=name.substring(0,name.lastIndexOf('.')).replace(/-\d{14}-\w{7}$/,'');return `${name} [${data.naturalWidth} × ${data.naturalHeight}]`}],button:false,transition:false,ready:()=>{const languages=(window as any).siyuan.languages||{};const labels:any={'zoom-in':languages.zoomIn||'Zoom in','zoom-out':languages.zoomOut||'Zoom out','one-to-one':languages.pageScaleActual||'Actual size',reset:languages.reset||'Reset',prev:languages.previous||'Previous image',play:languages.imageViewerPlay||'Play',next:languages.next||'Next image','rotate-left':languages.rotateCcw||'Rotate counter-clockwise','rotate-right':languages.rotateCw||'Rotate clockwise','flip-horizontal':languages.imageFlipHorizontal||'Flip horizontally','flip-vertical':languages.imageFlipVertical||'Flip vertically',copy:languages.copyAsPNG||'Copy as PNG','copy-file':languages.copyFile||'Copy file',close:languages.close||'Close'};const copy=viewer.toolbar.querySelector('.viewer-copy');if(copy)copy.innerHTML='<svg><use xlink:href="#iconImage"></use></svg>';const copyFile=viewer.toolbar.querySelector('.viewer-copy-file');if(copyFile){copyFile.innerHTML='<svg><use xlink:href="#iconFile"></use></svg>';copyFile.classList.add('fn__none')}Object.entries(labels).forEach(([action,label])=>{const button=viewer.toolbar.querySelector(`.viewer-${action}`);button?.classList.add('ariaLabel');button?.setAttribute('aria-label',label as string);button?.setAttribute('data-position','north')})},hidden:close,view:()=>viewer.toolbar.querySelector('.viewer-copy-file')?.classList.add('fn__none'),viewed:()=>viewer.toolbar.querySelector('.viewer-copy-file')?.classList.add('fn__none'),toolbar:{zoomIn:true,zoomOut:true,oneToOne:true,reset:true,prev:true,play:true,next:true,rotateLeft:true,rotateRight:true,flipHorizontal:true,flipVertical:true,copy:()=>viewer.viewed&&viewer.image&&copyImageAsPng(viewer.image.src),copyFile:()=>{},close}})
   viewer.show()
 }
 const openTableMenu = ({ item, x, y }: any) => openMediaMenu(x, y, m => {
-  m.addItem({ icon: 'iconCopy', label: '复制表格', click: () => navigator.clipboard.writeText(item.html || item.text || '') })
-  m.addItem({ icon: 'iconRef', label: '定位表格', click: () => item.cfi && reader?.goTo(item.cfi) })
+  m.addItem({ icon: 'iconCopy', label: i18n.value.copyTable || 'Copy Table', click: () => navigator.clipboard.writeText(item.html || item.text || '') })
+  m.addItem({ icon: 'iconRef', label: i18n.value.locateTable || 'Locate Table', click: () => item.cfi && reader?.goTo(item.cfi) })
 })
 const init=async()=>{
   if(!containerRef.value)return
@@ -394,7 +401,7 @@ const init=async()=>{
       await initEmbedPdfMode(loadSource)
     }else{
       reader=await createReader({container:viewerContainerRef.value!,settings:getSettings()!,plugin:props.plugin})
-      await reader.open(async()=>await loadSource()||await Promise.reject(new Error('未提供书籍')),props.bookInfo?.format)
+      await reader.open(async()=>await loadSource()||await Promise.reject(new Error(i18n.value.bookMissing || 'No book provided')),props.bookInfo?.format)
       const view=reader.getView()
       markManager.value=createMarkManager({format:'epub',view,plugin:props.plugin,bookUrl,bookName:getBookName(),reader})
       !isTemporary&&await markManager.value.init()
@@ -423,7 +430,7 @@ const init=async()=>{
     markPanelRef.value?.setupAnnotationListeners()
     if (!isTemporary && openingSplashKey) sessionStorage.setItem(`sireader-opening:${openingSplashKey}`, '1')
   }catch(e){
-    error.value=e instanceof Error?e.message:'加载失败'
+    error.value=e instanceof Error?e.message:(i18n.value.loadError || 'Failed to load')
     markPanelRef.value?.closeAll()
   }finally{
     loading.value=false
@@ -450,7 +457,7 @@ const handlePrev=(distance?:number)=>flipPage('prev',distance)
 const handleNext=(distance?:number)=>flipPage('next',distance)
 const searchInputRef=ref<HTMLInputElement>()
 const toggleSearch=()=>{showSearch.value=!showSearch.value;showSearch.value&&(showQuickMark.value=quickMarkMode.value=false,setTimeout(()=>searchInputRef.value?.focus(),100))}
-const toggleQuickMark=()=>{if(!can.value('quick-mark'))return showUpgrade('快速标注');showQuickMark.value=!showQuickMark.value;showQuickMark.value&&(showSearch.value=false);quickMarkMode.value=showQuickMark.value}
+const toggleQuickMark=()=>{if(!can.value('quick-mark'))return showUpgrade(i18n.value.quickMark || 'Quick annotation');showQuickMark.value=!showQuickMark.value;showQuickMark.value&&(showSearch.value=false);quickMarkMode.value=showQuickMark.value}
 const syncSearchNav=(r:any)=>{if(r)searchCurrentIndex.value=reader.searchManager.getCurrentIndex()}
 const handleSearch=async()=>{
   if(!searchQuery.value.trim())return
@@ -465,7 +472,7 @@ const handleSearchNext=()=>moveSearch('next')
 const handleSearchPrev=()=>moveSearch('prev')
 const handleSearchClear=()=>{searchQuery.value='';searchResults.value=[];searchCurrentIndex.value=0;reader?.clearSearch();showSearch.value=false}
 const updateBookmarkState=()=>hasBookmark.value=!!markManager.value?.hasBookmark?.()
-const toggleBookmark=async()=>{if(isEmbedPdfMode.value)return;try{hasBookmark.value=await marks.value?.toggleBookmark?.();window.dispatchEvent(new CustomEvent('sireader:marks-updated'))}catch(e:any){showMessage(e.message||'操作失败',2000,'error')}}
+const toggleBookmark=async()=>{if(isEmbedPdfMode.value)return;try{hasBookmark.value=await marks.value?.toggleBookmark?.();window.dispatchEvent(new CustomEvent('sireader:marks-updated'))}catch(e:any){showMessage(e.message||i18n.value.operationFailed||'Operation failed',2000,'error')}}
 const getBookUrl=()=>currentBookUrl.value||props.bookInfo?.url||props.url||''
 const savePosition=()=>isMobile()&&getBookUrl()&&reader&&saveMobilePosition(getBookUrl(),{cfi:reader.getLocation()?.cfi})
 const syncReaderFocus=(focused:boolean)=>{const bookUrl=getBookUrl();if(!bookUrl||readerFocused===focused)return;readerFocused=focused;window.dispatchEvent(new CustomEvent(focused?'reader:focus':'reader:blur',{detail:{bookUrl}}))}
@@ -519,8 +526,9 @@ const resize=()=>{
   else reader?.resize?.()
 }
 defineExpose({ resize })
-onMounted(()=>{init();containerRef.value?.focus();events.forEach(([e,h])=>window.addEventListener(e,h as any));window.addEventListener('keydown',handleKeydown);window.addEventListener('unhandledrejection',suppressError);window.addEventListener('blur',handleWindowBlur);window.addEventListener('focus',handleWindowFocus);document.addEventListener('visibilitychange',handleVisibilityChange);setupTabObserver();const c=containerRef.value;c&&(c.addEventListener('focusin',handleFocusIn),c.addEventListener('focusout',handleFocusOut));bindTouchPaging(c);bindTouchPaging(viewerContainerRef.value);window.dispatchEvent(new CustomEvent('reader:open',{detail:{bookUrl:getBookUrl()}}));syncReaderFocus(true)})
+onMounted(()=>{init();if(!isPdfBook.value){footerTimer=window.setInterval(syncReadingProgress,60000);const getBattery=(navigator as any).getBattery;if(typeof getBattery==='function')void getBattery.call(navigator).then((value:any)=>{battery.value=value;syncReadingProgress()}).catch(()=>{})}containerRef.value?.focus();events.forEach(([e,h])=>window.addEventListener(e,h as any));window.addEventListener('keydown',handleKeydown);window.addEventListener('unhandledrejection',suppressError);window.addEventListener('blur',handleWindowBlur);window.addEventListener('focus',handleWindowFocus);document.addEventListener('visibilitychange',handleVisibilityChange);setupTabObserver();const c=containerRef.value;c&&(c.addEventListener('focusin',handleFocusIn),c.addEventListener('focusout',handleFocusOut));bindTouchPaging(c);bindTouchPaging(viewerContainerRef.value);window.dispatchEvent(new CustomEvent('reader:open',{detail:{bookUrl:getBookUrl()}}));syncReaderFocus(true)})
 onBeforeUnmount(()=>{
+  if(footerTimer)window.clearInterval(footerTimer)
   if (isThisActiveReader()) ttsController.destroy()
   void trackPending((async()=>{
   const view=currentView.value,c=containerRef.value
@@ -541,6 +549,7 @@ onBeforeUnmount(()=>{
 .reader-container{position:relative;width:100%;height:100%;outline:none;user-select:text;-webkit-user-select:text;isolation:isolate;display:flex;flex-direction:column;background:var(--b3-theme-background)}
 .reader-overlay{position:absolute;inset:0;z-index:999;background:transparent}
 .viewer-container{flex:1;min-width:0;min-height:0;position:relative;overflow:hidden;background:var(--b3-theme-background)}
+.reader-header,.reader-footer{position:absolute;left:0;right:0;z-index:2;display:flex;align-items:center;overflow:hidden;color:var(--b3-theme-on-background);font:12px/1 sans-serif;white-space:nowrap;text-overflow:ellipsis;pointer-events:none;opacity:.65}.reader-header{top:0;justify-content:flex-start}.reader-footer{bottom:0;justify-content:flex-start}
 .reader-progress{position:absolute;left:0;right:0;bottom:0;height:2px;z-index:1000;pointer-events:none;background:color-mix(in srgb,var(--b3-theme-primary) 14%,transparent);overflow:hidden;span{display:block;width:100%;height:100%;transform-origin:left center;background:var(--b3-theme-primary);transition:transform .18s ease-out}}
 .reader-loading{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:16px;color:var(--b3-theme-on-background);z-index:10;pointer-events:none}
 .spinner{width:48px;height:48px;border:4px solid var(--b3-theme-primary-lighter);border-top-color:var(--b3-theme-primary);border-radius:50%;animation:spin 1s linear infinite}

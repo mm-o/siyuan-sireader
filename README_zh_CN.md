@@ -7,7 +7,7 @@
 让思源笔记变身专业阅读器，支持 EPUB/PDF/TXT/在线小说  
 专业电子书阅读器，支持 EPUB/PDF/MOBI/TXT/在线小说；PDF 支持高亮、墨迹、形状、表单、印章、签名、图片、截图、搜索、打印、导出和回链，并提供标注笔记、词典、翻译、主题与书架管理
 
-[![Version](https://img.shields.io/badge/version-2.5.2-blue.svg)](https://github.com/your-repo/siyuan-sireader)
+[![Version](https://img.shields.io/badge/version-2.5.3-blue.svg)](https://github.com/your-repo/siyuan-sireader)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![SiYuan](https://img.shields.io/badge/SiYuan-3.0+-orange.svg)](https://github.com/siyuan-note/siyuan)
 
@@ -19,19 +19,25 @@
 
 ## 📝 最新更新
 
-## v2.5.2 (2026-10-07)
+## v2.5.3 (2026-10-09)
 
 ### 新增
 
 - 接入思源笔记内核插件网络能力，统一支持微信读书、书源搜索下载、翻译、词典等联网请求，兼容桌面端、伺服模式与 Docker 环境。
+- 新增 EPUB“覆盖书籍字体”设置，可按需覆盖书籍字体族。
 
 ### 优化
 
+- 对齐 Readest 的 EPUB 字体处理：默认保留书籍自带字体与精排字号，仅在开启设置时覆盖字体族；清理旧版 Foliate 内部页眉页脚注入逻辑，统一由阅读器外层负责显示。
 - 对齐 Readest 的 EPUB 默认排版规则：中文正文默认首行缩进 2em，保留书籍原始标题层级、字体、字号、粗体、段落样式和局部格式，统一处理断词、对齐、代码字体及图片段落例外。
+- PDF 界面语言切换改用 EmbeddedPDF 原生 locale 配置。
 
 ### 修复
 
 - 修复伺服模式下分组封面未按书籍封面统一处理导致的封面破损问题。
+- 修复 [Issue #59](https://github.com/mm-o/siyuan-sireader/issues/59)：补全全局中英文 i18n，修复书架“未知作者”和阅读器目录按钮未正确随思源语言切换的问题。
+- 修复 PDF 界面未正确随思源语言切换的问题。
+- 大型扫描版 PDF 清空搜索后再次搜索可能触发 `Sibling task failed`，该问题已提交至 EmbedPDF 上游，等待上游修复后再处理：[Issue #853](https://github.com/embedpdf/embed-pdf-viewer/issues/853)。
 
 ## v2.5.1 (2026-10-04)
 

@@ -22,7 +22,7 @@
 
     <div v-if="state.showPanel" v-motion :initial="{ opacity: 0, y: 5 }" :enter="{ opacity: 1, y: 0 }" :class="['sr-popup sr-popup-panel',{ 'is-above': cardPlacement.dir === 'down' }]" :style="cardPosition" @click.stop>
       <div class="sr-main">
-        <Translate v-if="state.panel === 'translate'" :text="state.selection?.text || ''" />
+        <Translate v-if="state.panel === 'translate'" :text="state.selection?.text || ''" :i18n="i18n" />
         <MarkCard
           v-else
           :time="formatDateTime(state.currentMark?.timestamp || Date.now())"

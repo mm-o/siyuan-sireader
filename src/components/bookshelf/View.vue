@@ -104,7 +104,7 @@
             <span v-for="text in groupChips(item.data)" :key="text" class="bs-tag bs-tag--type">{{ text }}</span>
           </div>
           <span class="bs-badge bs-badge--bottom">{{ countText(groupCount(item.data)) }}</span>
-          <span class="bs-watermark bs-watermark--group">分组</span>
+          <span class="bs-watermark bs-watermark--group">{{ props.i18n?.group || 'Group' }}</span>
         </template>
       </div>
       <div class="bs-title ariaLabel" :aria-label="mainText(item)">{{ mainText(item) }}</div>
@@ -198,9 +198,10 @@ type ImportItem = { type: 'import'; data: BookImportItem }
 type Item = GroupItem | BookItem | ImportItem
 type CompactRow = { key: string; item: Item; level: number; kind: 'group' | 'book' | 'import' }
 type CompactNode = CompactRow & { children: CompactRow[] }
-const HOME_DROP_LABEL = '移出分组'
+const HOME_DROP_LABEL = 'Remove from group'
 
 const props = withDefaults(defineProps<{
+  i18n?: any
   items: Item[]
   mode: BookshelfViewMode
   gridStyle?: Record<string, string>
@@ -403,7 +404,7 @@ const handleContextMenu = (item: Item, event: MouseEvent) => {
 
 const handleCompactContextMenu = (row: CompactRow, event: MouseEvent) => handleContextMenu(row.item, event)
 
-const countText = (count: number) => `${count} 本`
+const countText = (count: number) => `${count} ${props.i18n?.booksUnit || 'books'}`
 const compactIndent = (row: CompactRow) => row.level * (props.dense ? 12 : 18)
 const compactItemStyle = (row: CompactRow) => ({ '--file-toggle-width': `${compactIndent(row) + (props.dense ? 14 : 18)}px` })
 const compactToggleStyle = (row: CompactRow) => ({ paddingLeft: `${compactIndent(row)}px` })
@@ -417,7 +418,11 @@ const groupChips = (group: GroupConfig) => [
   ...((group.rules?.status || []).slice(0, 1).map(v => props.statusMap[v])),
   ...(group.rules?.rating ? [`${group.rules.rating}星+`] : []),
 ].slice(0, 3)
-const authorText = (item: Item) => isGroup(item) ? (item.data.type === 'smart' ? '智能分组' : '分组') : isBook(item) ? item.data.author || '未知作者' : item.data.preview?.author || '未知作者'
+const authorText = (item: Item) => {
+  if (isGroup(item)) return item.data.type === 'smart' ? (props.i18n?.smartGroup || 'Smart Group') : (props.i18n?.group || 'Group')
+  const author = isBook(item) ? item.data.author : item.data.preview?.author
+  return author && !['未知作者', 'Unknown Author', '未知', '-'].includes(String(author).trim()) ? author : (props.i18n?.unknownAuthor || 'Unknown Author')
+}
 const onCompactHover = (event: MouseEvent) => (event.target as HTMLElement).hasAttribute('data-playlist-item') && event.stopPropagation()
 const compactMeta = (item: Item) => isGroup(item) ? (props.showGroupMeta ? countText(groupCount(item.data)) : '') : isBook(item) ? (hidden('progress') ? '' : props.getProgress(item.data)) : importStateText(item.data)
 const compactStatusLabel = (item: Item) => isBook(item) && !hidden('status') ? props.statusMap[item.data.status] : ''
@@ -448,10 +453,10 @@ const placeholderCover = (item: Item) => {
   const art = kind === 'group' ? shapes.group(accent, ink) : kind === 'pdf' ? shapes.pdf(accent, ink) : shapes.book(accent, ink, kind === 'txt' ? 6 : 20, kind === 'txt' ? 2 : 8)
   return `data:image/svg+xml;utf8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 180"><rect width="120" height="180" fill="${bg}"/><circle cx="94" cy="24" r="22" fill="${accent}" fill-opacity=".12"/><rect x="22" y="28" width="74" height="92" rx="16" fill="#fff" fill-opacity=".68"/>${art}<rect x="22" y="138" width="68" height="6" rx="3" fill="${ink}" fill-opacity=".34"/><rect x="22" y="150" width="52" height="6" rx="3" fill="${ink}" fill-opacity=".24"/><rect x="22" y="162" width="60" height="6" rx="3" fill="${ink}" fill-opacity=".18"/></svg>`)}` 
 }
-const importStateText = (item: BookImportItem) => item.error ? '失败' : item.loading ? (item.preview ? '导入中...' : '解析中...') : item.preview?.format?.toUpperCase?.() || '待导入'
-const annotationText = (book: Book) => book.annotationCount ? `标注 ${book.annotationCount}` : ''
-const chapterText = (book: Book) => book.total ? `章节 ${book.chapter || 0}/${book.total}` : book.chapter ? `章节 ${book.chapter}` : ''
-const lastReadText = (ts: number) => ts ? `最近阅读 ${new Date(ts).toLocaleDateString('zh-CN')}` : ''
+const importStateText = (item: BookImportItem) => item.error ? (props.i18n?.failed || 'Failed') : item.loading ? (item.preview ? (props.i18n?.importing || 'Importing...') : (props.i18n?.parsing || 'Parsing...')) : item.preview?.format?.toUpperCase?.() || (props.i18n?.pendingImport || 'Pending import')
+const annotationText = (book: Book) => book.annotationCount ? (props.i18n?.annotationCount || 'Annotations: {count}').replace('{count}', String(book.annotationCount)) : ''
+const chapterText = (book: Book) => book.total ? `${props.i18n?.chapter || 'Chapter'} ${book.chapter || 0}/${book.total}` : book.chapter ? `${props.i18n?.chapter || 'Chapter'} ${book.chapter}` : ''
+const lastReadText = (ts: number) => ts ? (props.i18n?.lastRead || 'Recently read {date}').replace('{date}', new Date(ts).toLocaleDateString()) : ''
 const tagStyle = (tag: string) => {
   let hash = 0
   for (let i = 0; i < tag.length; i++) hash = tag.charCodeAt(i) + ((hash << 5) - hash)

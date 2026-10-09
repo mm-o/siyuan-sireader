@@ -69,7 +69,7 @@
                 <small>{{ sourceDesc(src) }}</small>
               </div>
               <div class="sr-manage-actions">
-                <button v-if="isWebSource(src)" class="sr-text-btn" @click="openWebSource(src)">打开</button>
+                <button v-if="isWebSource(src)" class="sr-text-btn" @click="openWebSource(src)">{{ i18n.sourceOpen || 'Open' }}</button>
                 <button class="sr-text-btn" @click="startEditSource(src)">{{ TEXT.edit }}</button>
                 <button v-if="src.type === 'custom'" class="sr-text-btn danger" @click="removeCustomSource(src.id)">{{ TEXT.remove }}</button>
                 <input type="checkbox" class="b3-switch" :checked="src.enabled" @change="toggleSource(src.id)">
@@ -120,7 +120,7 @@
         <div v-if="detailBook" class="sr-manage-panel sr-detail-panel" @click.stop>
           <header class="sr-modal__head">
             <span>{{ TEXT.detail }}</span>
-            <span class="block__icon block__icon--show sr-icon-btn" aria-label="关闭" @click="detailBook = null">
+            <span class="block__icon block__icon--show sr-icon-btn" :aria-label="i18n.close || 'Close'" @click="detailBook = null">
               <svg><use xlink:href="#lucide-x" /></svg>
             </span>
           </header>
@@ -144,16 +144,16 @@
               </div>
             </div>
             <label v-if="detailBook.intro" class="sr-form-item">
-              <span class="ft__secondary">简介</span>
+              <span class="ft__secondary">{{ i18n.intro || 'Introduction' }}</span>
               <span class="sr-intro-full">{{ detailBook.intro }}</span>
             </label>
             <div class="sr-actions-full">
               <button v-if="detailBook.readUrl" class="sr-btn-primary" @click="openReadOnline(detailBook)"><svg><use xlink:href="#lucide-eye"/></svg>{{ TEXT.readOnline }}</button>
               <button v-if="detailBook.readUrl" class="sr-btn-primary" :class="{ active: isLinkInShelf(detailBook) || importingState(detailBook, 'link') }" @click="addLinkBook(detailBook)">
-                <svg><use :xlink:href="isLinkInShelf(detailBook) ? '#iconCheck' : '#iconLink'"/></svg>{{ importingState(detailBook, 'link') || (isLinkInShelf(detailBook) ? TEXT.inShelf : '链接添加到书架') }}
+                <svg><use :xlink:href="isLinkInShelf(detailBook) ? '#iconCheck' : '#iconLink'"/></svg>{{ importingState(detailBook, 'link') || (isLinkInShelf(detailBook) ? TEXT.inShelf : (i18n.addToShelf || 'Add to Shelf')) }}
               </button>
               <button v-if="hasDownloadUrl(detailBook)" class="sr-btn-primary" :class="{ active: isDownloadInShelf(detailBook) || importingState(detailBook, 'download') }" @click="addDownloadBook(detailBook)">
-                <svg><use :xlink:href="isDownloadInShelf(detailBook) ? '#iconCheck' : '#iconDownload'"/></svg>{{ importingState(detailBook, 'download') || (isDownloadInShelf(detailBook) ? TEXT.inShelf : '下载添加到书架') }}
+                <svg><use :xlink:href="isDownloadInShelf(detailBook) ? '#iconCheck' : '#iconDownload'"/></svg>{{ importingState(detailBook, 'download') || (isDownloadInShelf(detailBook) ? TEXT.inShelf : (i18n.downloadAddToShelf || 'Download to Shelf')) }}
               </button>
               <button v-if="!detailBook.readUrl" class="sr-btn-primary" @click="openLink(detailBook.bookUrl)"><svg><use xlink:href="#iconLink"/></svg>{{ i18n.openLink || TEXT.openLink }}</button>
             </div>
@@ -176,7 +176,7 @@ import { createWereadContextFromSource } from '@/weread/context'
 import { createPrivateSearchAccess } from '@private-sources'
 import DockShell from './ui/DockShell.vue'
 
-const TEXT = { searchPlaceholder: '输入书名搜索', allSources: '全部来源', manageTitle: '来源管理', manageDesc: '统一管理内置源、自定义源和请求前缀。', edit: '编辑', remove: '删除', editSource: '编辑来源', addSource: '新增自定义来源', domains: '镜像列表', domainsPlaceholder: '每行一个域名', currentDomain: '当前镜像', account: '账号', accountPlaceholder: '邮箱', password: '密码', passwordPlaceholder: '用于正常登录获取搜索结果', siteUrl: '站点地址', searchUrl: '搜索地址', bookUrlPrefix: '书籍地址前缀', itemSelector: '结果项选择器', titleSelector: '标题选择器', authorSelector: '作者选择器', linkSelector: '链接选择器', coverSelector: '封面选择器', introSelector: '简介选择器', requestPrefix: '请求前缀 / 代理', requestPrefixPlaceholder: '留空或填写代理前缀', name: '名称', extensions: '扩展名过滤', extensionsPlaceholder: 'epub,pdf,mobi,azw3', siteUrlPlaceholder: 'https://example.com', searchUrlPlaceholder: 'https://example.com/search?q={query}', bookUrlPrefixPlaceholder: '留空自动推断', cancel: '取消', save: '保存', noResults: '未找到书籍', searching: '搜索中...', inShelf: '已在书架', openLink: '打开链接', readOnline: '在线阅读', detail: '书籍详情', saveError: '来源名称不能为空', customError: '自定义源至少需要搜索地址、结果项、标题、链接选择器', saveSuccess: '来源已保存', addError: '添加失败', sourceDescCustom: '自定义选择器来源', sourceDescAnna: '镜像 / 扩展名 / 请求前缀', sourceDescBuiltin: '内置来源' } as const
+const TEXT = { searchPlaceholder: 'Search books', allSources: 'All sources', manageTitle: 'Source Management', manageDesc: 'Manage built-in and custom sources', edit: 'Edit', remove: 'Delete', editSource: 'Edit Source', addSource: 'Add Custom Source', domains: 'Mirror Domains', domainsPlaceholder: 'One domain per line', currentDomain: 'Current Mirror', account: 'Account', accountPlaceholder: 'Email', password: 'Password', passwordPlaceholder: 'Used to sign in and retrieve search results', siteUrl: 'Site URL', searchUrl: 'Search URL', bookUrlPrefix: 'Book URL Prefix', itemSelector: 'Item Selector', titleSelector: 'Title Selector', authorSelector: 'Author Selector', linkSelector: 'Link Selector', coverSelector: 'Cover Selector', introSelector: 'Introduction Selector', requestPrefix: 'Request Prefix / Proxy', requestPrefixPlaceholder: 'Leave empty or enter a proxy prefix', name: 'Name', extensions: 'Extension Filter', extensionsPlaceholder: 'epub,pdf,mobi,azw3', siteUrlPlaceholder: 'https://example.com', searchUrlPlaceholder: 'https://example.com/search?q={query}', bookUrlPrefixPlaceholder: 'Leave empty to infer automatically', cancel: 'Cancel', save: 'Save', noResults: 'No books found', searching: 'Searching...', inShelf: 'In Shelf', openLink: 'Open Link', readOnline: 'Read Online', detail: 'Book Details', saveError: 'Source name cannot be empty', customError: 'A custom source requires search URL, item, title, and link selectors', saveSuccess: 'Source saved', addError: 'Failed to add', sourceDescCustom: 'Custom selector source', sourceDescAnna: 'Mirror / extension / request prefix', sourceDescBuiltin: 'Built-in source' } as const
 const FORM_DEFAULTS = { id: '', type: 'custom', name: '', url: '', searchUrl: '', requestPrefix: '', extensions: '', domainsText: '', currentDomain: '', authEmail: '', authPassword: '', bookUrlPrefix: '', itemSelector: '', titleSelector: '', authorSelector: '', linkSelector: '', coverSelector: '', introSelector: '' }
 const field = (key: keyof typeof FORM_DEFAULTS, label: string, placeholder = '') => ({ key, label, placeholder })
 const baseFields = [field('name', TEXT.name), field('requestPrefix', TEXT.requestPrefix, TEXT.requestPrefixPlaceholder), field('extensions', TEXT.extensions, TEXT.extensionsPlaceholder)] as const
@@ -185,6 +185,10 @@ const selectorFields = [['itemSelector', 'item', TEXT.itemSelector, '.book-item'
 const builtinTypeSet = new Set(['gutenberg', 'standardebooks'])
 const props = defineProps<{ i18n: any }>()
 const i18n = computed(() => props.i18n || {})
+Object.assign(TEXT, {
+  searchPlaceholder: i18n.value.searchPlaceholder || 'Search books', allSources: i18n.value.allSources || 'All Providers', manageTitle: i18n.value.searchSourcesTitle || 'Source Management', manageDesc: i18n.value.searchSourcesDesc || 'Manage built-in and custom sources',
+  edit: i18n.value.edit || 'Edit', remove: i18n.value.delete || 'Delete', editSource: i18n.value.sourceEdit || 'Edit Source', addSource: i18n.value.sourceAddCustom || 'Add Custom Source', domains: i18n.value.sourceDomains || 'Mirror Domains', currentDomain: i18n.value.sourceCurrentDomain || 'Current Mirror', account: i18n.value.sourceAccount || 'Account', password: i18n.value.sourcePassword || 'Password', siteUrl: i18n.value.sourceSiteUrl || 'Site URL', searchUrl: i18n.value.sourceSearchUrl || 'Search URL', bookUrlPrefix: i18n.value.sourceBookUrlPrefix || 'Book URL Prefix', requestPrefix: i18n.value.sourceRequestPrefix || 'Request Prefix / Proxy', name: i18n.value.sourceName || 'Name', extensions: i18n.value.sourceExtensions || 'Extension Filter', cancel: i18n.value.cancel || 'Cancel', save: i18n.value.save || 'Save', noResults: i18n.value.noResults || 'No results found', searching: i18n.value.searching || 'Searching...', inShelf: i18n.value.inShelf || 'In Shelf', openLink: i18n.value.openLink || 'Open Link', readOnline: i18n.value.readOnline || 'Read Online', detail: i18n.value.viewDetail || 'Book Details', sourceDescCustom: i18n.value.sourceCustomDesc || 'Custom selector source', sourceDescAnna: i18n.value.sourceAnnaDesc || 'Mirror / extension / request prefix', sourceDescBuiltin: i18n.value.sourceBuiltinDesc || 'Built-in source'
+})
 const { can, showUpgrade } = useLicense(i18n.value)
 const keyword = ref(''), selectedSource = ref(''), showSourceMenu = ref(false), showManagePanel = ref(false), searching = ref(false), results = ref<any[]>([]), allSources = ref<HttpSourceConfig[]>([]), detailBook = ref<any>(null), editingSource = ref<HttpSourceConfig | null>(null), shelfBooks = ref(new Set<string>()), failedCovers = new Set<string>(), importing = ref<Record<string, string>>({}), form = reactive({ ...FORM_DEFAULTS })
 const enabledSources = computed(() => allSources.value.filter(source => source.enabled))

@@ -1,9 +1,9 @@
 ﻿<template>
-  <DockShell class="sr-bookshelf" v-model:search-value="keyword" body-class="sr-books" search-placeholder="搜索书籍或分组..." :toolbar-start-actions="toolbarStartActions" :toolbar-actions="toolbarActions" @click="closePopups" @toolbar-action="handleToolbarAction">
+  <DockShell class="sr-bookshelf" v-model:search-value="keyword" body-class="sr-books" :search-placeholder="tx('searchPlaceholder', 'Search books or groups...')" :toolbar-start-actions="toolbarStartActions" :toolbar-actions="toolbarActions" @click="closePopups" @toolbar-action="handleToolbarAction">
       <Transition name="fade">
         <div v-if="!displayItems.length" class="sr-empty">
-          <div>{{ keyword ? '未找到内容' : '暂无内容' }}</div>
-          <div v-if="!keyword" class="sr-empty-hint">暂无书籍，点击右上角添加内容</div>
+          <div>{{ keyword ? tx('noContentFound', 'No content found') : tx('noContent', 'No content') }}</div>
+          <div v-if="!keyword" class="sr-empty-hint">{{ tx('emptyBookshelfHint', 'No books yet. Click Add Content in the top right.') }}</div>
         </div>
 
         <component :is="View" v-else :key="`${viewMode}-${currentGroup || 'root'}`" v-bind="viewProps" @select-group="setGroup" @book-click="readBook" @book-menu="showContextMenu" @group-menu="showGroupMenu" @move-book-group="moveBookToGroup" @move-book-home="moveBookToHome" @toggle-select-book="toggleSelectBook" />
@@ -22,12 +22,12 @@
       <div v-if="confirmDelete" class="sr-selection-bar sr-confirm-bar" :class="{ 'sr-confirm-bar--above-selection': selecting }" @click.stop>
         <div class="sr-selection-detail"><span class="sr-selection-count">{{ confirmDeleteText }}</span></div>
         <div class="sr-row sr-actions-end">
-          <button class="b3-button b3-button--outline" type="button" @click="clearConfirmDelete">取消</button>
-          <button v-if="confirmDelete?.type === 'group'" class="b3-button b3-button--outline" type="button" @click="confirmDeleteAction(false)">确认删除</button>
+          <button class="b3-button b3-button--outline" type="button" @click="clearConfirmDelete">{{ tx('cancel', 'Cancel') }}</button>
+          <button v-if="confirmDelete?.type === 'group'" class="b3-button b3-button--outline" type="button" @click="confirmDeleteAction(false)">{{ tx('confirmDelete', 'Delete') }}</button>
           <template v-else>
-            <button v-if="confirmDelete?.phase !== 'delete'" class="b3-button b3-button--outline" type="button" @click="confirmDeleteAction(false)">确认移除</button>
-            <button v-if="confirmDelete?.phase !== 'delete'" class="b3-button b3-button--remove" type="button" @click="confirmDelete.phase = 'delete'">彻底删除</button>
-            <button v-else class="b3-button b3-button--remove" type="button" @click="confirmDeleteAction(true)">确认彻底删除</button>
+            <button v-if="confirmDelete?.phase !== 'delete'" class="b3-button b3-button--outline" type="button" @click="confirmDeleteAction(false)">{{ tx('confirmRemove', 'Remove') }}</button>
+            <button v-if="confirmDelete?.phase !== 'delete'" class="b3-button b3-button--remove" type="button" @click="confirmDelete.phase = 'delete'">{{ tx('deletePermanently', 'Delete permanently') }}</button>
+            <button v-else class="b3-button b3-button--remove" type="button" @click="confirmDeleteAction(true)">{{ tx('confirmDeletePermanently', 'Confirm permanent deletion') }}</button>
           </template>
         </div>
       </div>
@@ -35,7 +35,7 @@
     <template #overlay>
       <Transition name="fade">
         <div v-if="modalMode" class="sr-manage-panel" @click.stop>
-        <header class="sr-modal__head"><span>{{ modalTitle }}</span><span class="block__icon block__icon--show b3-tooltips b3-tooltips__nw sr-icon-btn" aria-label="关闭" @click="closePopups"><svg><use xlink:href="#lucide-x" /></svg></span></header>
+        <header class="sr-modal__head"><span>{{ modalTitle }}</span><span class="block__icon block__icon--show b3-tooltips b3-tooltips__nw sr-icon-btn" :aria-label="tx('close', 'Close')" @click="closePopups"><svg><use xlink:href="#lucide-x" /></svg></span></header>
 
         <div class="sr-modal__body">
           <template v-if="modalMode === 'manage'">
@@ -52,41 +52,41 @@
             </template>
 
             <template v-else>
-            <div class="sr-form-item"><span class="ft__secondary">快捷操作</span><div class="sr-grid2"><button class="b3-button b3-button--outline" type="button" title="从电脑选择 EPUB、PDF 等电子书文件，导入后由插件托管文件和封面。" @click="openLocalImport">本地导入</button><button class="b3-button b3-button--outline" type="button" title="浏览或搜索思源同步盘中的电子书，并添加到书架。" @click="setImportMode('cloud')">思盘导入</button><button class="b3-button b3-button--outline" type="button" title="创建普通文件夹分组。书籍加入后会从首页独立书籍区移出，属于实际归类。" @click="startEditGroup()">手动分组</button><button class="b3-button b3-button--outline" type="button" title="创建按标签、格式、状态、评分等条件动态显示的分组。智能分组不移动书籍归属，也不会把书从首页隐藏。" @click="startEditGroup(undefined, 'smart')">智能分组</button></div></div>
+            <div class="sr-form-item"><span class="ft__secondary">{{ tx('quickActions', 'Quick Actions') }}</span><div class="sr-grid2"><button class="b3-button b3-button--outline" type="button" @click="openLocalImport">{{ tx('localImport', 'Local Import') }}</button><button class="b3-button b3-button--outline" type="button" @click="setImportMode('cloud')">{{ tx('cloudImport', 'Cloud Import') }}</button><button class="b3-button b3-button--outline" type="button" @click="startEditGroup()">{{ tx('manualGroup', 'Manual Group') }}</button><button class="b3-button b3-button--outline" type="button" @click="startEditGroup(undefined, 'smart')">{{ tx('smartGroup', 'Smart Group') }}</button></div></div>
 
             <template v-if="importMode === 'link'">
               <div class="sr-editor sr-import-card">
-                <div class="sr-editor-head"><strong>输入链接</strong></div>
-                <textarea class="b3-text-field fn__block sr-textarea" v-model="importDraft" placeholder="每行一个本地路径、file 链接、网络直链或思盘链接" />
-                <div class="sr-row"><button class="b3-button b3-button--outline sr-grow" type="button" @click="parseImportUrls" :disabled="!importDraft.trim() || importParsing">{{ importParsing ? '解析中...' : '解析链接' }}</button></div>
+                <div class="sr-editor-head"><strong>{{ tx('enterLinks', 'Enter Links') }}</strong></div>
+                <textarea class="b3-text-field fn__block sr-textarea" v-model="importDraft" :placeholder="tx('importLinksPlaceholder', 'One local path, file link, web URL, or cloud link per line')" />
+                <div class="sr-row"><button class="b3-button b3-button--outline sr-grow" type="button" @click="parseImportUrls" :disabled="!importDraft.trim() || importParsing">{{ importParsing ? tx('parsing', 'Parsing...') : tx('parseLinks', 'Parse Links') }}</button></div>
               </div>
             </template>
 
             <template v-if="importMode === 'cloud'">
               <div class="sr-editor sr-import-card">
-                <div class="sr-editor-head"><strong>思盘导入</strong></div>
-                <div class="sr-row"><input v-model.trim="cloudInput" class="b3-text-field sr-grow" placeholder="输入思盘路径" @keyup.enter="openCloudInput" /><button class="b3-button b3-button--outline" type="button" :disabled="cloudLoading || !cloudInput" @click="openCloudInput">输入</button></div>
-                <div class="sr-row"><input v-model.trim="cloudKeyword" class="b3-text-field sr-grow" placeholder="输入关键词搜索" @keyup.enter="searchCloud" /><button class="b3-button b3-button--outline" type="button" :disabled="cloudLoading || !cloudKeyword" @click="searchCloud">搜索</button></div>
-                <div class="sr-row"><button class="b3-button b3-button--outline sr-grow" type="button" :disabled="cloudLoading" @click="listCloud('/')">浏览全部</button></div>
+                <div class="sr-editor-head"><strong>{{ tx('cloudImport', 'Cloud Import') }}</strong></div>
+                <div class="sr-row"><input v-model.trim="cloudInput" class="b3-text-field sr-grow" :placeholder="tx('cloudPathPlaceholder', 'Enter cloud path')" @keyup.enter="openCloudInput" /><button class="b3-button b3-button--outline" type="button" :disabled="cloudLoading || !cloudInput" @click="openCloudInput">{{ tx('input', 'Input') }}</button></div>
+                <div class="sr-row"><input v-model.trim="cloudKeyword" class="b3-text-field sr-grow" :placeholder="tx('keywordPlaceholder', 'Enter keywords to search')" @keyup.enter="searchCloud" /><button class="b3-button b3-button--outline" type="button" :disabled="cloudLoading || !cloudKeyword" @click="searchCloud">{{ tx('search', 'Search') }}</button></div>
+                <div class="sr-row"><button class="b3-button b3-button--outline sr-grow" type="button" :disabled="cloudLoading" @click="listCloud('/')">{{ tx('browseAll', 'Browse All') }}</button></div>
                 <div v-if="cloudError" class="sr-muted">{{ cloudError }}</div>
-                <View v-if="cloudResults.length" class="sr-cloud-results" :items="cloudDisplayItems" mode="compact" dense selecting select-groups :selected-urls="cloudSelectedPaths" :show-group-meta="false" :status-map="STATUS_MAP" :get-cover-url="getCoverUrl" :get-group-cover-urls="() => []" :get-progress="() => ''" @select-group="listCloud" @toggle-select-book="book => toggleCloudPath(book.url)" />
+                <View v-if="cloudResults.length" class="sr-cloud-results" :items="cloudDisplayItems" mode="compact" dense selecting select-groups :selected-urls="cloudSelectedPaths" :show-group-meta="false" :status-map="localizedStatusMap" :get-cover-url="getCoverUrl" :get-group-cover-urls="() => []" :get-progress="() => ''" :i18n="props.i18n" @select-group="listCloud" @toggle-select-book="book => toggleCloudPath(book.url)" />
                 <div v-if="cloudResults.length" class="sr-row sr-actions-end"><button class="b3-button b3-button--outline" type="button" :disabled="cloudLoading || !cloudSelectedPaths.length" @click="parseSelectedCloud">{{ cloudLoading ? '解析中...' : `解析选中 ${cloudSelectedPaths.length || ''}` }}</button></div>
               </div>
             </template>
 
             <div v-if="importHasItems" class="sr-editor sr-import-card">
-              <div class="sr-editor-head"><strong>待导入</strong></div>
-              <div class="sr-row"><button class="sr-chip" :class="{ 'is-active': importAllSelected }" type="button" @click="importAllSelected = !importAllSelected">{{ importAllSelected ? '取消全选' : '全选导入' }}</button><span>{{ importSelectedCount }} / {{ importItems.length }}</span><span v-if="importParsing">{{ importProgress }}%</span></div>
-              <View class="sr-import-list" :items="importDisplayItems" mode="list" :status-map="STATUS_MAP" :get-cover-url="getCoverUrl" :get-progress="getProgress" @toggle-import="toggleImportItem" />
+              <div class="sr-editor-head"><strong>{{ tx('pendingImport', 'Pending Import') }}</strong></div>
+              <div class="sr-row"><button class="sr-chip" :class="{ 'is-active': importAllSelected }" type="button" @click="importAllSelected = !importAllSelected">{{ importAllSelected ? tx('deselectAll', 'Deselect All') : tx('selectAllImport', 'Select All') }}</button><span>{{ importSelectedCount }} / {{ importItems.length }}</span><span v-if="importParsing">{{ importProgress }}%</span></div>
+              <View class="sr-import-list" :items="importDisplayItems" mode="list" :status-map="localizedStatusMap" :get-cover-url="getCoverUrl" :get-progress="getProgress" :i18n="props.i18n" @toggle-import="toggleImportItem" />
             </div>
 
             <div v-if="importHasItems" class="sr-editor sr-import-card sr-import-card--sm">
-              <div class="sr-editor-head"><strong>导入设置</strong></div>
-              <input v-model="importBulkTags" class="b3-text-field sr-input" placeholder="添加标签，用逗号分隔" />
+              <div class="sr-editor-head"><strong>{{ tx('importSettings', 'Import Settings') }}</strong></div>
+              <input v-model="importBulkTags" class="b3-text-field sr-input" :placeholder="tx('tagsCommaPlaceholder', 'Add tags, separated by commas')" />
               <div v-if="allTags.length" class="sr-chips"><button v-for="t in allTags.slice(0, 10)" :key="t.tag" class="sr-chip" type="button" :class="{ 'is-active': importTagList.includes(t.tag) }" @click="toggleImportTag(t.tag)">#{{ t.tag }}</button></div>
               <template v-for="row in importApplyRows" :key="row.key">
                 <span class="sr-muted">{{ row.label }}</span>
-                <input v-if="row.key === 'groups'" v-model="importGroupKeyword" class="b3-text-field sr-input" placeholder="搜索分组..." />
+                <input v-if="row.key === 'groups'" v-model="importGroupKeyword" class="b3-text-field sr-input" :placeholder="tx('searchGroups', 'Search groups...')" />
                 <div class="sr-chips"><button v-for="item in row.items" :key="item.key" class="sr-chip" type="button" :class="{ 'is-active': item.active }" @click="item.click">{{ item.label }}</button></div>
               </template>
             </div>
@@ -96,7 +96,7 @@
           </template>
 
               <div v-if="modalMode === 'organize' && groups.length">
-                <span class="ft__secondary">{{ modalMode === 'organize' ? '分组排序' : '现有分组' }}</span>
+                <span class="ft__secondary">{{ modalMode === 'organize' ? tx('groupSort', 'Group Order') : tx('existingGroups', 'Existing Groups') }}</span>
                 <template v-for="g in groups" :key="g.id">
                   <div class="sr-group-item">
                     <button class="b3-button sr-grow sr-group-label" :class="g.type === 'smart' ? 'b3-button--cancel' : 'b3-button--outline'" type="button" @click="setGroup(g.id, true)"><strong>{{ g.name }}</strong><span class="sr-entry-meta">{{ groupCounts[g.id] || 0 }} 本</span></button>
@@ -106,21 +106,21 @@
               </div>
           <template v-if="modalMode === 'manage' && !editingGroup">
             <div class="sr-row sr-actions-end sr-section-line">
-              <button class="b3-button b3-button--outline" type="button" title="关闭面板，不导入当前待导入项目。" @click="closePopups">取消</button>
-              <button v-if="importHasItems && importMode === 'file'" class="b3-button b3-button--outline" type="button" title="复制文件到插件托管目录，适合希望书籍随插件数据一起管理的本地文件。" @click="confirmImport('file')" :disabled="!importSelectedCount || importParsing || importing">复制导入</button>
-              <button v-if="importHasItems" class="b3-button b3-button--outline" type="button" title="保留原始路径或链接添加到书架，支持 file 链接、本地路径、网络直链和思盘链接。" @click="confirmImport('link')" :disabled="!importLinkSelectedCount || importParsing || importing">链接导入</button>
+              <button class="b3-button b3-button--outline" type="button" @click="closePopups">{{ tx('cancel', 'Cancel') }}</button>
+              <button v-if="importHasItems && importMode === 'file'" class="b3-button b3-button--outline" type="button" @click="confirmImport('file')" :disabled="!importSelectedCount || importParsing || importing">{{ tx('copyImport', 'Copy Import') }}</button>
+              <button v-if="importHasItems" class="b3-button b3-button--outline" type="button" @click="confirmImport('link')" :disabled="!importLinkSelectedCount || importParsing || importing">{{ tx('linkImport', 'Link Import') }}</button>
             </div>
           </template>
 
           <template v-else-if="modalMode === 'organize'">
             <label class="sr-form-item">
-              <span class="ft__secondary">视图</span><div class="sr-chips"><button v-for="mode in VIEW_MODES" :key="mode.value" class="sr-chip" :class="{ 'is-active': viewMode === mode.value }" type="button" @click="viewMode = mode.value">{{ mode.label }}</button></div>
+              <span class="ft__secondary">{{ tx('viewMode', 'View') }}</span><div class="sr-chips"><button v-for="mode in VIEW_MODES" :key="mode.value" class="sr-chip" :class="{ 'is-active': viewMode === mode.value }" type="button" @click="viewMode = mode.value">{{ tx(mode.value === 'grid' ? 'gridView' : mode.value === 'list' ? 'listView' : 'compactView', mode.label) }}</button></div>
             </label>
 
             <label class="sr-form-item">
-              <span class="ft__secondary">排序</span>
-              <div class="sr-chips"><button v-for="[value, label] in SORTS" :key="value" class="sr-chip" :class="{ 'is-active': sortType === value }" type="button" @click="sortType = value">{{ label }}</button></div>
-              <div class="sr-chips"><button class="sr-chip" :class="{ 'is-active': sortReverse }" type="button" @click="sortReverse = !sortReverse">反向排序</button></div>
+              <span class="ft__secondary">{{ tx('sort', 'Sort') }}</span>
+              <div class="sr-chips"><button v-for="[value, label] in SORTS" :key="value" class="sr-chip" :class="{ 'is-active': sortType === value }" type="button" @click="sortType = value">{{ sortLabel(value, label) }}</button></div>
+              <div class="sr-chips"><button class="sr-chip" :class="{ 'is-active': sortReverse }" type="button" @click="sortReverse = !sortReverse">{{ tx('reverseSort', 'Reverse sort') }}</button></div>
             </label>
 
             <label v-for="s in filterSections" :key="s.key" class="sr-form-item">
@@ -128,8 +128,8 @@
             </label>
 
             <div class="sr-row sr-actions-end sr-section-line">
-              <button class="b3-button b3-button--outline" type="button" @click="resetOrganize">重置整理</button>
-              <button class="b3-button b3-button--outline" type="button" @click="closePopups">完成</button>
+              <button class="b3-button b3-button--outline" type="button" @click="resetOrganize">{{ tx('resetOrganize', 'Reset') }}</button>
+              <button class="b3-button b3-button--outline" type="button" @click="closePopups">{{ tx('done', 'Done') }}</button>
             </div>
           </template>
 
@@ -146,12 +146,12 @@
               </template>
               <template v-else-if="f.key === 'groups'">
                 <div v-if="folderGroups.length" class="sr-chips"><button v-for="g in folderGroups" :key="g.id" class="sr-chip" type="button" :class="{ 'is-active': editForm.groups.includes(g.id) }" @click="toggleGroup(g.id)">{{ g.name }}</button></div>
-                <span v-else class="sr-muted">暂无分组</span>
+                <span v-else class="sr-muted">{{ tx('noGroups', 'No groups') }}</span>
               </template>
               <template v-else-if="f.key === 'bind'">
-                <input v-if="!editForm.bindDocId" v-model="bindSearch" class="b3-text-field sr-input" placeholder="搜索文档..." @input="searchBindDoc" />
+                <input v-if="!editForm.bindDocId" v-model="bindSearch" class="b3-text-field sr-input" :placeholder="tx('searchDoc', 'Search documents...')" @input="searchBindDoc" />
                 <div v-if="bindResults.length" class="sr-chips"><button v-for="d in bindResults.slice(0, 8)" :key="getDocId(d) || d.path" class="sr-chip" type="button" @click.stop="selectBindDoc(d)">{{ d.hPath || d.content || d.name || '无标题' }}</button></div>
-                <div v-else-if="editForm.bindDocId"><div class="sr-chips sr-chips-stack"><span class="sr-chip is-active">{{ editForm.bindDocName }}</span><button class="sr-chip is-danger" type="button" @click="unbindDoc">解绑</button></div></div>
+                <div v-else-if="editForm.bindDocId"><div class="sr-chips sr-chips-stack"><span class="sr-chip is-active">{{ editForm.bindDocName }}</span><button class="sr-chip is-danger" type="button" @click="unbindDoc">{{ tx('unbind', 'Unbind') }}</button></div></div>
               </template>
             </div>
 
@@ -173,7 +173,7 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { showMessage, Menu } from 'siyuan'
 import { diagnosticLog } from '@/core/diagnostics'
-import { bookInGroup, bookshelfManager, SORTS, STATUS_OPTIONS, STATUS_MAP, RATING_OPTIONS, VIEW_MODES, VIEW_MODE_ICONS, MODAL_TITLES, STAR_OPTIONS, createDefaultGroupRules, createDefaultEditForm, filterGroupsByKeyword, getNextViewMode, buildFilterSections, buildEditFields, buildGroupFields, buildDetailFields, hasBookBulkPatch, normalizeCloudPath, siyuanCloudUrl, mergeCloudNodes, listCloudNodes, searchCloudNodes, cloudNodesToItems, isCloudBookPath, bookshelfSortValue, compareBookshelfValues, type BookBulkPatch, type SortType, type Book, type BookStatus, type BookFormat, type GroupConfig, type BookshelfViewMode, type BookshelfModalMode, type SiyuanCloudNode } from '@/core/bookshelf'
+import { bookInGroup, bookshelfManager, SORTS, STATUS_OPTIONS, RATING_OPTIONS, VIEW_MODES, VIEW_MODE_ICONS, MODAL_TITLES, STAR_OPTIONS, createDefaultGroupRules, createDefaultEditForm, filterGroupsByKeyword, getNextViewMode, buildFilterSections, buildEditFields, buildGroupFields, buildDetailFields, hasBookBulkPatch, normalizeCloudPath, siyuanCloudUrl, mergeCloudNodes, listCloudNodes, searchCloudNodes, cloudNodesToItems, isCloudBookPath, bookshelfSortValue, compareBookshelfValues, type BookBulkPatch, type SortType, type Book, type BookStatus, type BookFormat, type GroupConfig, type BookshelfViewMode, type BookshelfModalMode, type SiyuanCloudNode } from '@/core/bookshelf'
 import View from '@/components/bookshelf/View.vue'
 import DockShell from './ui/DockShell.vue'
 import { isMobile } from '@/utils/mobile'
@@ -186,6 +186,9 @@ type ImportMode = 'file' | 'link' | 'cloud'
 type GroupType = 'folder' | 'smart'
 
 const props = defineProps<{ i18n?: any; coverSize?: number; hiddenItems?: string[] }>()
+const tx = (key: string, fallback: string) => props.i18n?.[key] || fallback
+const localizedStatusMap = computed(() => ({ unread: tx('unread', 'Unread'), reading: tx('reading', 'Reading'), finished: tx('finished', 'Finished') }))
+const sortLabel = (value: string, fallback: string) => tx(({ time: 'sortByTime', added: 'sortByAdded', progress: 'sortByProgress', rating: 'sortByRating', readTime: 'sortByReadTime', name: 'sortByName', author: 'sortByAuthor', update: 'sortByUpdate' } as Record<string, string>)[value] || value, fallback)
 const emit = defineEmits<{ read: [book: Book] }>()
 const { can, showUpgrade } = useLicense(props.i18n || {})
 const MENU_ICONS = { status: { unread: 'iconUncheck', reading: 'iconEye', finished: 'iconCheck' } }
@@ -229,15 +232,15 @@ const importFolderGroups = computed(() => filterGroupsByKeyword(groups.value, im
 const currentGroupIsSmart = computed(() => !!groups.value.find(g => g.id === currentGroup.value && g.type === 'smart'))
 const gridStyle = computed(() => viewMode.value === 'grid' ? { gridTemplateColumns: `repeat(auto-fill,minmax(${props.coverSize || 120}px,1fr))` } : {})
 const viewModeIcon = computed(() => VIEW_MODE_ICONS[viewMode.value])
-const toolbarStartActions = computed(() => currentGroup.value ? [{ id: 'back', icon: '#iconBack', label: '返回' }] : [])
-const toolbarActions = computed(() => [{ id: 'view', icon: viewModeIcon.value, label: '切换视图' }, { id: 'select', icon: selecting.value ? '#iconCheck' : '#iconUncheck', label: selecting.value ? '退出选择' : '选择书籍' }, { id: 'organize', icon: '#lucide-sliders-horizontal', label: '整理书架' }, { id: 'manage', icon: '#lucide-book-plus', label: '添加内容' }])
-const modalTitle = computed(() => editingGroup.value ? '编辑分组' : modalMode.value ? MODAL_TITLES[modalMode.value] : '书架')
+const toolbarStartActions = computed(() => currentGroup.value ? [{ id: 'back', icon: '#iconBack', label: tx('toolbarBack', 'Back') }] : [])
+const toolbarActions = computed(() => [{ id: 'view', icon: viewModeIcon.value, label: tx('toolbarSwitchView', 'Switch View') }, { id: 'select', icon: selecting.value ? '#iconCheck' : '#iconUncheck', label: selecting.value ? tx('toolbarExitSelection', 'Exit Selection') : tx('toolbarSelectBooks', 'Select Books') }, { id: 'organize', icon: '#lucide-sliders-horizontal', label: tx('toolbarOrganize', 'Organize Bookshelf') }, { id: 'manage', icon: '#lucide-book-plus', label: tx('toolbarAddContent', 'Add Content') }])
+const modalTitle = computed(() => editingGroup.value ? tx('editGroup', 'Edit Group') : modalMode.value === 'manage' ? tx('addContent', 'Add Content') : modalMode.value === 'organize' ? tx('organizeBookshelf', 'Organize Bookshelf') : modalMode.value === 'detail' ? tx('bookDetails', 'Book Details') : modalMode.value === 'edit' ? tx('editBook', 'Edit Book') : tx('bookshelf', 'Bookshelf'))
 const panelCover = computed(() => panelBook.value ? getCoverUrl(panelBook.value) : '')
 const groupPanelCover = computed(() => {
   if (!editingGroup.value) return ''
   return getGroupCoverUrls(editingGroup.value)[0] || ''
 })
-const viewProps = computed(() => ({ items: displayItems.value, mode: viewMode.value, gridStyle: gridStyle.value, groupCounts: groupCounts.value, statusMap: STATUS_MAP, getCoverUrl, getGroupCoverUrls, getProgress, currentGroup: currentGroup.value, currentGroupIsSmart: currentGroupIsSmart.value, selecting: selecting.value, selectedUrls: selectedBookUrls.value, hiddenItems: props.hiddenItems || [], dragEnabled }))
+const viewProps = computed(() => ({ items: displayItems.value, mode: viewMode.value, gridStyle: gridStyle.value, groupCounts: groupCounts.value, statusMap: localizedStatusMap.value, getCoverUrl, getGroupCoverUrls, getProgress, currentGroup: currentGroup.value, currentGroupIsSmart: currentGroupIsSmart.value, selecting: selecting.value, selectedUrls: selectedBookUrls.value, hiddenItems: props.hiddenItems || [], dragEnabled, i18n: props.i18n }))
 
 const getSortKey = (item: any, type: string) => item.type === 'group'
   ? (type === 'name' ? item.data.name : type === 'time' ? (item.data as any).created || 0 : item.data.order)
@@ -261,7 +264,13 @@ const displayItems = computed(() => {
 })
 const displayBooks = computed(() => displayItems.value.filter(i => i.type === 'book').map(i => i.data))
 const selectedCount = computed(() => selectedBookUrls.value.length)
-const filterSections = computed(() => buildFilterSections(stats.value, allTags.value))
+const filterSections = computed(() => buildFilterSections(stats.value, allTags.value).map(section => {
+  if (section.key === 'status') return { ...section, label: tx('status', 'Status'), options: section.options.map(option => ({ ...option, label: localizedStatusMap.value[option.value as BookStatus] })) }
+  if (section.key === 'rating') return { ...section, label: tx('rating', 'Rating'), options: section.options.map(option => ({ ...option, label: option.value === 0 ? tx('allRatings', 'All ratings') : option.value === 5 ? tx('fiveStarsOnly', '5 stars only') : `${option.value}+ ${tx('stars', 'stars')}` })) }
+  if (section.key === 'tags') return { ...section, label: tx('tags', 'Tags') }
+  if (section.key === 'format') return { ...section, label: tx('format', 'Format') }
+  return section
+}))
 const importDisplayItems = computed(() => importItems.value.map(item => ({ type: 'import' as const, data: item })))
 const cloudDisplayItems = computed(() => cloudNodesToItems(cloudResults.value))
 const batchRatingOptions = computed(() => [...RATING_OPTIONS, [0, '清除评分']] as Array<[number, string]>)
@@ -274,18 +283,18 @@ const importApplyRows = computed(() => [
   { key: 'status', label: '导入后状态', items: [optionChip('none', '不改状态', !importBulkStatus.value, () => importBulkStatus.value = ''), ...STATUS_OPTIONS.map(([v, label]) => optionChip(v, label, importBulkStatus.value === v, () => importBulkStatus.value = v))] },
   { key: 'rating', label: '导入后评分', items: [optionChip('0', '不评分', !importBulkRating.value, () => importBulkRating.value = 0), ...STAR_OPTIONS.map(v => optionChip(String(v), '★'.repeat(v), importBulkRating.value === v, () => importBulkRating.value = v))] },
 ].filter(row => row.items.length))
-const actionLabels = { tags: [['add', '添加'], ['remove', '移除'], ['set', '替换']], groups: [['add', '加入'], ['remove', '移出'], ['set', '设为']] } as const
+const actionLabels = computed(() => ({ tags: [['add', tx('add', 'Add')], ['remove', tx('remove', 'Remove')], ['set', tx('replace', 'Replace')]], groups: [['add', tx('addToGroup', 'Add to group')], ['remove', tx('removeFromGroup', 'Remove from group')], ['set', tx('setGroup', 'Set groups')]] } as const))
 const batchRows = computed(() => {
   const modeButton = (value: typeof batchMode.value, label: string) => ({ key: `m-${value}`, label, active: batchMode.value === value, disabled: !selectedCount.value, click: () => batchMode.value = batchMode.value === value ? null : value })
   const chip = (key: string, label: string, click: () => void, extra = {}) => ({ key, label, click, ...extra })
   const rows: any[] = [
-    { key: 'main', items: [{ key: 'count', text: `选中 ${selectedCount.value}` }, chip('clear', '清空', clearSelection, { disabled: !selectedCount.value }), chip('all', '全选', selectDisplayedBooks), chip('invert', '反选', invertDisplayedBooks), chip('exit', '退出', exitSelection, { primary: true })] },
-    { key: 'ops', items: [modeButton('rate', '评分'), modeButton('status', '状态'), modeButton('tags', '标签'), modeButton('groups', '分组'), chip('data', completingData.value ? `补全中 ${completionProgress.value.done}/${completionProgress.value.total}` : '数据补全', completeSelectedData, { disabled: !selectedCount.value || completingData.value }), chip('remove', '移除', confirmBatchRemove, { danger: true, disabled: !selectedCount.value || completingData.value })] },
+    { key: 'main', items: [{ key: 'count', text: `${tx('selectedCount', 'Selected')} ${selectedCount.value}` }, chip('clear', tx('clear', 'Clear'), clearSelection, { disabled: !selectedCount.value }), chip('all', tx('selectAll', 'Select all'), selectDisplayedBooks), chip('invert', tx('invertSelection', 'Invert selection'), invertDisplayedBooks), chip('exit', tx('exit', 'Exit'), exitSelection, { primary: true })] },
+    { key: 'ops', items: [modeButton('rate', tx('rating', 'Rating')), modeButton('status', tx('status', 'Status')), modeButton('tags', tx('tags', 'Tags')), modeButton('groups', tx('group', 'Groups')), chip('data', completingData.value ? `${tx('completingData', 'Completing data')} ${completionProgress.value.done}/${completionProgress.value.total}` : tx('completeData', 'Complete data'), completeSelectedData, { disabled: !selectedCount.value || completingData.value }), chip('remove', tx('remove', 'Remove'), confirmBatchRemove, { danger: true, disabled: !selectedCount.value || completingData.value })] },
   ]
   if (batchMode.value === 'rate') rows.push({ key: 'rate', items: batchRatingOptions.value.map(([v, label]) => chip(`r-${v}`, label, () => batchOp('rate', v))) })
-  if (batchMode.value === 'status') rows.push({ key: 'status', items: STATUS_OPTIONS.map(([v, label]) => chip(`s-${v}`, label, () => batchOp('status', v))) })
-  if (batchMode.value === 'tags') rows.push({ key: 'tags', items: [...actionLabels.tags.map(([v, label]) => chip(`ta-${v}`, label, () => batchTagAction.value = v, { active: batchTagAction.value === v })), { key: 'input', input: '标签，用逗号分隔' }, ...allTags.value.slice(0, 8).map(t => chip(`t-${t.tag}`, `#${t.tag}`, () => toggleBatchTag(t.tag), { active: batchTagList.value.includes(t.tag) })), chip('apply-tags', '应用', () => batchOp('tags')), chip('clear-tags', '清空标签', () => batchClearList('tags', `清空 ${batchScopeText()} 的标签`, '已清空标签'), { danger: true })] })
-  if (batchMode.value === 'groups') rows.push({ key: 'groups', items: [...actionLabels.groups.map(([v, label]) => chip(`ga-${v}`, label, () => batchGroupAction.value = v, { active: batchGroupAction.value === v })), ...(folderGroups.value.length ? folderGroups.value.map(g => chip(`g-${g.id}`, g.name, () => toggleBatchGroup(g.id), { active: batchGroups.value.includes(g.id) })) : [{ key: 'empty', text: '暂无分组' }]), chip('apply-groups', '应用', () => batchOp('groups')), chip('clear-groups', '移出所有', () => batchClearList('groups', `将 ${batchScopeText()} 移出所有分组`, '已移出分组'), { danger: true })] })
+  if (batchMode.value === 'status') rows.push({ key: 'status', items: STATUS_OPTIONS.map(([v]) => chip(`s-${v}`, localizedStatusMap.value[v], () => batchOp('status', v))) })
+  if (batchMode.value === 'tags') rows.push({ key: 'tags', items: [...actionLabels.value.tags.map(([v, label]) => chip(`ta-${v}`, label, () => batchTagAction.value = v, { active: batchTagAction.value === v })), { key: 'input', input: tx('tagsPlaceholder', 'Tags, separated by commas') }, ...allTags.value.slice(0, 8).map(t => chip(`t-${t.tag}`, `#${t.tag}`, () => toggleBatchTag(t.tag), { active: batchTagList.value.includes(t.tag) })), chip('apply-tags', tx('apply', 'Apply'), () => batchOp('tags')), chip('clear-tags', tx('clearTags', 'Clear tags'), () => batchClearList('tags', `${tx('clearTags', 'Clear tags')} ${batchScopeText()}`, tx('tagsCleared', 'Tags cleared')), { danger: true })] })
+  if (batchMode.value === 'groups') rows.push({ key: 'groups', items: [...actionLabels.value.groups.map(([v, label]) => chip(`ga-${v}`, label, () => batchGroupAction.value = v, { active: batchGroupAction.value === v })), ...(folderGroups.value.length ? folderGroups.value.map(g => chip(`g-${g.id}`, g.name, () => toggleBatchGroup(g.id), { active: batchGroups.value.includes(g.id) })) : [{ key: 'empty', text: tx('noGroups', 'No groups') }]), chip('apply-groups', tx('apply', 'Apply'), () => batchOp('groups')), chip('clear-groups', tx('removeAllGroups', 'Remove from all groups'), () => batchClearList('groups', `${tx('removeAllGroups', 'Remove from all groups')} ${batchScopeText()}`, tx('groupsRemoved', 'Removed from groups')), { danger: true })] })
   return rows
 })
 const filterMap = { status: filterStatus, rating: filterRating, format: filterFormats, tags: filterTags }
@@ -371,8 +380,8 @@ const reloadStorage = async () => {
   }
 }
 const showResult = (success: number, failed: number, ok: string, fail = `成功${success}本，失败${failed}本`, time = 2000) => showMessage(failed ? fail : ok, time, failed ? 'error' : 'info')
-const ratingItems = (handler: (rating: number) => void | Promise<void>, clearLabel = '清除') => [1, 2, 3, 4, 5].map(value => ({ icon: 'iconStar', label: `${'★'.repeat(value)} ${value}星`, click: () => handler(value) })).concat([{ type: 'separator' }, { icon: 'iconClose', label: clearLabel, click: () => handler(0) }])
-const statusItems = (handler: (status: BookStatus) => void | Promise<void>) => STATUS_OPTIONS.map(([k, v]) => ({ icon: MENU_ICONS.status[k], label: v, click: () => handler(k) }))
+const ratingItems = (handler: (rating: number) => void | Promise<void>, clearLabel = tx('clear', 'Clear')) => [1, 2, 3, 4, 5].map(value => ({ icon: 'iconStar', label: `${'★'.repeat(value)} ${value}`, click: () => handler(value) })).concat([{ type: 'separator' }, { icon: 'iconClose', label: clearLabel, click: () => handler(0) }])
+const statusItems = (handler: (status: BookStatus) => void | Promise<void>) => STATUS_OPTIONS.map(([k]) => ({ icon: MENU_ICONS.status[k], label: localizedStatusMap.value[k], click: () => handler(k) }))
 const assignEditForm = (book: Book) => { const b = book as any; Object.assign(editForm.value, { title: b.title, author: b.author, tags: b.tags.join(', '), rating: b.rating || 0, status: b.status, cover: b.cover || '', groups: b.groups || [], bindDocId: b.bindDocId || '', bindDocName: b.bindDocName || '' }) }
 const setListText = (target: typeof importBulkTags | typeof batchTags, values: string[]) => { target.value = Array.from(new Set(values)).join(', ') }
 const toggleTextList = (target: typeof importBulkTags | typeof batchTags, value: string) => { const values = parseList(target.value); toggleArrayItem(values, value); setListText(target, values) }
@@ -414,10 +423,10 @@ const deleteGroup = async (g: GroupConfig) => {
 const showGroupMenu = (group: GroupConfig, e: MouseEvent) => {
   e.preventDefault(); const m = new Menu()
   ;[
-    { icon: 'iconFolder', label: '打开分组', click: () => setGroup(group.id) },
-    { icon: 'iconEdit', label: '编辑信息', click: () => startEditGroup(group) },
+    { icon: 'iconFolder', label: tx('openGroup', 'Open Group'), click: () => setGroup(group.id) },
+    { icon: 'iconEdit', label: tx('editInfo', 'Edit Information'), click: () => startEditGroup(group) },
     { type: 'separator' },
-    { icon: 'iconTrashcan', label: '删除', click: () => { closeMenu(); confirmGroupDelete(group) } },
+    { icon: 'iconTrashcan', label: tx('delete', 'Delete'), click: () => { closeMenu(); confirmGroupDelete(group) } },
   ].forEach(item => m.addItem(item))
   openMenu(m, e)
 }
@@ -532,17 +541,17 @@ const showContextMenu = (book: Book, e: MouseEvent) => {
   e.preventDefault(); const hasBinding = !!(book as any).bindDocId
   const ratingMenu = ratingItems(rating => updateBookField(book, 'rating', rating, rating ? `已评 ${rating} 星` : '已清除评分'))
   const moveGroups = filterGroupsByKeyword(groups.value, moveGroupKeyword.value)
-  const searchMoveGroups = { icon: 'iconSearch', label: moveGroupKeyword.value ? `搜索分组（${moveGroupKeyword.value}）` : '搜索分组...', click: () => {
-    const value = window.prompt('搜索分组', moveGroupKeyword.value)
+  const searchMoveGroups = { icon: 'iconSearch', label: moveGroupKeyword.value ? `${tx('group', 'Group')} (${moveGroupKeyword.value})` : `${tx('group', 'Group')}...`, click: () => {
+    const value = window.prompt(tx('group', 'Group'), moveGroupKeyword.value)
     if (value === null) return
     moveGroupKeyword.value = value.trim()
     closeMenu()
     showContextMenu(book, e)
   } }
-  const clearMoveGroups = moveGroupKeyword.value ? { icon: 'iconClose', label: '清除分组搜索', click: () => { moveGroupKeyword.value = ''; closeMenu(); showContextMenu(book, e) } } : null
-  const groupMenu = [searchMoveGroups, ...(clearMoveGroups ? [clearMoveGroups] : []), ...(book.groups.length ? [{ icon: 'iconFiles', label: '首页', click: () => updateBookField(book, 'group', 'home', '已移动到首页') }, ...(moveGroups.length ? [{ type: 'separator' }] : [])] : []), ...moveGroups.map(g => ({ icon: 'iconFolder', label: g.name, click: () => updateBookField(book, 'group', g.id, `已移动到：${g.name}`) }))]
+  const clearMoveGroups = moveGroupKeyword.value ? { icon: 'iconClose', label: tx('clearGroupSearch', 'Clear Group Search'), click: () => { moveGroupKeyword.value = ''; closeMenu(); showContextMenu(book, e) } } : null
+  const groupMenu = [searchMoveGroups, ...(clearMoveGroups ? [clearMoveGroups] : []), ...(book.groups.length ? [{ icon: 'iconFiles', label: tx('bookshelf', 'Bookshelf'), click: () => updateBookField(book, 'group', 'home', tx('bookshelf', 'Bookshelf')) }, ...(moveGroups.length ? [{ type: 'separator' }] : [])] : []), ...moveGroups.map(g => ({ icon: 'iconFolder', label: g.name, click: () => updateBookField(book, 'group', g.id, `${tx('moveTo', 'Move to')}: ${g.name}`) }))]
   const m = new Menu()
-  ;[{ icon: 'iconPlay', label: '打开阅读', click: () => readBook(book) }, { icon: 'iconInfo', label: '详细信息', click: () => openBookPanel('detail', book) }, { icon: 'iconCheck', label: selectedBookUrls.value.includes(book.url) ? '取消选择' : '选择此书', click: () => toggleSelectBook(book) }, { icon: 'iconStar', label: '评分', type: 'submenu', submenu: ratingMenu }, { icon: 'iconCheck', label: '标记状态', type: 'submenu', submenu: statusItems(status => updateBookField(book, 'status', status, `已标记为${STATUS_MAP[status]}`)) }, { icon: 'iconFolder', label: '移动到', type: 'submenu', submenu: groupMenu }, { icon: hasBinding ? 'iconLinkOff' : 'iconLink', label: hasBinding ? '解除绑定' : '绑定文档', click: () => openBookPanel('edit', book) }, { icon: 'iconDownload', label: '导入批注', click: () => importBookAnnotations(book) }, { type: 'separator' }, { icon: 'iconEdit', label: '编辑信息', click: () => openBookPanel('edit', book) }, { icon: 'iconTrashcan', label: '移除', click: () => { closeMenu(); confirmDelete.value = { type: 'book', id: book.url, item: book } } }].forEach(item => m.addItem(item as any))
+  ;[{ icon: 'iconPlay', label: tx('openBook', 'Open Book'), click: () => readBook(book) }, { icon: 'iconInfo', label: tx('bookDetails', 'Book Details'), click: () => openBookPanel('detail', book) }, { icon: 'iconCheck', label: selectedBookUrls.value.includes(book.url) ? tx('unselectBook', 'Cancel Selection') : tx('selectBook', 'Select This Book'), click: () => toggleSelectBook(book) }, { icon: 'iconStar', label: tx('rate', 'Rating'), type: 'submenu', submenu: ratingMenu }, { icon: 'iconCheck', label: tx('markStatus', 'Mark Status'), type: 'submenu', submenu: statusItems(status => updateBookField(book, 'status', status, tx(status, status))) }, { icon: 'iconFolder', label: tx('moveTo', 'Move To'), type: 'submenu', submenu: groupMenu }, { icon: hasBinding ? 'iconLinkOff' : 'iconLink', label: hasBinding ? tx('unbindDocument', 'Unbind Document') : tx('bindDocument', 'Bind Document'), click: () => openBookPanel('edit', book) }, { icon: 'iconDownload', label: tx('importAnnotations', 'Import Annotations'), click: () => importBookAnnotations(book) }, { type: 'separator' }, { icon: 'iconEdit', label: tx('editInfo', 'Edit Information'), click: () => openBookPanel('edit', book) }, { icon: 'iconTrashcan', label: tx('removeBook', 'Remove'), click: () => { closeMenu(); confirmDelete.value = { type: 'book', id: book.url, item: book } } }].forEach(item => m.addItem(item as any))
   openMenu(m, e)
 }
 
@@ -614,7 +623,11 @@ const getDocId = (d: any) => d.id || d.blockID || d.rootID || d.path?.split('/')
 const searchBindDoc = async () => { const q = bindSearch.value.trim(); bindResults.value = q ? await searchDocs(q).catch(() => []) : [] }
 const selectBindDoc = (d: any) => { const id = getDocId(d); if (!id) return showMessage('文档 ID 无效', 2000, 'error'); Object.assign(editForm.value, { bindDocId: id, bindDocName: d.hPath || d.content || d.name || '无标题' }); bindSearch.value = ''; bindResults.value = [] }
 const unbindDoc = () => { editForm.value.bindDocId = ''; editForm.value.bindDocName = '' }
-const detailFields = computed(() => !panelBook.value || modalMode.value !== 'detail' ? [] : buildDetailFields(panelBook.value, groups.value))
+const detailFields = computed(() => {
+  if (!panelBook.value || modalMode.value !== 'detail') return []
+  const unknown = tx('unknownAuthor', 'Unknown Author')
+  return buildDetailFields(panelBook.value, groups.value).map(field => field.label === '作者' && ['未知作者', 'Unknown Author', '未知', '-'].includes(String(field.value).trim()) ? { ...field, value: unknown } : field)
+})
 
 const handleBookshelfUpdated = () => { void reloadStorage() }
 const handleStorageChanged = () => { void reloadStorage() }

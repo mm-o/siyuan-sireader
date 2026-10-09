@@ -78,7 +78,7 @@
             <div class="reader-opening__book-meta">
               <div class="reader-opening__meta-row">
                 <span>{{ format }}</span>
-                <em>{{ author || '未知作者' }}</em>
+                <em>{{ author || props.i18n?.unknownAuthor || 'Unknown Author' }}</em>
               </div>
               <strong :class="titleClass">{{ title }}</strong>
             </div>
@@ -97,6 +97,7 @@ const props = withDefaults(defineProps<{
   fileName?: string
   status?: 'opening' | 'finished'
   phaseText?: string
+  i18n?: any
 }>(), {
   bookInfo: () => ({}),
   fileName: '',
@@ -108,15 +109,15 @@ const visible = ref(true)
 const ready = ref(false)
 let exitTimer: ReturnType<typeof setTimeout> | undefined
 
-const title = computed(() => props.bookInfo?.title || props.fileName?.replace(/\.[^.]+$/, '') || '未命名书籍')
+const title = computed(() => props.bookInfo?.title || props.fileName?.replace(/\.[^.]+$/, '') || props.i18n?.unnamedBook || 'Unnamed book')
 const author = computed(() => props.bookInfo?.author || '')
 const format = computed(() => props.bookInfo?.format?.toUpperCase() || props.fileName?.split('.').pop()?.toUpperCase() || 'EPUB')
 const hasCover = computed(() => !!props.bookInfo?.cover)
-const phaseLabel = computed(() => props.phaseText || (props.status === 'finished' ? '读毕有得' : '開卷有益'))
-const phaseCaption = computed(() => props.status === 'finished' ? '已完成阅读' : '准备阅读')
+const phaseLabel = computed(() => props.phaseText || (props.status === 'finished' ? (props.i18n?.readingCompleteMotto || 'Reading complete') : (props.i18n?.openingMotto || 'A good book awaits')))
+const phaseCaption = computed(() => props.status === 'finished' ? (props.i18n?.readingComplete || 'Reading complete') : (props.i18n?.readyToRead || 'Ready to read'))
 const monogram = computed(() => {
   const clean = title.value.replace(/[《》<>[\]().,，。:：'"“”‘’]/g, '').trim()
-  return clean.slice(0, 2) || format.value.slice(0, 2) || '书'
+  return clean.slice(0, 2) || format.value.slice(0, 2) || 'B'
 })
 const titleClass = computed(() => ({
   'is-long': title.value.replace(/\s/g, '').length > 18,

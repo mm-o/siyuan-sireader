@@ -31,7 +31,6 @@ test('resize delivery is deferred, coalesced, size-aware, and cancelled on disco
   deliver(entry(400)); run()
   expect(update).toHaveBeenCalledTimes(1)
 })
-
 test('paginator disconnects every observed target when destroyed', () => {
   const source = readFileSync('node_modules/foliate-js/paginator.js', 'utf8')
   expect(source).not.toContain('this.#observer.unobserve(this)')
@@ -44,20 +43,16 @@ test('reader stops layout and settings listeners before awaiting persistence', a
   const reader = ast.statements.find(node => ts.isClassDeclaration(node) && node.name?.text === 'FoliateReader') as ts.ClassDeclaration
   const method = reader.members.find(node => node.name?.getText(ast) === 'destroy')!.getText(ast)
   const script = ts.transpileModule(`const lifecycle = { ${method} }`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText
-  const frames = new WeakMap()
-  const destroy = new Function('marginalFrames', 'diagnosticLog', 'readText', `${script}; return lifecycle.destroy`)(frames, vi.fn(), (value: any) => value)
+  const destroy = new Function('diagnosticLog', 'readText', `${script}; return lifecycle.destroy`)(vi.fn(), (value: any) => value)
   const removeEventListener = vi.fn()
   vi.stubGlobal('window', { removeEventListener })
-  vi.stubGlobal('cancelAnimationFrame', vi.fn())
   let release!: () => void
   const pending = new Promise<void>(resolve => { release = resolve })
   const context = { destroyed: false, onSettingsChanged: vi.fn(), themeObserver: { disconnect: vi.fn() }, eventListeners: new Map(), clockTimer: null,
     marks: { destroy: () => pending }, view: { close: vi.fn(), remove: vi.fn(), book: { destroy: vi.fn() } } }
-  frames.set(context.view, 1)
   const closing = destroy.call(context)
   expect(context.view.close).toHaveBeenCalledTimes(1)
   expect(removeEventListener).toHaveBeenCalledWith('sireaderSettingsUpdated', context.onSettingsChanged)
-  expect(cancelAnimationFrame).toHaveBeenCalledWith(1)
   release()
   await closing
   await destroy.call(context)
@@ -83,4 +78,29 @@ test('epub reader exposes a bottom percentage jump control', () => {
   const source = readFileSync('src/components/Reader.vue', 'utf8')
   expect(source).toContain('reader-progress-jump')
   expect(source).toContain('submitProgressJump')
+})
+
+test('EPUB font settings match Readest without flattening book typography', () => {
+  const reader = readFileSync('src/core/epub/reader.ts', 'utf8')
+  const settings = readFileSync('src/composables/useSetting.ts', 'utf8')
+  const ui = readFileSync('src/components/Settings.vue', 'utf8')
+  expect(settings).toContain('overrideFont?: boolean')
+  expect(ui).toContain("key:'overrideFont'")
+  expect(reader).toContain("${overrideFont ? 'font-family:revert!important' : ''}")
+  expect(reader).toContain('[style*="font-size: 16px"],[style*="font-size:16px"]{font-size:1rem!important}')
+  expect(reader).not.toContain('font-size:inherit!important')
+})
+test('EPUB footer metrics are individually controlled by layout settings', () => {
+  const settings = readFileSync('src/composables/useSetting.ts', 'utf8')
+  const reader = readFileSync('src/components/Reader.vue', 'utf8')
+  const zh = JSON.parse(readFileSync('src/i18n/zh_CN.json', 'utf8'))
+  const en = JSON.parse(readFileSync('src/i18n/en_US.json', 'utf8'))
+  for (const key of ['showRemainingTime', 'showCurrentBatteryStatus']) {
+    expect(settings).toMatch(new RegExp(`c\\('${key}'\\)`))
+    expect(settings).toMatch(new RegExp(`${key}:\\s*boolean`))
+    expect(reader).toContain(`layout?.${key}`)
+    expect(settings).toMatch(new RegExp(`${key}:\\s*false`))
+    expect(typeof zh[key]).toBe('string')
+    expect(typeof en[key]).toBe('string')
+  }
 })

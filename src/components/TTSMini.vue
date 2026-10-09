@@ -1,36 +1,36 @@
 <template>
   <Transition name="tts-fade">
-    <section v-if="visible" ref="popupRef" class="tts-mini" :class="{ expanded }" role="status" :aria-label="tts.title.value || '朗读控制'" @click.stop>
+    <section v-if="visible" ref="popupRef" class="tts-mini" :class="{ expanded }" role="status" :aria-label="tts.title.value || props.i18n?.ttsControl || 'Reading controls'" @click.stop>
       <div class="tts-mini-bar">
-        <button class="tts-mini-main" :aria-expanded="expanded" aria-label="展开朗读控制" @click="expanded = !expanded">
+        <button class="tts-mini-main" :aria-expanded="expanded" :aria-label="props.i18n?.expandTts || 'Expand reading controls'" @click="expanded = !expanded">
           <span class="tts-mini-cover">
-            <img v-if="coverUrl" :src="coverUrl" :alt="tts.title.value || '封面'" loading="lazy" decoding="async" @error="coverUrl = ''">
+            <img v-if="coverUrl" :src="coverUrl" :alt="tts.title.value || props.i18n?.cover || 'Cover'" loading="lazy" decoding="async" @error="coverUrl = ''">
             <svg v-else aria-hidden="true"><use xlink:href="#lucide-volume-2" /></svg>
           </span>
           <span class="tts-mini-info">
-            <strong>{{ tts.title.value || '朗读' }}</strong>
-            <span>{{ tts.currentText.value || (tts.paused.value ? '已暂停' : '正在朗读') }}</span>
+            <strong>{{ tts.title.value || props.i18n?.ttsReadingTitle || 'Reading aloud' }}</strong>
+            <span>{{ tts.currentText.value || (tts.paused.value ? (props.i18n?.ttsPaused || 'Paused') : (props.i18n?.ttsReading || 'Reading aloud')) }}</span>
           </span>
           <svg class="tts-mini-chevron" :class="{ rotated: expanded }" aria-hidden="true"><use xlink:href="#iconDown" /></svg>
         </button>
         <div class="tts-mini-tools">
-          <button aria-label="上一句" @click="tts.jump(-1)"><svg><use xlink:href="#iconLeft" /></svg></button>
-          <button class="primary" :aria-label="tts.isActive.value && !tts.paused.value ? '暂停' : '播放'" @click="playOrPause"><svg><use :xlink:href="tts.isActive.value && !tts.paused.value ? '#iconPause' : '#iconPlay'" /></svg></button>
-          <button aria-label="下一句" @click="tts.jump(1)"><svg><use xlink:href="#iconRight" /></svg></button>
-          <button aria-label="停止朗读" @click="stop"><svg><use xlink:href="#iconClose" /></svg></button>
+          <button :aria-label="props.i18n?.previousSentence || 'Previous sentence'" @click="tts.jump(-1)"><svg><use xlink:href="#iconLeft" /></svg></button>
+          <button class="primary" :aria-label="tts.isActive.value && !tts.paused.value ? (props.i18n?.pause || 'Pause') : (props.i18n?.play || 'Play')" @click="playOrPause"><svg><use :xlink:href="tts.isActive.value && !tts.paused.value ? '#iconPause' : '#iconPlay'" /></svg></button>
+          <button :aria-label="props.i18n?.nextSentence || 'Next sentence'" @click="tts.jump(1)"><svg><use xlink:href="#iconRight" /></svg></button>
+          <button :aria-label="props.i18n?.ttsStop || 'Stop reading'" @click="stop"><svg><use xlink:href="#iconClose" /></svg></button>
         </div>
       </div>
 
       <div v-if="expanded" class="tts-mini-panel">
-        <div class="tts-mini-current">{{ tts.currentText.value || '准备朗读' }}</div>
+        <div class="tts-mini-current">{{ tts.currentText.value || props.i18n?.readyToRead || 'Ready to read' }}</div>
         <details v-if="ttsSettings" class="tts-mini-settings">
-          <summary>朗读设置</summary>
+          <summary>{{ props.i18n?.ttsSettings || 'Reading settings' }}</summary>
           <div class="tts-mini-fields">
-            <label class="wide"><span>语音</span><select class="b3-select" :value="ttsSettings.voice" @focus="loadVoices" @change="update('voice', ($event.target as HTMLSelectElement).value)"><option v-if="loadingVoices" disabled>加载中…</option><option v-for="voice in voiceOptions" :key="voice.name" :value="voice.name">{{ voice.displayName || voice.name }}</option></select></label>
-            <label><span>语速 <b>{{ Number(ttsSettings.rate || 1).toFixed(1) }}x</b></span><input class="b3-slider" type="range" min="0.5" max="2" step="0.1" :value="ttsSettings.rate || 1" @input="update('rate', Number(($event.target as HTMLInputElement).value))"></label>
-            <label><span>音调 <b>{{ Number(ttsSettings.pitch || 1).toFixed(1) }}</b></span><input class="b3-slider" type="range" min="0.5" max="1.5" step="0.1" :value="ttsSettings.pitch || 1" @input="update('pitch', Number(($event.target as HTMLInputElement).value))"></label>
-            <label><span>句间停顿 <b>{{ Number(ttsSettings.sentenceGap || 0).toFixed(1) }}s</b></span><input class="b3-slider" type="range" min="0" max="3" step="0.1" :value="ttsSettings.sentenceGap || 0" @input="update('sentenceGap', Number(($event.target as HTMLInputElement).value))"></label>
-            <label><span>段间停顿 <b>{{ Number(ttsSettings.paragraphGap ?? 0.3).toFixed(1) }}s</b></span><input class="b3-slider" type="range" min="0" max="5" step="0.1" :value="ttsSettings.paragraphGap ?? 0.3" @input="update('paragraphGap', Number(($event.target as HTMLInputElement).value))"></label>
+            <label class="wide"><span>{{ props.i18n?.voice || 'Voice' }}</span><select class="b3-select" :value="ttsSettings.voice" @focus="loadVoices" @change="update('voice', ($event.target as HTMLSelectElement).value)"><option v-if="loadingVoices" disabled>{{ props.i18n?.loading || 'Loading...' }}</option><option v-for="voice in voiceOptions" :key="voice.name" :value="voice.name">{{ voice.displayName || voice.name }}</option></select></label>
+            <label><span>{{ props.i18n?.ttsRate || 'Speech rate' }} <b>{{ Number(ttsSettings.rate || 1).toFixed(1) }}x</b></span><input class="b3-slider" type="range" min="0.5" max="2" step="0.1" :value="ttsSettings.rate || 1" @input="update('rate', Number(($event.target as HTMLInputElement).value))"></label>
+            <label><span>{{ props.i18n?.ttsPitch || 'Pitch' }} <b>{{ Number(ttsSettings.pitch || 1).toFixed(1) }}</b></span><input class="b3-slider" type="range" min="0.5" max="1.5" step="0.1" :value="ttsSettings.pitch || 1" @input="update('pitch', Number(($event.target as HTMLInputElement).value))"></label>
+            <label><span>{{ props.i18n?.ttsSentenceGap || 'Sentence gap' }} <b>{{ Number(ttsSettings.sentenceGap || 0).toFixed(1) }}s</b></span><input class="b3-slider" type="range" min="0" max="3" step="0.1" :value="ttsSettings.sentenceGap || 0" @input="update('sentenceGap', Number(($event.target as HTMLInputElement).value))"></label>
+            <label><span>{{ props.i18n?.ttsParagraphGap || 'Paragraph gap' }} <b>{{ Number(ttsSettings.paragraphGap ?? 0.3).toFixed(1) }}s</b></span><input class="b3-slider" type="range" min="0" max="5" step="0.1" :value="ttsSettings.paragraphGap ?? 0.3" @input="update('paragraphGap', Number(($event.target as HTMLInputElement).value))"></label>
           </div>
         </details>
       </div>
@@ -45,6 +45,7 @@ import { bookshelfManager } from '@/core/bookshelf'
 import { getTTSController } from '@/services/TTSPlayer'
 import type { TTSVoice } from '@/services/TTSEngine'
 
+const props = defineProps<{ i18n?: any }>()
 const tts = getTTSController()
 const visible = ref(false)
 const expanded = ref(false)

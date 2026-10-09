@@ -7,10 +7,10 @@
   "tabTheme": "Theme",
   "tabAnnotation": "Annotation",
   "tabPage": "Page",
-  "openMode": "Open Position",
-  "openModeDesc": "Choose where to open books",
-  "navPosition": "Navigation Position",
-  "navPositionDesc": "Choose where to display the navigation bar",
+  "openMode": "Open in",
+  "openModeDesc": "Choose where books open",
+  "navPosition": "Navigation bar position",
+  "navPositionDesc": "Choose where to place the navigation bar",
   "left": "Left",
   "right": "Right",
   "top": "Top",
@@ -19,18 +19,18 @@
   "rightTab": "Right Tab",
   "bottomTab": "Bottom Tab",
   "newWindow": "New Window",
-  "notebook": "Create doc under notebook",
-  "document": "Create subdoc under document",
+  "notebook": "Create under notebook",
+  "document": "Create under document",
   "targetNotebook": "Target Notebook",
   "targetNotebookDesc": "Create annotation documents for each book under this notebook",
   "notSelected": "Not selected",
-  "searchDoc": "Search Document",
-  "searchDocDesc": "Enter keywords to search documents",
+  "searchDoc": "Search documents",
+  "searchDocDesc": "Enter keywords to find documents",
   "searchDocPlaceholder": "Press Enter to search",
   "selectDoc": "Select Document",
-  "usageTitle": "Usage Instructions",
-  "pageAnimation": "Page Turn Style",
-  "pageAnimationDesc": "Choose page turn style",
+  "usageTitle": "How it works",
+  "pageAnimation": "Page-turn style",
+  "pageAnimationDesc": "Choose a page-turn style",
   "push": "Push",
   "slide": "Slide",
   "curl": "Page Curl",
@@ -41,7 +41,7 @@
   "single": "Single Page",
   "double": "Double Page",
   "presetTheme": "Preset Theme",
-  "presetThemeDesc": "Choose preset color scheme",
+  "presetThemeDesc": "Choose a preset color scheme",
   "custom": "Custom",
   "textColor": "Text Color",
   "textColorDesc": "Custom text color",
@@ -60,10 +60,10 @@
   "bgImageDesc": "Enter image URL (leave empty for solid color)",
   "previewLabel": "Preview:",
   "previewText": "The river and the sea are connected by the spring tide,<br>The bright moon rises together with the tide on the sea.",
-  "usageColors": "7 colors: RRed OOrange YYellow GGreen PPink BBlue VViolet",
+  "usageColors": "Seven colors: red, orange, yellow, green, pink, blue, and violet",
   "usageFormat": "Format: <code>- R [text](link)</code>",
-  "usageNotebook": "Notebook mode: Auto-create independent doc for each book",
-  "usageDocument": "Document mode: Create subdocs under specified document",
+  "usageNotebook": "Notebook mode: Create a separate document for each book",
+  "usageDocument": "Document mode: Create subdocuments under the selected document",
   "loadError": "Failed to load settings",
   "saveError": "Failed to save settings",
   "settingsLabel": "Settings",
@@ -85,9 +85,10 @@
   "tocBookmarkMode": "Bookmark mode",
   "tocMarkMode": "Mark mode",
   "tocTitle": "Table of Contents",
+  "toc": "Table of Contents",
   "loading": "Loading...",
   "loadingNext": "Loading next chapter...",
-  "tocBtn": "TOC",
+  "tocBtn": "Contents",
   "prevBtn": "Previous",
   "nextBtn": "Next", 
   "settingsBtn": "Settings",
@@ -109,8 +110,8 @@
   "dictCambridge": "Cambridge",
   "dictYoudao": "Youdao",
   "dictHaici": "Haici",
-  "dictMxnzp": "Chinese",
-  "dictCiyu": "Phrases",
+  "dictMxnzp": "Chinese characters",
+  "dictCiyu": "Chinese phrases",
   "dictZdic": "Zdic",
   "dictBing": "Bing",
   "dictTitle": "Dictionary",
@@ -130,14 +131,14 @@
   "selectNotebook": "Please select a notebook in settings first",
   "selectDocument": "Please select a document in settings first",
   "annotationSaved": "Annotation saved",
-  "inputNote": "Enter note (optional):",
+  "inputNote": "Add a note (optional)",
   "inputTags": "Tags",
   "pdfMigrated": "Migrated {count} PDF annotations",
   "page": "Page ",
   "pageSuffix": "",
   "searchChapter": "Search chapters...",
   "loadingToc": "Loading table of contents...",
-  "noMarks": "No marks",
+  "noMarks": "No annotations",
   "noBookmarks": "No bookmarks",
   "noMatchChapter": "No matching chapters found",
   "noToc": "No table of contents",
@@ -156,12 +157,12 @@
   "converted": "Converted",
   "widthAdjusted": "Width adjusted",
   "batchOperationFailed": "Batch operation failed",
-  "batchConvertStyle": "Batch Convert EPUB Style",
-  "batchWidth": "Batch Width",
+  "batchConvertStyle": "Convert EPUB styles in bulk",
+  "batchWidth": "Set widths in bulk",
   "epubStyle": "EPUB Style",
   "width": "Width",
-  "addBlockNote": "Inline Memo",
-  "inputInlineMemo": "Enter memo:",
+  "addBlockNote": "Inline note",
+  "inputInlineMemo": "Add an inline note",
   "inlineMemoSaved": "Memo saved",
   "inlineMemoFailed": "Failed to save memo",
   "converting": "Converting",
@@ -169,8 +170,10 @@
   "fontFamily": "Font",
   "fontSize": "Font Size",
   "fontWeight": "Font Weight",
+  "overrideFont": "Override book font",
+  "overrideFontDesc": "Use the reader font while preserving the book's font-size hierarchy",
   "letterSpacing": "Letter Spacing",
-  "fontTip": "Refresh font list",
+  "fontTip": "Refresh the font list",
   "loadingFonts": "Loading...",
   "noCustomFonts": "No font files found",
   "paragraphSettings": "Paragraph Settings",
@@ -189,10 +192,14 @@
   "progressStyle": "Progress Style",
   "progressStyleFraction": "Page Number",
   "progressStylePercentage": "Percentage",
-  "progressStyleReference": "Reference Pages",
+  "progressStyleReference": "Reference pages",
   "referencePageCount": "Reference Page Count",
+  "chapterRemaining": "{minutes} min left in chapter",
+  "batteryStatus": "Battery",
+  "showRemainingTime": "Show Remaining Chapter Time",
   "showCurrentTime": "Show Current Time",
-  "use24HourClock": "Use 24-hour Clock",
+  "showCurrentBatteryStatus": "Show Battery Status",
+  "use24HourClock": "Use a 24-hour clock",
   "continuousScroll": "Continuous Scroll",
   "continuousScrollDesc": "Enable continuous scrolling, disable for pagination",
   "visualSettings": "Visual Enhancements",
@@ -202,15 +209,15 @@
   "saturate": "Saturation",
   "invert": "Invert Colors",
   "livePreview": "Live Preview",
-  "resetToDefault": "Reset to Default",
-  "reloadRequired": "Settings saved, reopen book to apply",
-  "confirmReset": "Are you sure you want to reset to default settings?",
+  "resetToDefault": "Reset to defaults",
+  "reloadRequired": "Settings saved. Reopen the book to apply them",
+  "confirmReset": "Reset all reader settings to their defaults?",
   "enable": "Enable",
   "disable": "Disable",
   "edit": "Edit",
   "delete": "Delete",
   "searchPlaceholder": "Search books...",
-  "allSources": "All Providers",
+  "allSources": "All sources",
   "annaArchive": "Anna's Archive",
   "annaEnabled": "Anna's Archive enabled",
   "annaDisabled": "Anna's Archive disabled",
@@ -218,7 +225,7 @@
   "search": "Search",
   "searching": "Searching...",
   "noResults": "No results found",
-  "readOnline": "Read Online",
+  "readOnline": "Read online",
   "downloadEpub": "Download EPUB",
   "themeTitle": "Theme Colors",
   "bookshelf": "Bookshelf",
@@ -230,32 +237,32 @@
   "confirmRemove": "Remove",
   "fromShelf": "from shelf?",
   "emptyShelf": "No books yet",
-  "sortByTime": "Recent Read",
+  "sortByTime": "Recently read",
   "sortByName": "Name",
   "sortByAuthor": "Author",
-  "sortByUpdate": "Recent Update",
+  "sortByUpdate": "Recently updated",
   "gridView": "Grid",
   "listView": "List",
-  "checkUpdate": "Check Update",
+  "checkUpdate": "Check for updates",
   "checking": "Checking...",
   "checkingAll": "Checking all...",
-  "checkDone": "Done",
+  "checkDone": "Up to date",
   "booksUpdated": "books updated",
-  "moveFeature": "Move feature in development",
+  "moveFeature": "Move is coming soon",
   "chapters": "Chapters",
   "reverse": "Reverse",
   "current": "Current",
   "loadingChapters": "Loading chapters...",
   "loadChaptersFailed": "Failed to load chapters",
   "noChapters": "No chapters",
-  "startRead": "Start Reading",
-  "continueRead": "Continue Reading",
+  "startRead": "Start reading",
+  "continueRead": "Continue reading",
   "wordCount": "Words",
   "source": "Source",
   "latest": "Latest",
   "addEpub": "Add EPUB",
   "importing": "Importing...",
-  "importSuccess": "Import successful",
+  "importSuccess": "Imported successfully",
   "importFailed": "Import failed",
   "loadBookFailed": "Failed to load book",
   "remove": "Remove",
@@ -273,8 +280,8 @@
   "test": "Test",
   "addBook": "Add Book",
   "compactView": "Compact",
-  "interfaceSettings": "Interface Settings",
-  "annotationSettings": "Annotation Settings",
+  "interfaceSettings": "Interface settings",
+  "annotationSettings": "Annotation settings",
   "parentDoc": "Parent Document",
   "parentDocDesc": "Select parent document for annotations",
   "tabInterface": "Interface",
@@ -307,8 +314,8 @@
   "annotationTagPresets": "Annotation Tag Presets",
   "annotationTagPresetsDesc": "One group per line: Group: tag1, tag2. Used tags outside presets appear under Ungrouped",
   "tagCandidates": "Candidates",
-  "quickSendDocs": "Quick Send Docs",
-  "quickSendDocsDesc": "Max 5 docs for quick annotation sending",
+  "quickSendDocs": "Quick-send documents",
+  "quickSendDocsDesc": "Choose up to five documents for quick annotation sending",
   "import": "Import",
   "bindDoc": "Bind Document",
   "imported": "Imported",
@@ -345,29 +352,29 @@
   "clickToJump": "Click to jump",
   "float": "Float",
   "fixed": "Fixed",
-  "bookshelfCoverSize": "Bookshelf Cover Size",
-  "bookshelfCoverSizeDesc": "Adjust the display size of bookshelf covers (80-160px)",
-  "bookshelfHideProgress": "Hide Bookshelf Progress",
-  "bookshelfHideStatus": "Hide Bookshelf Status",
-  "bookshelfHideRating": "Hide Bookshelf Rating",
-  "bookshelfHideLastRead": "Hide Last Read",
-  "toolbarOpacity": "Toolbar Opacity",
-  "toolbarOpacityDesc": "Adjust the opacity of the bottom toolbar when not hovered (0%=opaque, 100%=fully transparent)",
-  "openDocAssets": "Use Plugin PDF Reader",
-  "openDocAssetsDesc": "When enabled, document links and local PDFs in the bookshelf will open in the plugin reader first; when disabled, SiYuan's native PDF tab will be used instead",
-  "docAssetExcludeRegex": "Document Link Shelf Exclude Regex",
+  "bookshelfCoverSize": "Book cover size",
+  "bookshelfCoverSizeDesc": "Adjust the size of book covers in the bookshelf (80–160 px)",
+  "bookshelfHideProgress": "Hide reading progress",
+  "bookshelfHideStatus": "Hide reading status",
+  "bookshelfHideRating": "Hide ratings",
+  "bookshelfHideLastRead": "Hide last-read time",
+  "toolbarOpacity": "Toolbar opacity",
+  "toolbarOpacityDesc": "Adjust the bottom toolbar opacity when it is not hovered (0% opaque, 100% transparent)",
+  "openDocAssets": "Use the plugin PDF reader",
+  "openDocAssetsDesc": "When enabled, document links and local PDFs open in the plugin reader first. Otherwise, they open in SiYuan's built-in PDF tab",
+  "docAssetExcludeRegex": "Exclude document links from the bookshelf",
   "docAssetExcludeRegexDesc": "Matching links still open according to the reader switch, but are not added to the bookshelf. Do not include outer /.../. Leave empty to disable filtering",
   "docAssetExcludeRegexPlaceholder": "Example: ^(发票|收据|报销).*\\.pdf$|.*办法.*\\.pdf$\n^ start; $ end; | or; () group; .* any text; \\. matches a dot\nTo exclude “2007新的编制办法-xxx.pdf”, use .*办法.*\\.pdf$",
-  "showWereadTopBar": "Show WeRead Top Bar Button",
-  "showWereadTopBarDesc": "Hide the WeRead button in the top bar while keeping commands and links available",
-  "epubOpeningSplash": "EPUB Opening Splash",
-  "epubOpeningSplashDesc": "Show the opening animation when an EPUB is first opened. Turning it off improves open speed",
-  "interfaceLayout": "Open & Interface",
-  "bookshelfConfig": "Bookshelf Config",
-  "readingTheme": "Reading Theme",
-  "dictionaryTools": "Dictionary & Translation",
-  "translationAutoOnSelection": "Auto Translate Selection",
-  "translationAutoOnSelectionDesc": "Open the translation panel immediately after selecting text",
+  "showWereadTopBar": "Show the WeRead button",
+  "showWereadTopBarDesc": "Hide the WeRead button while keeping its commands and links available",
+  "epubOpeningSplash": "EPUB opening animation",
+  "epubOpeningSplashDesc": "Show an opening animation when an EPUB is first opened. Disabling it can improve startup time",
+  "interfaceLayout": "Opening & interface",
+  "bookshelfConfig": "Bookshelf settings",
+  "readingTheme": "Reading theme",
+  "dictionaryTools": "Dictionary & translation",
+  "translationAutoOnSelection": "Translate selected text automatically",
+  "translationAutoOnSelectionDesc": "Open the translation panel as soon as text is selected",
   "translationEngine": "Default Translation Engine",
   "translationEngineGoogle": "Google",
   "translationEngineAzure": "Microsoft",
@@ -398,9 +405,9 @@
   "ttsEnabled": "Enable TTS",
   "ttsEnabledDesc": "Enable text-to-speech reading functionality",
   "ttsMode": "TTS Mode",
-  "ttsEdgeMode": "Edge TTS (Online Free)",
-  "ttsLocalMode": "Local Browser (Offline)",
-  "ttsModeDesc": "Edge TTS is completely free without API key, local mode is fully offline",
+  "ttsEdgeMode": "Edge TTS (online)",
+  "ttsLocalMode": "Browser voice (offline)",
+  "ttsModeDesc": "Edge TTS works without an API key. Browser voices work fully offline",
   "ttsVoiceParams": "Voice Parameters",
   "ttsRate": "Speech Rate",
   "ttsVolume": "Volume",
@@ -408,7 +415,7 @@
   "ttsSentenceGap": "Sentence Gap",
   "ttsParagraphGap": "Paragraph Gap",
   "ttsOptions": "TTS Options",
-  "ttsAutoPlay": "Auto Play",
+  "ttsAutoPlay": "Autoplay",
   "ttsAutoPlayDesc": "Automatically start reading when opening a book",
   "ttsHighlightText": "Highlight Text",
   "ttsPlay": "Start Reading",
@@ -418,7 +425,7 @@
   "ttsHighlightTextDesc": "Highlight current text while reading",
   "ttsAutoTurnPage": "Auto Turn Page",
   "ttsAutoTurnPageDesc": "Automatically turn to next page after reading",
-  "ttsVoice": "Select Voice",
+  "ttsVoice": "Voice",
   "ttsVoiceChanged": "Voice changed",
   "selectVoice": "Select Voice",
   "searchVoice": "Search voices...",
@@ -427,23 +434,341 @@
   "ttsNoText": "No readable text on current page",
   "ttsError": "TTS playback failed",
   "license": "License",
-  "notActivated": "Not Activated",
+  "notActivated": "Not activated",
   "freeVersion": "Free",
-  "trialVersion": "Trial Member",
-  "monthlyVersion": "Monthly Member",
-  "annualVersion": "Annual Member",
-  "lifetimeVersion": "Lifetime Member",
+  "trialVersion": "Trial membership",
+  "monthlyVersion": "Monthly membership",
+  "annualVersion": "Annual membership",
+  "lifetimeVersion": "Lifetime membership",
   "remaining": "Remaining",
   "days": "days",
   "enterActivationCode": "Enter activation code",
   "activate": "Activate",
   "processing": "Processing...",
   "recover": "Recover License",
-  "tooFrequent": "Too frequent, please try again later",
+  "tooFrequent": "Too many requests. Please try again later",
   "clearLicense": "Clear License",
   "licenseCleared": "License cleared",
   "membership": "Membership",
   "activatedAt": "Activated at",
   "logout": "Logout",
-  "purchase": "Purchase"
+  "purchase": "Purchase",
+  "sidebarAnnotation": "Annotations",
+  "sidebarSettings": "Settings",
+  "sidebarBookshelf": "Bookshelf",
+  "sidebarSearch": "Search",
+  "sidebarStats": "Statistics",
+  "sidebarToc": "Table of Contents",
+  "sidebarTooltip": "Open {name}",
+  "unread": "Unread",
+  "reading": "Reading",
+  "finished": "Finished",
+  "group": "Group",
+  "groups": "Groups",
+  "recentRead": "Recently Read",
+  "toolbarBack": "Back",
+  "toolbarSwitchView": "Change view",
+  "toolbarSelectBooks": "Select books",
+  "toolbarExitSelection": "Exit selection",
+  "toolbarOrganize": "Organize bookshelf",
+  "toolbarAddContent": "Add content",
+  "quickActions": "Quick Actions",
+  "localImport": "Local Import",
+  "cloudImport": "Cloud Import",
+  "manualGroup": "Manual group",
+  "smartGroup": "Smart group",
+  "close": "Close",
+  "cancelImport": "Cancel",
+  "copyImport": "Copy files to bookshelf",
+  "linkImport": "Link files to bookshelf",
+  "importToGroup": "Import into group",
+  "statusAfterImport": "Status after import",
+  "keepStatus": "Keep current status",
+  "ratingAfterImport": "Rating after import",
+  "noRating": "No rating",
+  "clear": "Clear",
+  "moveUp": "Move up",
+  "moveDown": "Move down",
+  "openGroup": "Open Group",
+  "editInfo": "Edit details",
+  "deleteGroup": "Delete Group",
+  "clearGroupSearch": "Clear Group Search",
+  "openBook": "Open Book",
+  "bookDetails": "Book Details",
+  "selectBook": "Select This Book",
+  "unselectBook": "Cancel Selection",
+  "rate": "Rating",
+  "markStatus": "Mark Status",
+  "moveTo": "Move To",
+  "bindDocument": "Bind Document",
+  "unbindDocument": "Unbind Document",
+  "importAnnotations": "Import Annotations",
+  "removeBook": "Remove",
+  "annotationCount": "{count} annotations",
+  "lastRead": "Recently read {date}",
+  "searchSourcesTitle": "Source Management",
+  "searchSourcesDesc": "Manage built-in sources, custom sources, and request prefixes",
+  "sourceOpen": "Open",
+  "sourceDomains": "Mirror Domains",
+  "sourceCurrentDomain": "Current Mirror",
+  "sourceAccount": "Account",
+  "sourcePassword": "Password",
+  "sourceSiteUrl": "Site URL",
+  "sourceSearchUrl": "Search URL",
+  "sourceBookUrlPrefix": "Book URL Prefix",
+  "sourceSelector": "Selector",
+  "sourceRequestPrefix": "Request Prefix / Proxy",
+  "sourceName": "Name",
+  "sourceExtensions": "Extension Filter",
+  "sourceAddCustom": "Add Custom Source",
+  "sourceEdit": "Edit Source",
+  "sourceSaveError": "Source name cannot be empty",
+  "sourceCustomError": "A custom source requires a search URL, item selector, title selector, and link selector",
+  "sourceSaved": "Source saved",
+  "sourceAddError": "Failed to add source",
+  "sourceCustomDesc": "Custom selector source",
+  "sourceAnnaDesc": "Mirror / extension / request prefix",
+  "sourceBuiltinDesc": "Built-in source",
+  "scanQr": "Scan QR Code",
+  "exportDiagnostics": "Export Diagnostic Logs",
+  "diagnosticsExported": "Diagnostic logs exported",
+  "recoverLicense": "Recover License",
+  "translationPanel": "Translation",
+  "tocThumbnail": "Thumbnails",
+  "expand": "Expand",
+  "collapse": "Collapse",
+  "ascending": "Ascending",
+  "descending": "Descending",
+  "export": "Export",
+  "copyLink": "Copy Link",
+  "copyText": "Copy Text",
+  "copyChapter": "Copy Chapter",
+  "pdfKeepTool": "Keep the selected tool active after drawing",
+  "copyBacklink": "Copy Backlink",
+  "redaction": "Redaction",
+  "copyScreenshot": "Copy Screenshot",
+  "copyImage": "Copy Image",
+  "exportImage": "Export Image",
+  "markImage": "Annotate Image",
+  "copyTable": "Copy Table",
+  "locateTable": "Locate Table"
+  ,"ttsOfflinePack": "Offline Voice Pack"
+  ,"ttsOfflinePackDesc": "Download for offline TTS"
+  ,"intro": "Introduction"
+  ,"addToShelf": "Add to Shelf"
+  ,"downloadAddToShelf": "Download to Shelf"
+  ,"pdfThumbnailsOnly": "Thumbnails are available for PDF only"
+  ,"unnamedChapter": "Unnamed chapter"
+  ,"copyFailed": "Copy failed"
+  ,"exportFailed": "Export failed"
+  ,"copiedText": "Text copied"
+  ,"pdfCopyChapterUnsupported": "PDF does not support copying chapter text from the table of contents"
+  ,"copiedChapter": "Chapter text copied"
+  ,"copyChapterFailed": "Failed to copy chapter text"
+  ,"bookmarkUnavailable": "Bookmark feature is not initialized"
+  ,"bookmarkAdded": "Bookmark added"
+  ,"bookmarkRemoved": "Bookmark removed"
+  ,"operationFailed": "Operation failed"
+  ,"filterAnnotations": "Filter annotations"
+  ,"reverseSort": "Reverse sort"
+  ,"resetFilter": "Reset filters"
+  ,"done": "Done"
+  ,"marksSearchPlaceholder": "Search annotations, notes, bookmarks, ink, and shapes"
+  ,"filtering": "Filtering"
+  ,"allAnnotations": "All annotations"
+  ,"showPdfAnnotations": "Show PDF annotations"
+  ,"hidePdfAnnotations": "Hide PDF annotations"
+  ,"type": "Type"
+  ,"textStyle": "Text Style"
+  ,"additionalCondition": "Additional condition"
+  ,"withNote": "With notes"
+  ,"noBooks": "No books"
+  ,"noContent": "No content"
+  ,"updated": "Updated"
+  ,"marksUnavailable": "Annotation system is not initialized"
+  ,"deleteFailed": "Delete failed"
+  ,"bookNotFound": "Book not found"
+  ,"sortTime": "Time"
+  ,"sortDate": "Date"
+  ,"sortChapter": "Chapter"
+  ,"sortPage": "Page"
+  ,"sortName": "Name"
+  ,"sortCustom": "Custom"
+  ,"invalidBookLink": "Invalid book link"
+  ,"fileNotFound": "File not found"
+  ,"addFailed": "Failed to add"
+  ,"ttsReading": "Reading aloud"
+  ,"onlineUrlEmpty": "Online reading URL is empty"
+  ,"prevPage": "Previous page"
+  ,"nextPage": "Next page"
+  ,"toggleBookmark": "Toggle bookmark"
+  ,"quickNote": "Quick note"
+  ,"unknownAuthor": "Unknown Author"
+  ,"unnamedBook": "Unnamed book"
+  ,"readingCompleteMotto": "Reading complete"
+  ,"openingMotto": "A good book awaits"
+  ,"readingComplete": "Reading complete"
+  ,"readyToRead": "Ready to read"
+  ,"booksUnit": "books"
+  ,"failed": "Failed"
+  ,"parsing": "Parsing..."
+  ,"pendingImport": "Pending import"
+  ,"noContentFound": "No content found"
+  ,"emptyBookshelfHint": "No books yet. Click Add Content in the top right."
+  ,"confirmDelete": "Delete"
+  ,"deletePermanently": "Delete permanently"
+  ,"confirmDeletePermanently": "Confirm permanent deletion"
+  ,"enterLinks": "Enter Links"
+  ,"importLinksPlaceholder": "One local path, file link, web URL, or cloud link per line"
+  ,"parseLinks": "Parse Links"
+  ,"cloudPathPlaceholder": "Enter cloud path"
+  ,"keywordPlaceholder": "Enter keywords to search"
+  ,"input": "Input"
+  ,"browseAll": "Browse All"
+  ,"selectAllImport": "Select All"
+  ,"deselectAll": "Deselect All"
+  ,"importSettings": "Import Settings"
+  ,"tagsCommaPlaceholder": "Add tags, separated by commas"
+  ,"searchGroups": "Search groups..."
+  ,"groupSort": "Group Order"
+  ,"existingGroups": "Existing Groups"
+  ,"resetOrganize": "Reset"
+  ,"noGroups": "No groups"
+  ,"sourceText": "Source text"
+  ,"translatedText": "Translation"
+  ,"targetLanguage": "Target language"
+  ,"translating": "Translating..."
+  ,"translationFailed": "Translation failed"
+  ,"annotationAdded": "Annotation added"
+  ,"adding": "Adding..."
+  ,"addAsAnnotation": "Add as annotation"
+  ,"ttsControl": "Reading controls"
+  ,"expandTts": "Expand reading controls"
+  ,"cover": "Cover"
+  ,"ttsReadingTitle": "Reading aloud"
+  ,"ttsPaused": "Paused"
+  ,"previousSentence": "Previous sentence"
+  ,"nextSentence": "Next sentence"
+  ,"pause": "Pause"
+  ,"play": "Play"
+  ,"voice": "Voice"
+  ,"showTopToolbar": "Show top toolbar"
+  ,"hideTopToolbar": "Hide top toolbar"
+  ,"pdfOperationFailed": "PDF operation failed"
+  ,"annotationMigrationDone": "Annotation migration complete"
+  ,"annotationMigrating": "Migrating annotations"
+  ,"pdfAnnotationCommitFailed": "Failed to commit PDF annotations. Export diagnostic logs for details."
+  ,"pdfAnnotationReadFailed": "Failed to read PDF annotations. Existing records were preserved. Export diagnostic logs for details."
+  ,"pdfAnnotationSaveFailed": "Failed to save PDF annotations. Export diagnostic logs for details."
+  ,"loadingQr": "Loading QR code..."
+  ,"membershipQr": "Membership QR code"
+  ,"downloading": "Downloading"
+  ,"downloaded": "Downloaded"
+  ,"downloadVoicePack": "Download Voice Pack"
+  ,"previousResult": "Previous result"
+  ,"nextResult": "Next result"
+  ,"jumpToProgress": "Jump to reading progress"
+  ,"quickMark": "Quick annotation"
+  ,"exitQuickMark": "Exit quick annotation"
+  ,"sidebarToc": "Table of Contents"
+  ,"sidebarAnnotation": "Annotations"
+  ,"sidebarSettings": "Settings"
+  ,"permanent": "Permanent"
+  ,"validUntil": "Valid until"
+  ,"copy": "Copy"
+  ,"copied": "Copied"
+  ,"copyFailed": "Copy failed"
+  ,"noContent": "No content"
+  ,"translate": "Translate"
+  ,"dict": "Dictionary"
+  ,"capture": "Drag to select a screenshot area"
+  ,"close": "Close"
+  ,"copyScreenshot": "Copy screenshot"
+  ,"copyBacklink": "Copy backlink"
+  ,"sendTo": "Send to"
+  ,"redaction": "Redaction"
+  ,"pdfKeepTool": "Keep the selected tool active after drawing"
+  ,"copyImage": "Copy image"
+  ,"exportImage": "Export image"
+  ,"markImage": "Annotate image"
+  ,"copyTable": "Copy table"
+  ,"locateTable": "Locate table"
+  ,"pdfCopyAnnotationLink": "Copy annotation backlink"
+  ,"pdfDictAnnotation": "Annotation dictionary"
+  ,"pdfTranslateAnnotation": "Translate annotation"
+  ,"pdfCreateHole": "Redact selection"
+  ,"pdfDictSelection": "Selection dictionary"
+  ,"pdfTranslateSelection": "Translate selection"
+  ,"pdfSendSelection": "Send selection"
+  ,"pdfSendAnnotation": "Send annotation"
+  ,"pdfCaptureCopy": "Copy screenshot"
+  ,"pdfZoomIn": "Zoom in"
+  ,"pdfZoomOut": "Zoom out"
+  ,"pdfFitPage": "Fit page"
+  ,"pdfFitWidth": "Fit width"
+  ,"pdfMarqueeZoom": "Marquee zoom"
+  ,"pdfRotateClockwise": "Rotate clockwise"
+  ,"pdfRotateCounterClockwise": "Rotate counter-clockwise"
+  ,"pdfPreviousPage": "Previous page"
+  ,"pdfNextPage": "Next page"
+  ,"annotation": "Annotation"
+  ,"mark": "Annotation"
+  ,"operationFailed": "Operation failed"
+  ,"copyImageFailed": "Copy image failed"
+  ,"jumpFailed": "Jump failed"
+  ,"bookMissing": "No book provided"
+  ,"pdfFileMissing": "PDF file is missing"
+  ,"page": "Page"
+  ,"pageSuffix": ""
+  ,"addContent": "Add Content"
+  ,"organizeBookshelf": "Organize Bookshelf"
+  ,"bookDetails": "Book Details"
+  ,"editBook": "Edit Book"
+  ,"editGroup": "Edit Group"
+  ,"bookshelf": "Bookshelf"
+  ,"selectedCount": "Selected"
+  ,"selectAll": "Select all"
+  ,"invertSelection": "Invert selection"
+  ,"exit": "Exit"
+  ,"rating": "Rating"
+  ,"status": "Status"
+  ,"tags": "Tags"
+  ,"group": "Groups"
+  ,"completingData": "Completing data"
+  ,"completeData": "Complete data"
+  ,"remove": "Remove"
+  ,"tagsPlaceholder": "Tags, separated by commas"
+  ,"clearTags": "Clear tags"
+  ,"tagsCleared": "Tags cleared"
+  ,"add": "Add"
+  ,"replace": "Replace"
+  ,"addToGroup": "Add to group"
+  ,"removeFromGroup": "Remove from group"
+  ,"setGroup": "Set groups"
+  ,"removeAllGroups": "Remove from all groups"
+  ,"groupsRemoved": "Removed from groups"
+  ,"dictYoudaoDesc": "English-Chinese dictionary, simple and fast"
+  ,"dictBingDesc": "Bing dictionary web edition"
+  ,"dictCambridgeDesc": "Bilingual dictionary with pronunciation"
+  ,"dictHaiciDesc": "English-Chinese dictionary with rich examples"
+  ,"dictMxnzpDesc": "Chinese character dictionary with detailed definitions"
+  ,"dictCiyuDesc": "Chinese phrases and idioms"
+  ,"dictZdicDesc": "Chinese character and phrase lookup"
+  ,"ttsFavoriteVoices": "My voices"
+  ,"ttsVoiceList": "Online voices"
+  ,"ttsCurrentVoice": "Current"
+  ,"ttsOnlineHint": "Click a voice to select it, or click the star to favorite it"
+  ,"ttsNoFavorites": "No favorite voices yet. Choose one below to add it"
+  ,"ttsNoVoices": "No voices"
+  ,"ttsLoadVoices": "Load voices"
+  ,"ttsFavorite": "Favorite"
+  ,"ttsUnfavorite": "Unfavorite"
+  ,"format": "Format"
+  ,"allRatings": "All ratings"
+  ,"fiveStarsOnly": "5 stars only"
+  ,"stars": "stars"
+  ,"sortByAdded": "Recently added"
+  ,"sortByProgress": "Reading progress"
+  ,"sortByRating": "Rating"
+  ,"sortByReadTime": "Reading time"
 }

@@ -226,6 +226,7 @@ function applyCustomCSS(view: FoliateView, settings: ReaderSettings) {
   const dark = isDark(theme.bg)
   const customFont = text.fontFamily === 'custom' ? text.customFont?.fontFamily : ''
   const font = customFont ? `"${customFont}", sans-serif` : text.fontFamily || 'serif'
+  const overrideFont = Boolean(text.overrideFont)
   const fontUrl = customFont ? `${location.origin}/public/siyuan-sireader/fonts/${encodeURIComponent(text.customFont.fontFile)}` : ''
   const fontFace = customFont ? `@font-face{font-family:"${customFont}";src:url("${fontUrl}");font-display:swap}` : ''
   const contentBackground = getViewBackground(theme)
@@ -278,6 +279,8 @@ function applyCustomCSS(view: FoliateView, settings: ReaderSettings) {
     font[size="5"]{font-size:${text.fontSize * 1.5}px}
     font[size="6"]{font-size:${text.fontSize * 2}px}
     font[size="7"]{font-size:${text.fontSize * 3}px}
+    [style*="font-size: 16px"],[style*="font-size:16px"]{font-size:1rem!important}
+    body *:not(pre):not(code):not(kbd):not(.code):not(pre *):not(code *):not(kbd *):not(.code *){${overrideFont ? 'font-family:revert!important' : ''}}
     pre,code,kbd{font-family:monospace;font-variant-ligatures:none;white-space:pre-wrap!important}
     ${mobile ? 'body>*{max-width:100%!important}img,svg,video,table,pre,code{max-width:100%!important}' : ''}
     aside[epub|type~="footnote"],
@@ -311,59 +314,6 @@ function getCurrentLocation(view: FoliateView): Location | null {
     console.error('[FoliateView] Failed to get location:', error)
     return null
   }
-}
-
-const applyMarginal = (el: HTMLElement | undefined, text: string, margin = 48) => {
-  if (!el) return
-  if (el.textContent !== text) el.textContent = text
-  Object.assign(el.style, {
-    textAlign: 'start',
-    fontSize: `${Math.max(0, Math.min(12, margin * 0.75))}px`,
-    lineHeight: '1',
-  })
-}
-
-function formatClock(layout: ReaderSettings['layoutSettings']) {
-  return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: layout.use24HourClock ? false : undefined })
-}
-
-function formatProgress(view: FoliateView, renderer: any, layout: ReaderSettings['layoutSettings']) {
-  const fraction = view.lastLocation?.fraction
-  if (layout.progressStyle === 'percentage' && typeof fraction === 'number') return `${Math.round(fraction * 100)}%`
-  if (layout.progressStyle === 'reference' && typeof fraction === 'number' && layout.referencePageCount > 0) return `${Math.max(1, Math.round(fraction * layout.referencePageCount))}/${layout.referencePageCount}`
-  return Number.isFinite(renderer?.page) && Number.isFinite(renderer?.pages) && renderer.pages > 2
-    ? `${Math.min(renderer.pages - 2, Math.max(1, renderer.page))}/${renderer.pages - 2}`
-    : ''
-}
-
-function updateMarginals(view: FoliateView, settings: ReaderSettings) {
-  const renderer = view.renderer as any
-  const heads = [...(renderer?.heads || [])] as HTMLElement[]
-  const feet = [...(renderer?.feet || [])] as HTMLElement[]
-  if (!heads.length && !feet.length) return
-  const layout = settings.layoutSettings
-  const topMargin = layout.marginTopPx || layout.headerFooterMargin || 44
-  const bottomMargin = layout.marginBottomPx || layout.headerFooterMargin || 44
-  const title = readText(view.book?.metadata?.title)
-  const chapter = readText(view.lastLocation?.tocItem?.label) || title
-  const footer = [
-    layout.showProgressInfo && formatProgress(view, renderer, layout),
-    layout.showCurrentTime && formatClock(layout),
-  ]
-    .filter(Boolean)
-    .join(' · ')
-  heads.forEach(head => applyMarginal(head, layout.showHeader ? chapter || title : '', topMargin))
-  feet.forEach(foot => applyMarginal(foot, layout.showFooter ? footer : '', bottomMargin))
-}
-
-const marginalFrames = new WeakMap<FoliateView, number>()
-function refreshMarginals(view: FoliateView, settings: ReaderSettings) {
-  const previous = marginalFrames.get(view)
-  if (previous) cancelAnimationFrame(previous)
-  marginalFrames.set(view, requestAnimationFrame(() => {
-    marginalFrames.delete(view)
-    if (view.isConnected) updateMarginals(view, settings)
-  }))
 }
 
 export class FoliateReader {
@@ -408,14 +358,6 @@ export class FoliateReader {
       await this.view.open(source)
       if (this.destroyed) return this.view.close?.()
       recoverTransformErrors(this.view.book)
-      const renderer = this.view.renderer as any
-      if (renderer && !renderer.__sireaderMarginalsBound) {
-        renderer.__sireaderMarginalsBound = true
-        const refresh = () => refreshMarginals(this.view, this.settings)
-        renderer.addEventListener('load', refresh)
-        renderer.addEventListener('relocate', refresh)
-        renderer.addEventListener('stabilized', refresh)
-      }
       this.applySettings()
       await this.view.init?.({})
       if (this.destroyed) return this.view.close?.()
@@ -429,13 +371,12 @@ export class FoliateReader {
     if (this.destroyed) return
     configureView(this.view, this.settings)
     applyCustomCSS(this.view, this.settings)
-    refreshMarginals(this.view, this.settings)
     this.syncClock()
   }
 
   private syncClock() {
     clearInterval(this.clockTimer)
-    this.clockTimer = this.settings.layoutSettings.showCurrentTime ? setInterval(() => refreshMarginals(this.view, this.settings), 60000) : null
+    this.clockTimer = null
   }
 
   resize = () => {
@@ -443,10 +384,9 @@ export class FoliateReader {
     this.layoutActivity.hostResizes++
     configureView(this.view, this.settings)
     ;(this.view.renderer as any)?.render?.()
-    refreshMarginals(this.view, this.settings)
   }
 
-  private handleLoad(detail: any) { normalizeFootnoteTypes(detail?.doc); refreshMarginals(this.view, this.settings); this.bindContentMedia(detail?.doc, detail?.index); this.emit('load', detail) }
+  private handleLoad(detail: any) { normalizeFootnoteTypes(detail?.doc); this.bindContentMedia(detail?.doc, detail?.index); this.emit('load', detail) }
 
   private cfiFor(doc: Document, index: number | undefined, node: Node) {
     try { const range = doc.createRange(); range.selectNode(node); return index !== undefined ? (this.view as any).getCFI(index, range) : '' } catch { return '' }
@@ -516,7 +456,6 @@ export class FoliateReader {
     this.view.addEventListener('relocate', ((e: CustomEvent) => {
       if (this.destroyed) return
       this.layoutActivity.relocations++
-      refreshMarginals(this.view, this.settings)
       this.emit('relocate', e.detail)
     }) as EventListener)
     this.view.addEventListener('load', ((e: CustomEvent) => this.handleLoad(e.detail)) as EventListener)
@@ -685,9 +624,6 @@ export class FoliateReader {
     this.themeObserver?.disconnect()
     clearInterval(this.clockTimer)
     this.eventListeners.clear()
-    const frame = marginalFrames.get(this.view)
-    if (frame) cancelAnimationFrame(frame)
-    marginalFrames.delete(this.view)
     // Stop layout synchronously, before waiting for persistence or network work.
     this.view.close?.()
     diagnosticLog('debug', 'epub.closed', { title: readText(this.view.book?.metadata?.title), ...this.layoutActivity })

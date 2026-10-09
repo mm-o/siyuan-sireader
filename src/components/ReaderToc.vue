@@ -20,7 +20,7 @@
 
     <div v-show="showThumbnail" class="fn__flex-1 fn__flex-column sy__file bs-view">
       <div ref="thumbContainer" class="fn__flex-1 bs-view bs-grid">
-        <div v-if="!isPdfMode" class="ft__secondary" style="grid-column:1/-1;padding:8px 12px">仅 PDF 支持缩略图</div>
+        <div v-if="!isPdfMode" class="ft__secondary" style="grid-column:1/-1;padding:8px 12px">{{ props.i18n?.pdfThumbnailsOnly || 'Thumbnails are available for PDF only' }}</div>
         <div v-else v-for="i in pageCount" :key="i" class="bs-grid-item">
           <div class="b3-list b3-list--background">
             <div
@@ -33,12 +33,12 @@
                 <img
                   v-if="loadedThumbs[i]"
                   :src="loadedThumbs[i]"
-                  :alt="`第 ${i} 页`"
+                  :alt="`${props.i18n?.page || 'Page '}${i}${props.i18n?.pageSuffix || ''}`"
                   style="display:block;width:100%;height:100%;object-fit:contain"
                 >
                 <div v-else style="display:flex;align-items:center;justify-content:center;width:100%;height:100%">{{ i }}</div>
               </div>
-              <div class="b3-list-item__text">第 {{ i }} 页</div>
+              <div class="b3-list-item__text">{{ props.i18n?.page || 'Page ' }}{{ i }}{{ props.i18n?.pageSuffix || '' }}</div>
             </div>
           </div>
         </div>
@@ -81,7 +81,7 @@ const currentHref = ref('')
 const isEmbedPdfMode = computed(() => (activeView.value as any)?.engine === 'embedpdf')
 const isPdfMode = computed(() => !!(activeView.value as any)?.isPdf)
 const pageCount = computed(() => (activeView.value as any)?.pageCount || 0)
-const searchPlaceholder = computed(() => '搜索目录...')
+const searchPlaceholder = computed(() => props.i18n?.searchChapter || 'Search table of contents...')
 
 const tocLabel = (item: TOCItem) => item.label || (item as any).title || ''
 const tocKey = (item: TOCItem, parentKey = 'root') => item.href || `${parentKey}/${tocLabel(item)}`
@@ -142,9 +142,9 @@ const branchKeys = computed(() => {
 const hasExpanded = computed(() => branchKeys.value.some(key => expandedKeys.value[key]))
 
 const toolbarActions = computed(() => [
-      { id: 'thumbnail', icon: showThumbnail.value ? '#lucide-scroll-text' : '#lucide-panels-top-left', label: showThumbnail.value ? '目录' : '缩略图', show: isPdfMode.value },
-      { id: 'expand', icon: hasExpanded.value ? '#lucide-panel-top-close' : '#lucide-panel-top-open', label: hasExpanded.value ? '折叠' : '展开', show: !showThumbnail.value },
-      { id: 'reverse', icon: reverse.value ? '#lucide-arrow-up-1-0' : '#lucide-arrow-down-0-1', label: reverse.value ? '倒序' : '正序' },
+      { id: 'thumbnail', icon: showThumbnail.value ? '#lucide-scroll-text' : '#lucide-panels-top-left', label: showThumbnail.value ? (props.i18n?.tocTitle || 'Table of Contents') : (props.i18n?.tocThumbnail || 'Thumbnails'), show: isPdfMode.value },
+      { id: 'expand', icon: hasExpanded.value ? '#lucide-panel-top-close' : '#lucide-panel-top-open', label: hasExpanded.value ? (props.i18n?.collapse || 'Collapse') : (props.i18n?.expand || 'Expand'), show: !showThumbnail.value },
+      { id: 'reverse', icon: reverse.value ? '#lucide-arrow-up-1-0' : '#lucide-arrow-down-0-1', label: reverse.value ? (props.i18n?.descending || 'Descending') : (props.i18n?.ascending || 'Ascending') },
     ])
 
 let relocateHandler: any
@@ -183,17 +183,17 @@ const renderTocItem = (item: TOCItem, level: number, parentKey: string, bookmark
   const isCurrent = !!item.href && item.href === currentHref.value
   const hasBookmark = bookmarks.has(tocLabel(item))
   const exportAction = item.href
-    ? `<span class="b3-list-item__action b3-tooltips b3-tooltips__nw" data-act="export" aria-label="${esc(props.i18n?.export || '导出')}"><svg><use xlink:href="#lucide-send"></use></svg></span>`
+    ? `<span class="b3-list-item__action b3-tooltips b3-tooltips__nw" data-act="export" aria-label="${esc(props.i18n?.export || 'Export')}"><svg><use xlink:href="#lucide-send"></use></svg></span>`
     : ''
   const bookmarkAction = item.href
-    ? `<span class="b3-list-item__action b3-tooltips b3-tooltips__nw" data-act="bookmark" aria-label="${hasBookmark ? '移除书签' : '添加书签'}"><svg><use xlink:href="#iconBookmark"></use></svg></span>`
+    ? `<span class="b3-list-item__action b3-tooltips b3-tooltips__nw" data-act="bookmark" aria-label="${hasBookmark ? (props.i18n?.removeBookmark || 'Remove bookmark') : (props.i18n?.addBookmark || 'Add bookmark')}"><svg><use xlink:href="#iconBookmark"></use></svg></span>`
     : ''
   const hideActionClass = hasBookmark ? '' : ' b3-list-item--hide-action'
   const row = `<li class="b3-list-item${hideActionClass}${isCurrent ? ' b3-list-item--focus' : ''}" style="--file-toggle-width:${level * 18 + 18}px" data-key="${esc(key)}" data-href="${item.href ? encodeURIComponent(item.href) : ''}" data-label="${encodeURIComponent(tocLabel(item))}" data-has-child="${hasChild}" data-type="${level ? 'navigation-file' : 'navigation-root'}" data-toc-item>
     <span style="padding-left:${level * 18}px" class="b3-list-item__toggle b3-list-item__toggle--hl${hasChild ? '' : ' fn__hidden'}">
       <svg class="b3-list-item__arrow${isOpen ? ' b3-list-item__arrow--open' : ''}"><use xlink:href="#iconRight"></use></svg>
     </span>
-    <span class="b3-list-item__text ariaLabel" data-toc-item>${esc(tocLabel(item) || '未命名章节')}</span>
+    <span class="b3-list-item__text ariaLabel" data-toc-item>${esc(tocLabel(item) || props.i18n?.unnamedChapter || 'Unnamed chapter')}</span>
     ${exportAction || bookmarkAction ? '<span class="fn__space"></span>' : ''}
     ${exportAction}
     ${bookmarkAction}
@@ -209,7 +209,7 @@ const renderToc = () => {
   if (!visibleToc.value.length) {
     tocRef.value.innerHTML = isPdfMode.value
       ? ''
-      : '<ul class="b3-list b3-list--background"><li class="b3-list-item"><span class="b3-list-item__toggle fn__hidden"></span><span class="b3-list-item__text ft__secondary">暂无目录</span></li></ul>'
+      : `<ul class="b3-list b3-list--background"><li class="b3-list-item"><span class="b3-list-item__toggle fn__hidden"></span><span class="b3-list-item__text ft__secondary">${props.i18n?.noToc || 'No table of contents'}</span></li></ul>`
     return
   }
   ensureExpandedState(visibleToc.value, currentHref.value)
@@ -280,48 +280,48 @@ const sendTocItem = async (href: string, label: string, clipboard = false) => {
       },
     )
   } catch (error: any) {
-    showMsg(error.message || (clipboard ? '复制失败' : '导出失败'), 'error')
+    showMsg(error.message || (clipboard ? (props.i18n?.copyFailed || 'Copy failed') : (props.i18n?.exportFailed || 'Export failed')), 'error')
   }
 }
 
 const copyTocText = async (label: string) => {
   await navigator.clipboard.writeText(label)
-  showMsg('已复制文本')
+  showMsg(props.i18n?.copiedText || 'Text copied')
 }
 
 const copyTocChapterContent = async (href: string, label: string) => {
   try {
-    if (isPdfMode.value) return showMsg('PDF 暂不支持复制目录章节全文', 'error')
+    if (isPdfMode.value) return showMsg(props.i18n?.pdfCopyChapterUnsupported || 'PDF does not support copying chapter text from the table of contents', 'error')
     const text = await getTocChapterText(activeView.value?.book, href, label)
     await navigator.clipboard.writeText(text)
-    showMsg('已复制章节全文')
+    showMsg(props.i18n?.copiedChapter || 'Chapter text copied')
   } catch (error: any) {
-    showMsg(error.message || '复制章节全文失败', 'error')
+    showMsg(error.message || (props.i18n?.copyChapterFailed || 'Failed to copy chapter text'), 'error')
   }
 }
 
 const openTocMenu = (event: MouseEvent, href: string, label: string) => {
   const m = new Menu()
   ;[
-    { icon: 'iconUpload', label: '导出', click: () => void sendTocItem(href, label) },
-    { icon: 'iconCopy', label: '复制链接', click: () => void sendTocItem(href, label, true) },
-    { icon: 'iconCopy', label: '复制文本', click: () => void copyTocText(label) },
-    { icon: 'iconCopy', label: '复制章节全文', click: () => void copyTocChapterContent(href, label) },
+    { icon: 'iconUpload', label: props.i18n?.export || 'Export', click: () => void sendTocItem(href, label) },
+    { icon: 'iconCopy', label: props.i18n?.copyLink || 'Copy Link', click: () => void sendTocItem(href, label, true) },
+    { icon: 'iconCopy', label: props.i18n?.copyText || 'Copy Text', click: () => void copyTocText(label) },
+    { icon: 'iconCopy', label: props.i18n?.copyChapter || 'Copy Chapter', click: () => void copyTocChapterContent(href, label) },
   ].forEach(item => m.addItem(item))
   m.open({ x: event.clientX, y: event.clientY })
 }
 
 const toggleBookmark = async (href: string, label: string) => {
   const marks = activeReader.value?.marks || (activeView.value as any)?.marks
-  if (!marks?.toggleBookmark || !activeView.value) return showMsg('书签功能未初始化', 'error')
+  if (!marks?.toggleBookmark || !activeView.value) return showMsg(props.i18n?.bookmarkUnavailable || 'Bookmark feature is not initialized', 'error')
   try {
     await goToLocation(href)
     await new Promise(resolve => setTimeout(resolve, 200))
     const added = await marks.toggleBookmark(href, label)
-    showMsg(added ? '已添加书签' : '已移除书签')
+    showMsg(added ? (props.i18n?.bookmarkAdded || 'Bookmark added') : (props.i18n?.bookmarkRemoved || 'Bookmark removed'))
     scheduleRender()
   } catch (error: any) {
-    showMsg(error.message || '操作失败', 'error')
+    showMsg(error.message || (props.i18n?.operationFailed || 'Operation failed'), 'error')
   }
 }
 

@@ -9,18 +9,18 @@ export interface Chapter { index: number; title: string; content: string }
 // 编码检测 - 增强准确性
 export const decodeTxtBuffer = (buffer: ArrayBuffer): string => {
   const bytes = new Uint8Array(buffer)
-  
+
   // BOM检测
-  if (bytes.length >= 3 && bytes[0] === 0xEF && bytes[1] === 0xBB && bytes[2] === 0xBF) 
+  if (bytes.length >= 3 && bytes[0] === 0xEF && bytes[1] === 0xBB && bytes[2] === 0xBF)
     return new TextDecoder('utf-8').decode(bytes.slice(3))
   if (bytes.length >= 2) {
     if (bytes[0] === 0xFF && bytes[1] === 0xFE) return new TextDecoder('utf-16le').decode(bytes.slice(2))
     if (bytes[0] === 0xFE && bytes[1] === 0xFF) return new TextDecoder('utf-16be').decode(bytes.slice(2))
   }
-  
+
   // 扩大检测样本到前 4KB
   const sample = bytes.subarray(0, Math.min(4096, bytes.length))
-  
+
   // UTF-8 验证 - 更严格的检测
   try {
     const text = new TextDecoder('utf-8', { fatal: true }).decode(sample)
@@ -33,7 +33,7 @@ export const decodeTxtBuffer = (buffer: ArrayBuffer): string => {
       return new TextDecoder('utf-8').decode(bytes)
     }
   } catch {}
-  
+
   // GBK 检测 - 检查是否包含 GBK 特征
   try {
     const gbkText = new TextDecoder('gbk').decode(sample)
@@ -42,7 +42,7 @@ export const decodeTxtBuffer = (buffer: ArrayBuffer): string => {
       return new TextDecoder('gbk').decode(bytes)
     }
   } catch {}
-  
+
   // 默认 UTF-8
   return new TextDecoder('utf-8').decode(bytes)
 }
@@ -53,14 +53,14 @@ export const splitTxtChapters = (text: string): Chapter[] => {
   const lines = text.split('\n')
   const chapters: Chapter[] = []
   let title = '开始', content: string[] = [], idx = 0
-  
+
   // 限制单章最大行数，避免内存溢出
   const MAX_LINES_PER_CHAPTER = 5000
-  
+
   for (const line of lines) {
     const trimmed = line.trim()
     if (!trimmed) continue
-    
+
     if (regex.test(trimmed) && content.length > 0) {
       chapters.push({ index: idx++, title, content: content.join('\n') })
       title = trimmed
@@ -75,7 +75,7 @@ export const splitTxtChapters = (text: string): Chapter[] => {
       }
     }
   }
-  
+
   if (content.length) chapters.push({ index: idx, title, content: content.join('\n') })
   return chapters.length ? chapters : [{ index: 0, title: '全文', content: text }]
 }
@@ -128,33 +128,33 @@ export const generateEpubFile = async (
   // 解码
   const text = content instanceof ArrayBuffer ? decodeTxtBuffer(content) : content
   if (!text.trim()) throw new Error('文件内容为空')
-  
+
   // 分割章节
   const chapters = splitTxtChapters(text)
   if (!chapters.length) throw new Error('无法识别章节')
-  
+
   // 创建ZIP
   const zip = new JSZip()
   const uuid = generateUUID()
   const timestamp = new Date().toISOString().split('.')[0] + 'Z'
-  
+
   // mimetype (无压缩)
   zip.file('mimetype', 'application/epub+zip', { compression: 'STORE' })
-  
+
   // META-INF/container.xml
-  zip.file('META-INF/container.xml', 
+  zip.file('META-INF/container.xml',
     `<?xml version="1.0" encoding="UTF-8"?>
 <container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
   <rootfiles>
     <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
   </rootfiles>
 </container>`)
-  
+
   // 生成manifest和spine
-  const manifest = chapters.map((_, i) => 
+  const manifest = chapters.map((_, i) =>
     `    <item id="ch${i}" href="ch${i}.xhtml" media-type="application/xhtml+xml"/>`).join('\n')
   const spine = chapters.map((_, i) => `    <itemref idref="ch${i}"/>`).join('\n')
-  
+
   // OEBPS/content.opf
   zip.file('OEBPS/content.opf',
     `<?xml version="1.0" encoding="UTF-8"?>
@@ -175,14 +175,14 @@ ${manifest}
 ${spine}
   </spine>
 </package>`)
-  
+
   // OEBPS/toc.ncx
   const navPoints = chapters.map((ch, i) =>
     `    <navPoint id="np${i}" playOrder="${i + 1}">
       <navLabel><text>${escapeXml(ch.title)}</text></navLabel>
       <content src="ch${i}.xhtml"/>
     </navPoint>`).join('\n')
-  
+
   zip.file('OEBPS/toc.ncx',
     `<?xml version="1.0" encoding="UTF-8"?>
 <ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">
@@ -195,11 +195,11 @@ ${spine}
 ${navPoints}
   </navMap>
 </ncx>`)
-  
+
   // OEBPS/nav.xhtml
   const navList = chapters.map((ch, i) =>
     `      <li><a href="ch${i}.xhtml">${escapeXml(ch.title)}</a></li>`).join('\n')
-  
+
   zip.file('OEBPS/nav.xhtml',
     `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
@@ -214,18 +214,18 @@ ${navList}
   </nav>
 </body>
 </html>`)
-  
+
   // 章节内容 - 批量添加
   chapters.forEach((ch, i) => zip.file(`OEBPS/ch${i}.xhtml`, toChapterHtml(ch.title, ch.content)))
-  
+
   // 生成ZIP - 降低压缩级别提升速度
-  const blob = await zip.generateAsync({ 
-    type: 'blob', 
+  const blob = await zip.generateAsync({
+    type: 'blob',
     mimeType: 'application/epub+zip',
     compression: 'DEFLATE',
     compressionOptions: { level: 3 }
   })
-  
+
   return new File([blob], `${title}.epub`, { type: 'application/epub+zip' })
 }
 

@@ -8,16 +8,16 @@
   "tabAnnotation": "标注",
   "tabPage": "页面",
   "openMode": "打开位置",
-  "openModeDesc": "选择打开书籍时的显示位置",
+  "openModeDesc": "选择书籍打开的位置",
   "navPosition": "导航栏位置",
-  "navPositionDesc": "选择侧边栏按钮的显示位置",
+  "navPositionDesc": "选择导航栏的显示位置",
   "left": "左侧",
   "right": "右侧",
   "top": "顶部",
   "bottom": "底部",
-  "newTab": "新标签",
-  "rightTab": "右侧标签",
-  "bottomTab": "底部标签",
+  "newTab": "新标签页",
+  "rightTab": "右侧标签页",
+  "bottomTab": "底部标签页",
   "newWindow": "新窗口",
   "notebook": "笔记本下创建文档",
   "document": "指定文档下创建子文档",
@@ -29,8 +29,8 @@
   "searchDocPlaceholder": "按回车搜索",
   "selectDoc": "选择文档",
   "usageTitle": "使用说明",
-  "pageAnimation": "翻页方式",
-  "pageAnimationDesc": "选择翻页方式",
+  "pageAnimation": "翻页效果",
+  "pageAnimationDesc": "选择翻页效果",
   "push": "推页翻页",
   "slide": "滑动翻页",
   "curl": "仿真翻页",
@@ -60,10 +60,10 @@
   "bgImageDesc": "输入图片URL（留空使用纯色）",
   "previewLabel": "预览效果：",
   "previewText": "春江潮水连海平，海上明月共潮生。<br>滟滟随波千万里，何处春江无月明。",
-  "usageColors": "7种颜色：R🔴红 O🟠橙 Y🟡黄 G🟢绿 P🩷粉 B🔵蓝 V🟣紫",
+  "usageColors": "七种颜色：红、橙、黄、绿、粉、蓝、紫",
   "usageFormat": "标注格式：<code>- R [文本](链接)</code>",
-  "usageNotebook": "笔记本模式：为每本书自动创建独立文档",
-  "usageDocument": "文档模式：在指定文档下创建子文档管理",
+  "usageNotebook": "笔记本模式：为每本书创建独立文档",
+  "usageDocument": "文档模式：在指定文档下创建子文档",
   "loadError": "加载设置失败",
   "saveError": "保存设置失败",
   "settingsLabel": "设置",
@@ -85,6 +85,7 @@
   "tocBookmarkMode": "书签模式",
   "tocMarkMode": "标记模式",
   "tocTitle": "目录",
+  "toc": "目录",
   "loading": "加载中...",
   "loadingNext": "加载下一章...",
   "tocBtn": "目录",
@@ -169,6 +170,8 @@
   "fontFamily": "字体",
   "fontSize": "字号",
   "fontWeight": "字重",
+  "overrideFont": "覆盖书籍字体",
+  "overrideFontDesc": "使用阅读器字体替换书籍字体，但保留书内字号层级",
   "letterSpacing": "字距",
   "fontTip": "刷新字体列表",
   "loadingFonts": "加载中...",
@@ -191,7 +194,11 @@
   "progressStylePercentage": "百分比",
   "progressStyleReference": "参考页码",
   "referencePageCount": "参考页数",
+  "chapterRemaining": "本章剩余 {minutes} 分钟",
+  "batteryStatus": "电量",
+  "showRemainingTime": "显示本章剩余时间",
   "showCurrentTime": "显示当前时间",
+  "showCurrentBatteryStatus": "显示电量",
   "use24HourClock": "使用 24 小时制",
   "continuousScroll": "连续滚动",
   "continuousScrollDesc": "启用后页面连续滚动，禁用后分页显示",
@@ -307,7 +314,7 @@
   "annotationTagPresetsDesc": "每行一组：分组: 标签1, 标签2；本书已用但未预设的标签会显示在未分组",
   "tagCandidates": "候选",
   "quickSendDocs": "快捷发送文档",
-  "quickSendDocsDesc": "用于快速发送标注",
+  "quickSendDocsDesc": "选择最多 5 个文档，用于快速发送标注",
   "import": "导入",
   "bindDoc": "绑定文档",
   "imported": "已导入",
@@ -344,7 +351,7 @@
   "float": "浮动",
   "fixed": "固定",
   "bookshelfCoverSize": "书架封面大小",
-  "bookshelfCoverSizeDesc": "调整书架封面的显示大小（80-160px）",
+  "bookshelfCoverSizeDesc": "调整书架封面的显示大小（80–160 px）",
   "bookshelfHideProgress": "隐藏书架进度",
   "bookshelfHideStatus": "隐藏书架状态",
   "bookshelfHideRating": "隐藏书架评分",
@@ -352,7 +359,7 @@
   "toolbarOpacity": "工具栏透明度",
   "toolbarOpacityDesc": "调整底部工具栏未悬停时的透明度（0%=不透明，100%=完全透明）",
   "openDocAssets": "使用插件 PDF 阅读器",
-  "openDocAssetsDesc": "启用后，文档链接和书架中的本地 PDF 会优先使用插件阅读器打开；关闭后改用思源原生 PDF 标签页",
+  "openDocAssetsDesc": "启用后，文档链接和书架中的本地 PDF 将优先使用插件阅读器打开；关闭后使用思源内置 PDF 标签页",
   "docAssetExcludeRegex": "文档链接入库排除正则",
   "docAssetExcludeRegexDesc": "匹配后仍按开关打开，但不自动加入书架；不用写外层 /.../；留空则不过滤",
   "docAssetExcludeRegexPlaceholder": "示例：^(发票|收据|报销).*\\.pdf$|.*办法.*\\.pdf$\n^ 开头；$ 结尾；| 或；() 分组；.* 任意文字；\\. 匹配普通点\n排除“2007新的编制办法-xxx.pdf”：写 .*办法.*\\.pdf$",
@@ -396,9 +403,9 @@
   "ttsEnabled": "启用TTS",
   "ttsEnabledDesc": "开启后可使用文本转语音朗读功能",
   "ttsMode": "TTS模式",
-  "ttsEdgeMode": "Edge TTS (在线免费)",
-  "ttsLocalMode": "本地浏览器 (离线)",
-  "ttsModeDesc": "Edge TTS完全免费无需API密钥，本地模式完全离线",
+  "ttsEdgeMode": "Edge TTS（在线）",
+  "ttsLocalMode": "浏览器语音（离线）",
+  "ttsModeDesc": "Edge TTS 无需 API 密钥；浏览器语音可完全离线使用",
   "ttsVoiceParams": "语音参数",
   "ttsRate": "语速",
   "ttsVolume": "音量",
@@ -416,7 +423,7 @@
   "ttsHighlightTextDesc": "朗读时高亮显示当前文本",
   "ttsAutoTurnPage": "自动翻页",
   "ttsAutoTurnPageDesc": "朗读完成后自动翻到下一页",
-  "ttsVoice": "选择语音",
+  "ttsVoice": "语音",
   "ttsVoiceChanged": "语音已更改",
   "selectVoice": "选择语音",
   "searchVoice": "搜索语音...",
@@ -443,5 +450,323 @@
   "membership": "会员订阅",
   "activatedAt": "激活于",
   "logout": "退出登录",
-  "purchase": "购买"
+  "purchase": "购买",
+  "sidebarAnnotation": "标注",
+  "sidebarSettings": "设置",
+  "sidebarBookshelf": "书架",
+  "sidebarSearch": "搜索",
+  "sidebarStats": "阅读统计",
+  "sidebarToc": "目录",
+  "sidebarTooltip": "打开 {name}",
+  "unread": "未读",
+  "reading": "在读",
+  "finished": "读完",
+  "group": "分组",
+  "groups": "分组",
+  "recentRead": "最近阅读",
+  "toolbarBack": "返回",
+  "toolbarSwitchView": "切换视图",
+  "toolbarSelectBooks": "选择书籍",
+  "toolbarExitSelection": "退出选择",
+  "toolbarOrganize": "整理书架",
+  "toolbarAddContent": "添加内容",
+  "quickActions": "快捷操作",
+  "localImport": "本地导入",
+  "cloudImport": "思盘导入",
+  "manualGroup": "手动分组",
+  "smartGroup": "智能分组",
+  "close": "关闭",
+  "cancelImport": "取消",
+  "copyImport": "复制导入",
+  "linkImport": "链接导入",
+  "importToGroup": "导入到分组",
+  "statusAfterImport": "导入后状态",
+  "keepStatus": "不改状态",
+  "ratingAfterImport": "导入后评分",
+  "noRating": "不评分",
+  "clear": "清除",
+  "moveUp": "上移",
+  "moveDown": "下移",
+  "openGroup": "打开分组",
+  "editInfo": "编辑信息",
+  "deleteGroup": "删除分组",
+  "clearGroupSearch": "清除分组搜索",
+  "openBook": "打开阅读",
+  "bookDetails": "书籍详情",
+  "selectBook": "选择此书",
+  "unselectBook": "取消选择",
+  "rate": "评分",
+  "markStatus": "标记状态",
+  "moveTo": "移动到",
+  "bindDocument": "绑定文档",
+  "unbindDocument": "解除绑定",
+  "importAnnotations": "导入标注",
+  "removeBook": "移除",
+  "annotationCount": "{count} 条标注",
+  "lastRead": "最近阅读 {date}",
+  "searchSourcesTitle": "书源管理",
+  "searchSourcesDesc": "统一管理内置源、自定义源和请求前缀",
+  "sourceOpen": "打开",
+  "sourceDomains": "镜像域名",
+  "sourceCurrentDomain": "当前镜像",
+  "sourceAccount": "账号",
+  "sourcePassword": "密码",
+  "sourceSiteUrl": "站点地址",
+  "sourceSearchUrl": "搜索地址",
+  "sourceBookUrlPrefix": "书籍地址前缀",
+  "sourceSelector": "选择器",
+  "sourceRequestPrefix": "请求前缀 / 代理",
+  "sourceName": "名称",
+  "sourceExtensions": "扩展名过滤",
+  "sourceAddCustom": "新增自定义来源",
+  "sourceEdit": "编辑来源",
+  "sourceSaveError": "来源名称不能为空",
+  "sourceCustomError": "自定义源至少需要搜索地址、结果项、标题和链接选择器",
+  "sourceSaved": "来源已保存",
+  "sourceAddError": "添加来源失败",
+  "sourceCustomDesc": "自定义选择器来源",
+  "sourceAnnaDesc": "镜像 / 扩展名 / 请求前缀",
+  "sourceBuiltinDesc": "内置来源",
+  "scanQr": "扫码",
+  "exportDiagnostics": "导出诊断日志",
+  "diagnosticsExported": "诊断日志已导出",
+  "recoverLicense": "恢复授权",
+  "translationPanel": "翻译",
+  "tocThumbnail": "缩略图",
+  "expand": "展开",
+  "collapse": "折叠",
+  "ascending": "正序",
+  "descending": "倒序",
+  "export": "导出",
+  "copyLink": "复制链接",
+  "copyText": "复制文本",
+  "copyChapter": "复制章节",
+  "pdfKeepTool": "绘制后保持当前工具",
+  "copyBacklink": "复制回链",
+  "redaction": "遮蔽",
+  "copyScreenshot": "复制截图",
+  "copyImage": "复制图片",
+  "exportImage": "导出图片",
+  "markImage": "标注图片",
+  "copyTable": "复制表格",
+  "locateTable": "定位表格",
+  "ttsOfflinePack": "离线语音包",
+  "ttsOfflinePackDesc": "下载后可供离线 TTS 引擎使用",
+  "intro": "简介",
+  "addToShelf": "添加到书架",
+  "downloadAddToShelf": "下载并添加到书架",
+  "pdfThumbnailsOnly": "仅 PDF 支持缩略图",
+  "unnamedChapter": "未命名章节",
+  "copyFailed": "复制失败",
+  "exportFailed": "导出失败",
+  "copiedText": "已复制文本",
+  "pdfCopyChapterUnsupported": "PDF 暂不支持复制目录章节全文",
+  "copiedChapter": "已复制章节全文",
+  "copyChapterFailed": "复制章节全文失败",
+  "bookmarkUnavailable": "书签功能未初始化",
+  "bookmarkAdded": "已添加书签",
+  "bookmarkRemoved": "已移除书签",
+  "operationFailed": "操作失败"
+  ,"filterAnnotations": "筛选标注"
+  ,"reverseSort": "反向排序"
+  ,"resetFilter": "重置筛选"
+  ,"done": "完成"
+  ,"marksSearchPlaceholder": "搜索标注、笔记、书签、墨迹、形状"
+  ,"filtering": "筛选中"
+  ,"allAnnotations": "全部标注"
+  ,"showPdfAnnotations": "显示 PDF 标注"
+  ,"hidePdfAnnotations": "隐藏 PDF 标注"
+  ,"type": "类型"
+  ,"textStyle": "文本样式"
+  ,"additionalCondition": "附加条件"
+  ,"withNote": "仅带笔记"
+  ,"noBooks": "暂无书籍"
+  ,"noContent": "无内容"
+  ,"updated": "已更新"
+  ,"marksUnavailable": "标注系统未初始化"
+  ,"deleteFailed": "删除失败"
+  ,"bookNotFound": "书籍不存在"
+  ,"sortTime": "时间"
+  ,"sortDate": "日期"
+  ,"sortChapter": "章节"
+  ,"sortPage": "页码"
+  ,"sortName": "名称"
+  ,"sortCustom": "自定义"
+  ,"invalidBookLink": "无效的书籍链接"
+  ,"fileNotFound": "文件不存在"
+  ,"addFailed": "添加失败"
+  ,"ttsReading": "朗读中"
+  ,"onlineUrlEmpty": "在线阅读地址为空"
+  ,"prevPage": "上一页"
+  ,"nextPage": "下一页"
+  ,"toggleBookmark": "切换书签"
+  ,"quickNote": "快速笔记"
+  ,"unknownAuthor": "未知作者"
+  ,"unnamedBook": "未命名书籍"
+  ,"readingCompleteMotto": "读毕有得"
+  ,"openingMotto": "开卷有益"
+  ,"readingComplete": "已完成阅读"
+  ,"readyToRead": "准备阅读"
+  ,"booksUnit": "本"
+  ,"failed": "失败"
+  ,"parsing": "解析中..."
+  ,"pendingImport": "待导入"
+  ,"noContentFound": "未找到内容"
+  ,"emptyBookshelfHint": "暂无书籍，点击右上角添加内容"
+  ,"confirmDelete": "确认删除"
+  ,"deletePermanently": "彻底删除"
+  ,"confirmDeletePermanently": "确认彻底删除"
+  ,"enterLinks": "输入链接"
+  ,"importLinksPlaceholder": "每行一个本地路径、file 链接、网络直链或思盘链接"
+  ,"parseLinks": "解析链接"
+  ,"cloudPathPlaceholder": "输入思盘路径"
+  ,"keywordPlaceholder": "输入关键词搜索"
+  ,"input": "输入"
+  ,"browseAll": "浏览全部"
+  ,"selectAllImport": "全选导入"
+  ,"deselectAll": "取消全选"
+  ,"importSettings": "导入设置"
+  ,"tagsCommaPlaceholder": "添加标签，用逗号分隔"
+  ,"searchGroups": "搜索分组..."
+  ,"groupSort": "分组排序"
+  ,"existingGroups": "现有分组"
+  ,"resetOrganize": "重置整理"
+  ,"noGroups": "暂无分组"
+  ,"sourceText": "原文"
+  ,"translatedText": "译文"
+  ,"targetLanguage": "目标语言"
+  ,"translating": "翻译中..."
+  ,"translationFailed": "翻译失败"
+  ,"annotationAdded": "已添加批注"
+  ,"adding": "正在添加..."
+  ,"addAsAnnotation": "添加为批注"
+  ,"ttsControl": "朗读控制"
+  ,"expandTts": "展开朗读控制"
+  ,"cover": "封面"
+  ,"ttsReadingTitle": "朗读"
+  ,"ttsPaused": "已暂停"
+  ,"previousSentence": "上一句"
+  ,"nextSentence": "下一句"
+  ,"pause": "暂停"
+  ,"play": "播放"
+  ,"voice": "语音"
+  ,"showTopToolbar": "显示顶部工具栏"
+  ,"hideTopToolbar": "隐藏顶部工具栏"
+  ,"pdfOperationFailed": "PDF 操作失败"
+  ,"annotationMigrationDone": "标注迁移完成"
+  ,"annotationMigrating": "正在迁移标注"
+  ,"pdfAnnotationCommitFailed": "PDF 批注提交失败，请导出诊断日志"
+  ,"pdfAnnotationReadFailed": "PDF 批注读取失败，未覆盖原记录。请导出诊断日志"
+  ,"pdfAnnotationSaveFailed": "PDF 批注保存失败，请导出诊断日志"
+  ,"loadingQr": "正在获取二维码..."
+  ,"membershipQr": "思阅会员绑定小程序码"
+  ,"downloading": "下载中"
+  ,"downloaded": "已下载"
+  ,"downloadVoicePack": "下载语音包"
+  ,"previousResult": "上一个"
+  ,"nextResult": "下一个"
+  ,"jumpToProgress": "跳转到阅读进度"
+  ,"quickMark": "快速标注"
+  ,"exitQuickMark": "退出快速标注"
+  ,"sidebarToc": "目录"
+  ,"sidebarAnnotation": "标注"
+  ,"sidebarSettings": "设置"
+  ,"permanent": "永久有效"
+  ,"validUntil": "有效期至"
+  ,"copy": "复制"
+  ,"copied": "已复制"
+  ,"copyFailed": "复制失败"
+  ,"noContent": "无内容"
+  ,"translate": "翻译"
+  ,"dict": "词典"
+  ,"capture": "拖选截图区域"
+  ,"close": "关闭"
+  ,"copyScreenshot": "复制截图"
+  ,"copyBacklink": "复制回链"
+  ,"sendTo": "发送至"
+  ,"redaction": "选区挖空"
+  ,"pdfKeepTool": "绘制后保持当前工具"
+  ,"copyImage": "复制图片"
+  ,"exportImage": "导出图片"
+  ,"markImage": "标注图片"
+  ,"copyTable": "复制表格"
+  ,"locateTable": "定位表格"
+  ,"pdfCopyAnnotationLink": "复制标注回链"
+  ,"pdfDictAnnotation": "标注词典"
+  ,"pdfTranslateAnnotation": "标注翻译"
+  ,"pdfCreateHole": "选区挖空"
+  ,"pdfDictSelection": "选区词典"
+  ,"pdfTranslateSelection": "选区翻译"
+  ,"pdfSendSelection": "发送选区"
+  ,"pdfSendAnnotation": "发送标注"
+  ,"pdfCaptureCopy": "复制截图"
+  ,"pdfZoomIn": "放大"
+  ,"pdfZoomOut": "缩小"
+  ,"pdfFitPage": "适合页面"
+  ,"pdfFitWidth": "适合宽度"
+  ,"pdfMarqueeZoom": "框选缩放"
+  ,"pdfRotateClockwise": "顺时针旋转"
+  ,"pdfRotateCounterClockwise": "逆时针旋转"
+  ,"pdfPreviousPage": "上一页"
+  ,"pdfNextPage": "下一页"
+  ,"annotation": "标注"
+  ,"mark": "标注"
+  ,"operationFailed": "操作失败"
+  ,"copyImageFailed": "复制图片失败"
+  ,"jumpFailed": "跳转失败"
+  ,"bookMissing": "未提供书籍"
+  ,"pdfFileMissing": "PDF 文件不存在"
+  ,"page": "第"
+  ,"pageSuffix": "页"
+  ,"addContent": "添加内容"
+  ,"organizeBookshelf": "整理书架"
+  ,"bookDetails": "书籍详情"
+  ,"editBook": "编辑书籍"
+  ,"editGroup": "编辑分组"
+  ,"bookshelf": "书架"
+  ,"selectedCount": "选中"
+  ,"selectAll": "全选"
+  ,"invertSelection": "反选"
+  ,"exit": "退出"
+  ,"rating": "评分"
+  ,"status": "状态"
+  ,"tags": "标签"
+  ,"group": "分组"
+  ,"completingData": "补全中"
+  ,"completeData": "数据补全"
+  ,"remove": "移除"
+  ,"tagsPlaceholder": "标签，用逗号分隔"
+  ,"clearTags": "清空标签"
+  ,"tagsCleared": "已清空标签"
+  ,"add": "添加"
+  ,"replace": "替换"
+  ,"addToGroup": "加入分组"
+  ,"removeFromGroup": "移出分组"
+  ,"setGroup": "设置分组"
+  ,"removeAllGroups": "移出所有分组"
+  ,"groupsRemoved": "已移出分组"
+  ,"dictYoudaoDesc": "英汉词典，简洁快速"
+  ,"dictBingDesc": "必应词典网页版"
+  ,"dictCambridgeDesc": "英汉双解，支持发音"
+  ,"dictHaiciDesc": "英汉词典，例句丰富"
+  ,"dictMxnzpDesc": "汉字字典，详细解释"
+  ,"dictCiyuDesc": "汉语词语，成语典故"
+  ,"dictZdicDesc": "汉字词语查询"
+  ,"ttsFavoriteVoices": "我的语音"
+  ,"ttsVoiceList": "在线语音"
+  ,"ttsCurrentVoice": "当前"
+  ,"ttsOnlineHint": "点击语音名称选择，点击星号收藏"
+  ,"ttsNoFavorites": "暂无收藏，请点击下方语音添加"
+  ,"ttsNoVoices": "暂无语音"
+  ,"ttsLoadVoices": "加载语音"
+  ,"ttsFavorite": "收藏"
+  ,"ttsUnfavorite": "取消收藏"
+  ,"format": "格式"
+  ,"allRatings": "全部评分"
+  ,"fiveStarsOnly": "仅 5 星"
+  ,"stars": "星"
+  ,"sortByAdded": "最近添加"
+  ,"sortByProgress": "阅读进度"
+  ,"sortByRating": "评分"
+  ,"sortByReadTime": "阅读时长"
 }

@@ -63,6 +63,7 @@ const rawColor = (item: any) => item?.color || item?.paths?.find((path: any) => 
 const colorBucket = (item: any) => COLOR_BUCKETS.find(bucket => (bucket.aliases as readonly string[]).includes(rawColor(item)))?.value || ''
 const toggleArray = (list: string[], value: string) => { if (list.includes(value)) list.splice(list.indexOf(value), 1); else list.push(value) }
 export const useReaderMarks = (i18n?: any, context?: any) => {
+  const tx = (key: string, fallback: string) => i18n?.[key] || fallback
   const globalReaderState = useReaderState()
   const getContext = () => typeof context === 'function' ? context() : context
   const activeReader = computed(() => getContext()?.activeReader || globalReaderState.activeReader.value)
@@ -92,7 +93,8 @@ export const useReaderMarks = (i18n?: any, context?: any) => {
   const isPdfMode = computed(() => !!(activeView.value as any)?.isPdf)
   const readOnly = computed(() => !!getContext()?.readOnlyMarks || isLibraryMode.value)
   const markSort = computed(() => markFilter.value.sort)
-  const searchPlaceholder = '搜索标注、笔记、书签、墨迹、形状'
+  const searchPlaceholder = tx('marksSearchPlaceholder', 'Search annotations, notes, bookmarks, ink, and shapes')
+  const localizedSortOptions = computed(() => MARK_SORT_OPTIONS.map(item => ({ ...item, label: tx(`sort${item.value.charAt(0).toUpperCase()}${item.value.slice(1)}`, item.label) })))
   const getEditColorOptions = () => isPdfMode.value && marks.value?.updateMark
     ? PDF_COLORS.map(color => ({ key: color, value: color, bg: color === 'transparent' ? 'linear-gradient(45deg,transparent 45%,#e44234 46%,#e44234 54%,transparent 55%)' : color }))
     : COLORS.map(color => ({ key: color.color, value: color.color, bg: color.bg }))
@@ -143,18 +145,18 @@ export const useReaderMarks = (i18n?: any, context?: any) => {
   const hasActiveFilters = computed(() => !!(markFilter.value.types.length || markFilter.value.colors.length || markFilter.value.textStyles.length || markFilter.value.tags.length || markFilter.value.note !== 'all' || markFilter.value.sort !== 'time' || markReverse.value))
   const hasLibraryContentFilter = computed(() => !!(keyword.value.trim() || markFilter.value.types.length || markFilter.value.colors.length || markFilter.value.textStyles.length || markFilter.value.tags.length || markFilter.value.note !== 'all'))
   const hasLibraryScan = computed(() => hasLibraryContentFilter.value || hasActiveFilters.value)
-  const filterLabel = computed(() => hasActiveFilters.value ? '筛选中' : '筛选')
-  const typeMode = computed(() => TYPE_CYCLE.find(item => item.value === (markFilter.value.types.length === 1 ? markFilter.value.types[0] : null)) || TYPE_CYCLE[0])
+  const filterLabel = computed(() => hasActiveFilters.value ? tx('filtering', 'Filtering') : tx('filter', 'Filter'))
+  const typeMode = computed(() => { const value = TYPE_CYCLE.find(item => item.value === (markFilter.value.types.length === 1 ? markFilter.value.types[0] : null)) || TYPE_CYCLE[0]; return { ...value, label: value.value === null ? tx('allAnnotations', 'All annotations') : tx(value.value, value.label) } })
   const toolbarMenuAction = computed(() => ({ id: 'type', icon: typeMode.value.icon, label: typeMode.value.label, tooltipDir: 'sw', active: !!typeMode.value.value }))
   const markGroupKeys = computed(() => Array.isArray(list.value) ? list.value.filter((item: any) => item?.isGroup).map((item: any) => item.key) : [])
   const markAllExpanded = computed(() => !!markGroupKeys.value.length && !markGroupKeys.value.some(key => !!collapsed.value[key]))
   const pdfAnnotationsHidden = computed(() => !!(activeView.value as any)?.annotationsHidden)
   const toolbarActions = computed(() => [
-    { id: 'togglePdfAnnotations', icon: pdfAnnotationsHidden.value ? '#lucide-eye-off' : '#lucide-eye', label: pdfAnnotationsHidden.value ? '显示 PDF 标注' : '隐藏 PDF 标注', active: pdfAnnotationsHidden.value, show: isPdfMode.value },
+    { id: 'togglePdfAnnotations', icon: pdfAnnotationsHidden.value ? '#lucide-eye-off' : '#lucide-eye', label: pdfAnnotationsHidden.value ? tx('showPdfAnnotations', 'Show PDF annotations') : tx('hidePdfAnnotations', 'Hide PDF annotations'), active: pdfAnnotationsHidden.value, show: isPdfMode.value },
     { id: 'syncAll', icon: '#iconDownload', label: i18n?.syncAll || '同步全部', active: syncingAll.value, show: !readOnly.value && pendingImportCount.value > 0 },
     { id: 'organize', icon: '#lucide-sliders-horizontal', label: filterLabel.value, active: showOrganize.value || hasActiveFilters.value },
-    { id: 'expand', icon: markAllExpanded.value ? '#lucide-panel-top-close' : '#lucide-panel-top-open', label: markAllExpanded.value ? '折叠分组' : '展开分组', show: isGroupedMode.value },
-    { id: 'reverse', icon: markReverse.value ? '#lucide-arrow-up-1-0' : '#lucide-arrow-down-0-1', label: markReverse.value ? '倒序' : '正序', active: markReverse.value },
+    { id: 'expand', icon: markAllExpanded.value ? '#lucide-panel-top-close' : '#lucide-panel-top-open', label: markAllExpanded.value ? tx('collapse', 'Collapse') : tx('expand', 'Expand'), show: isGroupedMode.value },
+    { id: 'reverse', icon: markReverse.value ? '#lucide-arrow-up-1-0' : '#lucide-arrow-down-0-1', label: markReverse.value ? tx('descending', 'Descending') : tx('ascending', 'Ascending'), active: markReverse.value },
   ])
 
   const matchFilter = (item: any) => !(
@@ -228,16 +230,16 @@ export const useReaderMarks = (i18n?: any, context?: any) => {
     const tagCounts = new Map<string, number>()
     source.forEach(item => getMarkTags(item).forEach(tag => tagCounts.set(tag, (tagCounts.get(tag) || 0) + 1)))
     return [
-      { key: 'types', label: '类型', options: TYPE_OPTIONS.map(opt => ({ ...opt, count: countBy(item => getType(item) === opt.value) })) },
-      { key: 'colors', label: '颜色', options: COLOR_BUCKETS.map(opt => ({ value: opt.value, label: opt.label, count: countBy(item => colorBucket(item) === opt.value) })).filter(opt => opt.count > 0) },
-      { key: 'textStyles', label: '文本样式', options: TEXT_STYLE_OPTIONS.map(opt => ({ ...opt, count: countBy(item => isTextMark(item) && (item.style || 'highlight') === opt.value) })).filter(opt => opt.count > 0) },
-      { key: 'tags', label: '标签', options: [...tagCounts.entries()].map(([value, count]) => ({ value, label: `#${value}`, count })).sort((a, b) => b.count - a.count || a.value.localeCompare(b.value)).slice(0, 24) },
-      { key: 'note', label: '附加条件', options: NOTE_OPTIONS.map(opt => ({ ...opt, count: opt.value === 'all' ? source.length : countBy(item => !!item.note?.trim()) })) },
+      { key: 'types', label: tx('type', 'Type'), options: TYPE_OPTIONS.map(opt => ({ ...opt, label: tx(opt.value, opt.label), count: countBy(item => getType(item) === opt.value) })) },
+      { key: 'colors', label: tx('color', 'Color'), options: COLOR_BUCKETS.map(opt => ({ value: opt.value, label: tx(`color${opt.value.charAt(0).toUpperCase()}${opt.value.slice(1)}`, opt.label), count: countBy(item => colorBucket(item) === opt.value) })).filter(opt => opt.count > 0) },
+      { key: 'textStyles', label: tx('textStyle', 'Text Style'), options: TEXT_STYLE_OPTIONS.map(opt => ({ ...opt, count: countBy(item => isTextMark(item) && (item.style || 'highlight') === opt.value) })).filter(opt => opt.count > 0) },
+      { key: 'tags', label: tx('tags', 'Tags'), options: [...tagCounts.entries()].map(([value, count]) => ({ value, label: `#${value}`, count })).sort((a, b) => b.count - a.count || a.value.localeCompare(b.value)).slice(0, 24) },
+      { key: 'note', label: tx('additionalCondition', 'Additional condition'), options: NOTE_OPTIONS.map(opt => ({ ...opt, label: opt.value === 'all' ? tx('all', 'All') : tx('withNote', 'With notes'), count: opt.value === 'all' ? source.length : countBy(item => !!item.note?.trim()) })) },
     ] as Array<{ key: MarkFilterKey; label: string; options: Array<{ value: string; label: string; count: number }> }>
   })
   const markTagGroups = computed(() => collectMarkTagGroups(allEntries.value, editTagList.value))
 
-  const emptyText = computed(() => isLibraryMode.value && !libraryBooks.value.length ? '暂无书籍' : keyword.value ? (i18n?.notFound || '未找到标注') : (i18n?.empty || '暂无标注'))
+  const emptyText = computed(() => isLibraryMode.value && !libraryBooks.value.length ? tx('noBooks', 'No books') : keyword.value ? (i18n?.notFound || 'No annotations found') : (i18n?.empty || 'No annotations'))
   const isCollapsed = (key: string) => !!collapsed.value[key]
   const getMarkItems = (item: any) => item?.isGroup ? (isCollapsed(item.key) && !keyword.value ? [] : item.items) : [item]
   const toggleGroup = (key: string) => {
@@ -275,7 +277,7 @@ export const useReaderMarks = (i18n?: any, context?: any) => {
   const showEditOptions = (item: any) => (!isPdfMode.value || !!marks.value?.updateMark) && (item?.type === 'highlight' || item?.type === 'note' || !item?.type)
   const getBarColor = (item: any) => isEditing(item) ? (colors[editColor.value] || editColor.value) : (colors[item.color] || rawColor(item) || 'var(--b3-theme-primary)')
   const mainText = (item: any) => {
-    return item.text || item.title || '无内容'
+    return item.text || item.title || tx('noContent', 'No content')
   }
   const canEdit = (item: any) => !readOnly.value && !item?.readOnly && !!marks.value?.updateMark
   const canDelete = (item: any) => !readOnly.value && !item?.readOnly && !!marks.value?.deleteMark
@@ -311,9 +313,9 @@ export const useReaderMarks = (i18n?: any, context?: any) => {
       Object.assign(item, updates)
       editingId.value = ''
       refreshKey.value++
-      showMsg('已更新')
+      showMsg(tx('updated', 'Updated'))
     } catch (error: any) {
-      showMsg(error?.message || '保存失败', 'error')
+      showMsg(error?.message || tx('saveError', 'Save failed'), 'error')
     }
   }
 
@@ -352,20 +354,20 @@ export const useReaderMarks = (i18n?: any, context?: any) => {
   }
   const deleteMark = async (item: any) => {
     if (readOnly.value) return
-    if (!marks.value) return showMsg('标注系统未初始化', 'error')
+    if (!marks.value) return showMsg(tx('marksUnavailable', 'Annotation system is not initialized'), 'error')
     try {
       await marks.value.deleteMark(item)
       refreshKey.value++
-      showMsg('已删除')
+      showMsg(tx('deleted', 'Deleted'))
     } catch {
-      showMsg('删除失败', 'error')
+      showMsg(tx('deleteFailed', 'Delete failed'), 'error')
     }
   }
 
   const goTo = async (item: any) => {
     if (!isLibraryMode.value || !item.bookUrl) return jump(item, activeView.value, activeReader.value, marks.value)
     const book = await bookshelfManager.getBook(item.bookUrl)
-    if (!book) return showMsg('书籍不存在', 'error')
+    if (!book) return showMsg(tx('bookNotFound', 'Book not found'), 'error')
     const [{ openOrActivateBook }, { settingsManager }, { usePlugin }] = await Promise.all([import('@/utils/bookOpen'), import('@/composables/useSetting'), import('@/main')])
     await openOrActivateBook(usePlugin(), book, await settingsManager.get(), () => window.dispatchEvent(new CustomEvent('sireader:goto', { detail: { cfi: markTarget(item), id: item.id, bookUrl: item.bookUrl } })))
   }
@@ -426,7 +428,7 @@ export const useReaderMarks = (i18n?: any, context?: any) => {
   })
 
   return {
-    MARK_SORT_OPTIONS,
+    MARK_SORT_OPTIONS: localizedSortOptions,
     keyword,
     searchPlaceholder,
     toolbarMenuAction,
