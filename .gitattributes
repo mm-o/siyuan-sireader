@@ -1,0 +1,2 @@
+# Preserve the pinned upstream bytes used by UPSTREAM.json integrity checks.
+src/vendor/scribe-layout/** text eol=lf

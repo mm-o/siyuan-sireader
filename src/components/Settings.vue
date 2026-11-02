@@ -453,7 +453,7 @@ onUnmounted(() => window.removeEventListener('sireaderSettingsUpdated', syncAnno
               v-for="item in group.items"
               :key="item.key"
               :item="item"
-              :model-value="settings[group.title][item.key]"
+              :model-value="settings[group.title][item.key] ?? (item.type === 'checkbox' ? false : undefined)"
               :label="i18n[item.key] || item.key"
               :hint="i18n[item.key + 'Desc'] || ''"
               :i18n="i18n"

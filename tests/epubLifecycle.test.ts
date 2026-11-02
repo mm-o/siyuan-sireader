@@ -4,6 +4,22 @@ import ts from 'typescript'
 
 afterEach(() => vi.unstubAllGlobals())
 
+test('fixed EPUBs bypass flow configuration and injected typography', () => {
+  const source = readFileSync('src/core/epub/reader.ts', 'utf8')
+  const ast = ts.createSourceFile('reader.ts', source, ts.ScriptTarget.Latest, true)
+  for (const name of ['configureView', 'applyCustomCSS']) {
+    const node = ast.statements.find(n => ts.isFunctionDeclaration(n) && n.name?.text === name)!
+    const script = ts.transpileModule(node.getText(ast), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText
+    const applyVisualFilter = vi.fn()
+    const fn = new Function('applyVisualFilter', `${script};return ${name}`)(applyVisualFilter)
+    const setStyles = vi.fn()
+    const setAttribute = vi.fn()
+    fn({ isFixedLayout: true, renderer: { setStyles, setAttribute } }, { visualSettings: {} })
+    expect(setStyles).not.toHaveBeenCalled()
+    expect(setAttribute).not.toHaveBeenCalled()
+  }
+})
+
 test('resize delivery is deferred, coalesced, size-aware, and cancelled on disconnect', async () => {
   let deliver!: (entries: any[]) => void
   const frames = new Map<number, Function>()
@@ -25,11 +41,16 @@ test('resize delivery is deferred, coalesced, size-aware, and cancelled on disco
   expect(update).toHaveBeenCalledTimes(1)
   deliver(entry(200)); run()
   expect(update).toHaveBeenCalledTimes(1)
-  deliver(entry(300)); observer.disconnect(); run()
+  deliver(entry(0)); run()
+  deliver(entry(200)); run()
+  expect(update).toHaveBeenCalledTimes(1)
+  deliver(entry(300)); run()
+  expect(update).toHaveBeenCalledTimes(2)
+  deliver(entry(400)); observer.disconnect(); run()
   expect(disconnect).toHaveBeenCalledTimes(1)
-  expect(update).toHaveBeenCalledTimes(1)
-  deliver(entry(400)); run()
-  expect(update).toHaveBeenCalledTimes(1)
+  expect(update).toHaveBeenCalledTimes(2)
+  deliver(entry(500)); run()
+  expect(update).toHaveBeenCalledTimes(2)
 })
 test('paginator disconnects every observed target when destroyed', () => {
   const source = readFileSync('node_modules/foliate-js/paginator.js', 'utf8')
@@ -48,7 +69,7 @@ test('reader stops layout and settings listeners before awaiting persistence', a
   vi.stubGlobal('window', { removeEventListener })
   let release!: () => void
   const pending = new Promise<void>(resolve => { release = resolve })
-  const context = { destroyed: false, onSettingsChanged: vi.fn(), themeObserver: { disconnect: vi.fn() }, eventListeners: new Map(), clockTimer: null,
+  const context = { destroyed: false, onSettingsChanged: vi.fn(), themeObserver: { disconnect: vi.fn() }, eventListeners: new Map(),
     marks: { destroy: () => pending }, view: { close: vi.fn(), remove: vi.fn(), book: { destroy: vi.fn() } } }
   const closing = destroy.call(context)
   expect(context.view.close).toHaveBeenCalledTimes(1)
@@ -82,13 +103,14 @@ test('epub reader exposes a bottom percentage jump control', () => {
 
 test('EPUB font settings match Readest without flattening book typography', () => {
   const reader = readFileSync('src/core/epub/reader.ts', 'utf8')
+  const typography = readFileSync('src/core/epub/typography.ts', 'utf8')
   const settings = readFileSync('src/composables/useSetting.ts', 'utf8')
   const ui = readFileSync('src/components/Settings.vue', 'utf8')
   expect(settings).toContain('overrideFont?: boolean')
   expect(ui).toContain("key:'overrideFont'")
-  expect(reader).toContain("${overrideFont ? `font-family:${font}!important` : ''}")
+  expect(reader).toContain('font-family:${font}!important')
   expect(reader).not.toContain('font-family:revert!important')
-  expect(reader).toContain('[style*="font-size: 16px"],[style*="font-size:16px"]{font-size:1rem!important}')
+  expect(typography).toContain('[style*="font-size: 16px"],[style*="font-size:16px"]{font-size:1rem!important}')
   expect(reader).not.toContain('font-size:inherit!important')
 })
 test('EPUB footer metrics are individually controlled by layout settings', () => {

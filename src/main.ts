@@ -12,6 +12,8 @@ import { installDiagnostics, diagnosticLog, disposeDiagnostics } from '@/core/di
 let plugin: Plugin | null = null
 let app: any = null
 let cleanupCallbacks: (() => void | Promise<void>)[] = []
+const readerTabInitializers = new Map<string, (tab: any) => void | Promise<void>>()
+export const registerReaderTab = (type: string, init: (tab: any) => void | Promise<void>) => readerTabInitializers.set(type, init)
 
 export const usePlugin = (p?: Plugin) => p ? (plugin = p) : plugin!
 export const registerCleanup = (cb: () => void | Promise<void>) => cleanupCallbacks.push(cb)
@@ -22,6 +24,15 @@ export const setOpenSettingHandler = (handler: (openLicense?: boolean) => void) 
 
 export async function init(p: Plugin) {
   usePlugin(p)
+  let resolveAppReady!: () => void
+  const appReady = new Promise<void>(resolve => { resolveAppReady = resolve })
+  // Window layout restoration does not wait for the plugin's async onload.
+  for (const type of ['epub_reader', 'custom_tab_book_reader', 'online_reader']) p.addTab({
+    type,
+    init() { return appReady.then(() => readerTabInitializers.get(type)!(this)) },
+    resize() { (this as any)._app?.resize?.() },
+    destroy() { (this as any)._app?.unmount(); (this as any)._app = null },
+  })
   storageEngine.startAccepting()
   setPlugin(p)
   installDiagnostics({ plugin: p.name, version: (p as any).version || '', frontend: (p as any).platform || '' })
@@ -39,6 +50,7 @@ export async function init(p: Plugin) {
   registerReaderIcons(p)
   app = createApp(App)
   app.mount(div)
+  resolveAppReady()
   diagnosticLog('info', 'plugin.init.done', { plugin: p.name })
 }
 

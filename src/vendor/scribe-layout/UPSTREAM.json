@@ -1,0 +1,12 @@
+{
+  "repository": "https://github.com/scribeocr/scribe.js",
+  "commit": "43c00dc3ccd5612d094317432cdbf94094149ca0",
+  "license": "AGPL-3.0-only",
+  "modifications": "Only a ts-nocheck directive is prepended; algorithm code is unchanged.",
+  "sha256": {
+    "js/import/analyzeLayout.js": "706e6678e1f50edcb0e9f117356abb852b74e78f77d610f7ae849f395a2f5f36",
+    "js/objects/ocrObjects.js": "8edee8ed0882a93a0621ef8695cb2d87a84b877751e53c5f61d92105b6ff344c",
+    "js/utils/miscUtils.js": "85e398508c1449c4df4dd670c71f8fc1079e2b145e26f59b64f3dfc9662dc48d",
+    "LICENSE": "8486a10c4393cee1c25392769ddd3b2d6c242d6ec7928e1414efff7dfb2f07ef"
+  }
+}

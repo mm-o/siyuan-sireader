@@ -6,9 +6,10 @@
 import type { Plugin } from 'siyuan'
 import type { FoliateView, Location } from './types'
 import type { ReaderSettings } from '@/composables/useSetting'
-import { getReaderTheme } from '@/composables/useSetting'
+import { customFontUrl, getReaderTheme } from '@/composables/useSetting'
 import { createTooltip, hideTooltip, showTooltip } from '@/core/MarkManager'
 import { EPUBSearch } from './search'
+import { getEpubTypographyCSS } from './typography'
 import { createTxtBook, isTxtSource } from '@/core/txt/book'
 import { isMobile } from '@/utils/mobile'
 import { FootnoteHandler } from 'foliate-js/footnotes.js'
@@ -186,6 +187,10 @@ function configureView(view: FoliateView, settings: ReaderSettings) {
   const renderer = view.renderer
   if (!renderer) return
   const { pageAnimation = 'push', visualSettings } = settings
+  if (view.isFixedLayout) {
+    applyVisualFilter(visualSettings)
+    return
+  }
   const pageTurnStyle = pageAnimation === 'slide' || pageAnimation === 'curl' ? pageAnimation : 'push'
   const { scroll, columns, gap, margins } = getLayoutMetrics(settings)
   setAttr(view, 'flow', scroll ? 'scrolled' : 'paginated')
@@ -226,9 +231,9 @@ function applyViewTheme(view: FoliateView, theme: any) {
 }
 
 function applyCustomCSS(view: FoliateView, settings: ReaderSettings) {
+  if (view.isFixedLayout) return
   const {
-    textSettings: text = { fontFamily: 'inherit', fontSize: 16, fontWeight: 400, letterSpacing: 0, customFont: { fontFamily: '', fontFile: '' } },
-    paragraphSettings: paragraph = { lineHeight: 1.8, textIndent: 2, paragraphSpacing: 1 }
+    textSettings: text = { fontFamily: 'inherit', fontSize: 16, fontWeight: 400, letterSpacing: 0, customFont: { fontFamily: '', fontFile: '' } }
   } = settings
   const theme = getTheme(settings)
   const mobile = isMobile()
@@ -238,7 +243,7 @@ function applyCustomCSS(view: FoliateView, settings: ReaderSettings) {
   const overrideFont = Boolean(text.overrideFont)
   const fontFile = text.customFont?.fontFile || ''
   const localFont = fontFile.startsWith('local:')
-  const fontUrl = customFont && !localFont ? `${location.origin}/public/siyuan-sireader/fonts/${encodeURIComponent(fontFile)}` : ''
+  const fontUrl = customFont && !localFont ? location.origin + customFontUrl(fontFile) : ''
   const fontFace = customFont && !localFont ? `@font-face{font-family:"${customFont}";src:url("${fontUrl}");font-display:swap}` : ''
   const contentBackground = getViewBackground(theme)
   const css = [
@@ -250,16 +255,14 @@ function applyCustomCSS(view: FoliateView, settings: ReaderSettings) {
       background:${contentBackground}!important;
       background-color:${theme.bg}!important;
       box-sizing:border-box!important;
-      font-family:${font};
       hanging-punctuation:allow-end last;
       orphans:2;
       widows:2;
       ${mobile ? '-webkit-touch-callout:none!important;' : ''}
     }
-    html,body{color:${theme.color}!important;background:${contentBackground}!important;background-color:${theme.bg}!important;font-size:${text.fontSize}px!important;font-weight:${text.fontWeight};-webkit-text-size-adjust:none;text-size-adjust:none;text-align:justify}
+    html,body{color:${theme.color}!important;background:${contentBackground}!important;background-color:${theme.bg}!important;-webkit-text-size-adjust:none;text-size-adjust:none}
     body{
       color:${theme.color}!important;
-      line-height:unset;
       margin:0!important;
       padding:unset;
       overflow:unset;
@@ -271,11 +274,6 @@ function applyCustomCSS(view: FoliateView, settings: ReaderSettings) {
     [align="center"]{text-align:center}
     [align="justify"]{text-align:justify}
     :is(hgroup,header) p{text-align:unset;hyphens:unset}
-    p,blockquote,dd,div:not(:has(*:not(b,a,em,i,strong,u,span))){line-height:${paragraph.lineHeight};letter-spacing:${text.letterSpacing}em;text-indent:${paragraph.textIndent}em;-webkit-hyphens:auto;hyphens:auto;-webkit-hyphenate-limit-before:3;-webkit-hyphenate-limit-after:2;-webkit-hyphenate-limit-lines:2;hanging-punctuation:allow-end last;widows:2}
-    li{line-height:${paragraph.lineHeight};-webkit-hyphens:auto;hyphens:auto}
-    p{margin:${paragraph.paragraphSpacing}em 0}
-    h1,h2,h3,h4,h5,h6,blockquote[align="center"],div[align="center"],p[align="center"],dd[align="center"],p.aligned-center,blockquote.aligned-center,dd.aligned-center,div.aligned-center,li p,ol p,ul p,td p,p:has(>img:only-child),p:has(>span:only-child>img:only-child),p:has(>img:not(.has-text-siblings)),p:has(>a:first-child+img:last-child){text-indent:initial}
-    .nonindent,.noindent{text-indent:unset!important}
     div.left *,p.left *{text-align:left}
     div.right *,p.right *{text-align:right}
     div.center *,p.center *{text-align:center}
@@ -283,15 +281,9 @@ function applyCustomCSS(view: FoliateView, settings: ReaderSettings) {
     img,svg,p:has(img),figure,figure *{background-color:transparent!important}
     p:has(img){text-indent:0!important;margin:0!important}
     p>font:only-child{display:flow-root}
-    font[size="1"]{font-size:${Math.max(8, text.fontSize * 0.5)}px}
-    font[size="2"]{font-size:${text.fontSize * 0.75}px}
-    font[size="3"]{font-size:${text.fontSize}px}
-    font[size="4"]{font-size:${text.fontSize * 1.2}px}
-    font[size="5"]{font-size:${text.fontSize * 1.5}px}
-    font[size="6"]{font-size:${text.fontSize * 2}px}
-    font[size="7"]{font-size:${text.fontSize * 3}px}
-    [style*="font-size: 16px"],[style*="font-size:16px"]{font-size:1rem!important}
-    body *:not(pre):not(code):not(kbd):not(.code):not(pre *):not(code *):not(kbd *):not(.code *){${overrideFont ? `font-family:${font}!important` : ''}}
+    ${[.5, .75, 1, 1.2, 1.5, 2, 3].map((scale, i) => `font[size="${i + 1}"]{font-size:${i === 0 ? Math.max(8, text.fontSize * scale) : text.fontSize * scale}px}`).join('')}
+    ${overrideFont ? `body *:not(pre):not(code):not(kbd):not(.code):not(pre *):not(code *):not(kbd *):not(.code *){font-family:${font}!important}` : ''}
+    ${getEpubTypographyCSS(settings)}
     pre,code,kbd{font-family:monospace;font-variant-ligatures:none;white-space:pre-wrap!important}
     ${mobile ? 'body>*{max-width:100%!important}img,svg,video,table,pre,code{max-width:100%!important}' : ''}
     aside[epub|type~="footnote"],
@@ -310,9 +302,11 @@ function applyCustomCSS(view: FoliateView, settings: ReaderSettings) {
   `
   ].join('')
   const renderer = view.renderer as any
-  if (renderer?.__sireaderStyleSig !== css) {
-    renderer?.setStyles?.(css)
-    renderer && (renderer.__sireaderStyleSig = css)
+  const styles = [`html{font-family:${font};font-size:${text.fontSize}px;font-weight:${text.fontWeight};line-height:${settings.paragraphSettings.lineHeight}}`, css]
+  const signature = JSON.stringify(styles)
+  if (renderer?.__sireaderStyleSig !== signature) {
+    renderer?.setStyles?.(styles)
+    renderer && (renderer.__sireaderStyleSig = signature)
   }
 }
 
@@ -334,7 +328,6 @@ export class FoliateReader {
   private plugin: Plugin
   private eventListeners = new Map<string, Set<Function>>()
   private themeObserver?: MutationObserver
-  private clockTimer: any = null
   private footnote = new FootnoteHandler()
   private footnoteAnchor: HTMLElement | null = null
   private footnoteHref = ''
@@ -382,19 +375,12 @@ export class FoliateReader {
     if (this.destroyed) return
     configureView(this.view, this.settings)
     applyCustomCSS(this.view, this.settings)
-    this.syncClock()
-  }
-
-  private syncClock() {
-    clearInterval(this.clockTimer)
-    this.clockTimer = null
   }
 
   resize = () => {
     if (this.destroyed || !this.container.isConnected) return
     this.layoutActivity.hostResizes++
     configureView(this.view, this.settings)
-    ;(this.view.renderer as any)?.render?.()
   }
 
   private handleLoad(detail: any) { normalizeFootnoteTypes(detail?.doc); this.bindContentMedia(detail?.doc, detail?.index); this.emit('load', detail) }
@@ -633,7 +619,6 @@ export class FoliateReader {
     this.destroyed = true
     window.removeEventListener('sireaderSettingsUpdated', this.onSettingsChanged)
     this.themeObserver?.disconnect()
-    clearInterval(this.clockTimer)
     this.eventListeners.clear()
     // Stop layout synchronously, before waiting for persistence or network work.
     this.view.close?.()

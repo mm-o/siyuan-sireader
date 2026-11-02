@@ -1,5 +1,5 @@
-import { openTab } from 'siyuan'
-import type { Plugin } from 'siyuan'
+import { getFrontend, openTab, openWindow } from 'siyuan'
+import type { Plugin, Tab } from 'siyuan'
 import { bookshelfManager, type Book } from '@/core/bookshelf'
 import type { ReaderSettings } from '@/composables/useSetting'
 import { isMobile } from '@/utils/mobile'
@@ -27,6 +27,10 @@ export const findOpenedTab = (bookName: string, pluginName: string, tabType = 'c
 export const getOpenTabPosition = (settings: Pick<ReaderSettings, 'openMode'>): TabPosition | undefined =>
   ({ rightTab: 'right', bottomTab: 'bottom' }[settings.openMode])
 
+const openInNewWindow = (tab: Tab, mode?: ReaderSettings['openMode']) => {
+  if (mode === 'newWindow' && getFrontend().startsWith('desktop')) openWindow({ tab })
+}
+
 export const openReaderTab = (plugin: Plugin, title: string, data: ReaderTabData, id: string, settings?: Pick<ReaderSettings, 'openMode'>, onReady?: () => void) => {
   const position = settings ? getOpenTabPosition(settings) : undefined
   openTab({
@@ -34,7 +38,7 @@ export const openReaderTab = (plugin: Plugin, title: string, data: ReaderTabData
     custom: { icon: 'siyuan-reader-icon', title, data, id },
     ...(position ? { position } : {}),
     afterOpen: onReady
-  })
+  }).then(tab => openInNewWindow(tab, settings?.openMode))
 }
 
 const activateOpenedTab = (tab: HTMLElement | null, onReady?: () => void) => {
@@ -76,7 +80,7 @@ export const openWithSiyuanPdf = (plugin: Plugin, book: Book, settings: OpenMode
     [target.kind]: { path: target.path },
     ...(position ? { position } : {}),
     afterOpen: onReady
-  })
+  }).then(tab => openInNewWindow(tab, settings.openMode))
   return true
 }
 

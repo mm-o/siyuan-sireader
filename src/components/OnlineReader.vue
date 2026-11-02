@@ -421,7 +421,7 @@ const handleGoto = (event: Event) => {
 const activateContext = () => {
   const context = props.context
   if (!context?.activeView) return
-  setActiveReader(context.activeView, context.activeReader, context.settings)
+  setActiveReader(context.activeView, context.activeReader, context.settings, context.bookUrl || props.url)
   ;(window as any).__currentBookUrl = context.bookUrl || props.url
   window.dispatchEvent(new CustomEvent('sireader:tab-switched'))
 }

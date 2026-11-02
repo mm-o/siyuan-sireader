@@ -72,6 +72,7 @@ export interface Progress {
 
 // ===== Foliate View 接口 =====
 export interface FoliateView extends HTMLElement {
+  isFixedLayout?: boolean
   open(file: File | string | any): Promise<void>
   close?(): void
   init?(options: { lastLocation?: any; showTextStart?: boolean }): Promise<void>

@@ -94,7 +94,7 @@ index 0000000..cb796ec
 +        if (stopped) return
 +        let changed = false
 +        for (const { target, contentRect: { width, height } } of entries) {
-+            if (!target.isConnected) continue
++            if (!target.isConnected || width <= 0 || height <= 0) continue
 +            const previous = sizes.get(target)
 +            if (previous?.width === width && previous?.height === height) continue
 +            sizes.set(target, { width, height })

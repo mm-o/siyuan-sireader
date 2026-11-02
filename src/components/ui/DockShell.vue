@@ -27,13 +27,14 @@
             :data-position="action.tooltipDir || props.toolbarTooltipDir || 'south'"
             data-tooltip-encoding="none"
             :aria-label="action.label"
-            @click.stop="$emit('toolbar-action', action.id)"
+            @click.stop="$emit('toolbar-action', action.id, $event)"
           >
             <svg><use :xlink:href="action.icon" /></svg>
           </button>
           <slot name="toolbar-start" />
         </div>
         <input
+          ref="searchInput"
           v-if="props.searchValue !== undefined"
           :value="props.searchValue"
           :placeholder="props.searchPlaceholder"
@@ -51,7 +52,7 @@
               :data-position="props.toolbarMenuAction.tooltipDir || props.toolbarTooltipDir || 'south'"
               data-tooltip-encoding="none"
               :aria-label="props.toolbarMenuAction.label"
-              @click.stop="$emit('toolbar-action', props.toolbarMenuAction.id)"
+              @click.stop="$emit('toolbar-action', props.toolbarMenuAction.id, $event)"
             >
               <svg><use :xlink:href="props.toolbarMenuAction.icon" /></svg>
             </button>
@@ -67,7 +68,7 @@
             :data-position="action.tooltipDir || props.toolbarTooltipDir || 'south'"
             data-tooltip-encoding="none"
             :aria-label="action.label"
-            @click.stop="$emit('toolbar-action', action.id)"
+            @click.stop="$emit('toolbar-action', action.id, $event)"
           >
             <svg><use :xlink:href="action.icon" /></svg>
           </button>
@@ -82,8 +83,34 @@
   </div>
 </template>
 
+<script lang="ts">
+import { defineComponent, h } from 'vue'
+
+export const FileTree = defineComponent({
+  props: { dense: Boolean },
+  setup(props, { slots }) {
+    return () => h('div', { class: ['fn__flex-1 fn__flex-column file-tree sy__file bs-view bs-tree-view', { 'bs-tree-view--dense': props.dense }] }, [
+      h('div', {
+        class: 'fn__flex-1 fn__hidescrollbar',
+        onMouseover: (event: MouseEvent) => (event.target as HTMLElement).hasAttribute('data-playlist-item') && event.stopPropagation(),
+        onClickCapture: (event: MouseEvent) => {
+          if ((event.target as HTMLElement).closest('[role="button"][aria-disabled="true"]')) { event.preventDefault(); event.stopPropagation() }
+        },
+        onKeydown: (event: KeyboardEvent) => {
+          const target = event.target as HTMLElement
+          if ((event.key === 'Enter' || event.key === ' ') && target.getAttribute('role') === 'button') { event.preventDefault(); target.click() }
+        },
+      }, slots.default?.()),
+    ])
+  },
+})
+</script>
+
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
+
+const searchInput = ref<HTMLInputElement>()
+defineExpose({ focusSearch: () => searchInput.value?.focus() })
 
 const slots = defineSlots<{
   default?: () => any
@@ -111,7 +138,7 @@ const props = defineProps<{
 
 const hasToolbar = computed(() => props.searchValue !== undefined || !!props.toolbarStartActions?.length || !!props.toolbarMenuAction || !!props.toolbarActions?.length || !!slots.toolbar || !!slots['toolbar-start'] || !!slots['toolbar-menu'] || !!slots['toolbar-end'])
 
-defineEmits<{ 'update:activeTab': [tab: string]; 'update:searchValue': [value: string]; 'search-enter': []; 'toolbar-action': [id: string] }>()
+defineEmits<{ 'update:activeTab': [tab: string]; 'update:searchValue': [value: string]; 'search-enter': []; 'toolbar-action': [id: string, event: MouseEvent] }>()
 </script>
 
 <style scoped lang="scss">
@@ -145,4 +172,12 @@ defineEmits<{ 'update:activeTab': [tab: string]; 'update:searchValue': [value: s
 :deep(.sr-body-stack-8){display:flex;flex-direction:column;gap:8px}
 :deep(.sr-body-stack-12){display:flex;flex-direction:column;gap:12px}
 @media (max-width:640px){.sr-shell{flex-direction:column !important}.sr-nav{width:100% !important;height:42px !important;flex-direction:row !important;padding:0 4px !important}}
+</style>
+
+<style>
+.bs-view.bs-tree-view{min-height:0;height:100%;padding:8px 0 0;box-sizing:border-box}
+.bs-view.bs-tree-view--dense{padding-top:2px}
+.bs-tree-view .b3-list{padding:0;margin:0}
+.bs-tree-view--dense .b3-list-item{padding-right:4px}
+.bs-tree-view .bs-tree-leaf-mark{fill:currentColor;opacity:.7}
 </style>

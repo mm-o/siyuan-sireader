@@ -7,8 +7,8 @@
 Transform SiYuan Notes into a professional eBook reader  
 Professional eBook reader for EPUB/PDF/MOBI/TXT/online novels. PDFs support highlights, ink, shapes, forms, stamps, signatures, images, screenshots, search, printing, export, and backlinks, with annotation notes, dictionary, translation, themes, and bookshelf management.
 
-[![Version](https://img.shields.io/badge/version-2.5.8-blue.svg)](https://github.com/your-repo/siyuan-sireader)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Version](https://img.shields.io/badge/version-2.6.0-blue.svg)](https://github.com/your-repo/siyuan-sireader)
+[![License](https://img.shields.io/badge/license-MIT%20%2B%20AGPL-green.svg)](LICENSE)
 [![SiYuan](https://img.shields.io/badge/SiYuan-3.0+-orange.svg)](https://github.com/siyuan-note/siyuan)
 
 [🌐 Website](https://sireader.745201.xyz) · [📖 Documentation](https://my.feishu.cn/wiki/C3ULw8pM6iY2qgk3aGVc5eManZe) · [🔌 Integration API](docs/integration-api.md) · Use the WeChat Mini Program “思源插件助手” to purchase · [👥 QQ Group](https://qm.qq.com/q/wpHDtsfxCw) · [📝 Changelog](https://my.feishu.cn/wiki/ZD81wv7fAiFnLckWWBycdmoTn7s)
@@ -18,6 +18,30 @@ Professional eBook reader for EPUB/PDF/MOBI/TXT/online novels. PDFs support high
 ---
 
 ## 📝 Latest Updates
+
+## v2.6.0 (2026-11-02)
+
+### Added
+
+- Added a notebook page and quick-note window, accessible from the sidebar and EPUB/PDF readers. Search for and add SiYuan documents, create groups, open documents for editing, and bind documents to the current book for quick access.
+- The quick-note window can be pinned. An empty notebook suggests adding frequently used documents, and the prompt disappears once content is added.
+
+### Improved
+
+- Simplified EPUB/PDF reflow: removed unused legacy iframe styling, empty clock updates, and the old PDF page-cache interface; unified EPUB override styles and shared PDF types; reused committed source-PDF snapshots to reduce repeated exports and page matching.
+- Consolidated the reflow main-thread service, shared types, and coordinate mapping, reducing production modules from 9 to 5. Worker messaging is now internal, and related tests are consolidated.
+- Preserved the reflow core and service directories in packaged source to prevent files with the same name from overwriting each other.
+- PDF reflow now generates a PDF with a real text layer and opens it in the same EmbedPDF reader. Native reading features—including pagination, zoom, selection, annotations, search, drawing, screenshots, and export—use the same reader, replacing the separate text layer and manual selection/annotation bridge.
+- Reflow annotations retain their character-position mapping to the source. Edits, deletions, and mappings restored for legacy annotations stay in sync with the source. OCR text and graphic annotations without reliable mappings appear as page comments on the source to prevent misplaced highlights.
+
+### Fixed
+
+- Fixed reader tabs staying on a loading screen when restored in a new window or moved from a tab into a new window.
+- Fixed the “New window” setting opening the reader in a new tab in the current window.
+- Fixed flickering caused by redundant layout updates when switching from a document tab back to the EPUB reader.
+- Fixed borders appearing in images copied or inserted into documents from PDF shapes with no fill or stroke color. To insert a borderless image: select a shape tool → set the line width → set both fill and stroke colors to “None” → draw the shape around the desired area → insert the annotation into a document.
+- Kept annotations and backlinks separate between the reflowed PDF and source, mapped reading progress to source pages, waited for pending writes before switching, and restored the previous document if loading failed.
+- Fixed notebook search results that could not be opened from the reader, and the `Field [notebook] must not be null` error when hovering over document-tree items.
 
 ## v2.5.8 (2026-10-29)
 
@@ -504,7 +528,7 @@ A: Try rescaling or rotating the page, annotations will auto re-render
 
 ## 📄 License
 
-This project is licensed under the [MIT](LICENSE) License
+Original SiReader code is licensed under [MIT](LICENSE). PDF reflow bundles AGPL components; combined distributions must comply with their licenses. See [third-party notices](THIRD_PARTY_NOTICES.md).
 
 ---
 

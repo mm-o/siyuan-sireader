@@ -150,7 +150,7 @@
               </template>
               <template v-else-if="f.key === 'bind'">
                 <input v-if="!editForm.bindDocId" v-model="bindSearch" class="b3-text-field sr-input" :placeholder="tx('searchDoc', 'Search documents...')" @input="searchBindDoc" />
-                <div v-if="bindResults.length" class="sr-chips"><button v-for="d in bindResults.slice(0, 8)" :key="getDocId(d) || d.path" class="sr-chip" type="button" @click.stop="selectBindDoc(d)">{{ d.hPath || d.content || d.name || '无标题' }}</button></div>
+                <div v-if="bindResults.length" class="sr-chips"><button v-for="d in bindResults.slice(0, 8)" :key="createDocInfo(d).id || d.path" class="sr-chip" type="button" @click.stop="selectBindDoc(d)">{{ d.hPath || d.content || d.name || '无标题' }}</button></div>
                 <div v-else-if="editForm.bindDocId"><div class="sr-chips sr-chips-stack"><span class="sr-chip is-active">{{ editForm.bindDocName }}</span><button class="sr-chip is-danger" type="button" @click="unbindDoc">{{ tx('unbind', 'Unbind') }}</button></div></div>
               </template>
             </div>
@@ -177,7 +177,7 @@ import { bookInGroup, bookshelfManager, SORTS, STATUS_OPTIONS, RATING_OPTIONS, V
 import View from '@/components/bookshelf/View.vue'
 import DockShell from './ui/DockShell.vue'
 import { isMobile } from '@/utils/mobile'
-import { searchDocs } from '@/composables/useSetting'
+import { createDocInfo, searchDocs } from '@/composables/useSetting'
 import { useBookImport } from '@/composables/useBookImport'
 import { useLicense } from '@/core/license'
 import { importPdfAnnotationsForBook } from '@/core/pdfAnnotationImport'
@@ -619,9 +619,8 @@ const saveEdit = async () => {
 }
 const toggleTag = (tag: string) => { const tags = parseList(editForm.value.tags); toggleArrayItem(tags, tag); editForm.value.tags = tags.join(', ') }
 const toggleGroup = (gid: string) => toggleArrayItem(editForm.value.groups, gid)
-const getDocId = (d: any) => d.id || d.blockID || d.rootID || d.path?.split('/').pop()?.replace('.sy', '') || ''
 const searchBindDoc = async () => { const q = bindSearch.value.trim(); bindResults.value = q ? await searchDocs(q).catch(() => []) : [] }
-const selectBindDoc = (d: any) => { const id = getDocId(d); if (!id) return showMessage('文档 ID 无效', 2000, 'error'); Object.assign(editForm.value, { bindDocId: id, bindDocName: d.hPath || d.content || d.name || '无标题' }); bindSearch.value = ''; bindResults.value = [] }
+const selectBindDoc = (d: any) => { const doc = createDocInfo(d); if (!doc.id) return showMessage('文档 ID 无效', 2000, 'error'); Object.assign(editForm.value, { bindDocId: doc.id, bindDocName: doc.name }); bindSearch.value = ''; bindResults.value = [] }
 const unbindDoc = () => { editForm.value.bindDocId = ''; editForm.value.bindDocName = '' }
 const detailFields = computed(() => {
   if (!panelBook.value || modalMode.value !== 'detail') return []

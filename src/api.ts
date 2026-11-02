@@ -336,6 +336,8 @@ export async function getBlockByID(blockId: string): Promise<Block> {
   return data[0];
 }
 
+export const createDocInfo = (d: any) => ({ id: d.id || d.blockID || d.rootID || d.path?.split('/').pop()?.replace('.sy', '') || '', name: d.hpath || d.hPath || d.name || d.content || '无标题', path: d.path || '', notebook: d.box || d.notebook || '' })
+
 export async function searchDocs(keyword: string): Promise<any[]> {
   const url = "/api/filetree/searchDocs";
   const data = await request(url, { k: keyword });

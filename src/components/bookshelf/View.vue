@@ -1,6 +1,5 @@
 ﻿<template>
-  <div v-if="mode === 'compact'" class="fn__flex-1 fn__flex-column file-tree sy__file bs-view bs-tree-view" :class="{ 'bs-tree-view--dense': dense }" @dragover="handleRootDragOver" @drop="handleRootDrop">
-    <div class="fn__flex-1 fn__hidescrollbar" @mouseover="onCompactHover">
+  <FileTree v-if="mode === 'compact'" :dense="dense" @dragover="handleRootDragOver" @drop="handleRootDrop">
       <ul v-for="root in compactTree" :key="root.key" class="b3-list b3-list--background">
         <li
           class="b3-list-item b3-list-item--hide-action"
@@ -61,8 +60,7 @@
           </li>
         </ul>
       </ul>
-    </div>
-  </div>
+  </FileTree>
 
   <div v-else-if="mode === 'grid'" class="bs-view bs-grid" :style="gridStyle" @dragover="handleRootDragOver" @drop="handleRootDrop">
       <div class="bs-home-drop" :class="{ 'is-visible': showHomeDrop, 'is-drop-target': dragHomeActive }" @dragover="handleHomeDragOver" @dragleave="handleHomeDragLeave" @drop="handleHomeDrop">
@@ -189,6 +187,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { FileTree } from '@/components/ui/DockShell.vue'
 import type { BookImportItem } from '@/composables/useBookImport'
 import { bookInGroup, canDragBook, type Book, type BookStatus, type BookshelfViewMode, type GroupConfig } from '@/core/bookshelf'
 
@@ -423,7 +422,6 @@ const authorText = (item: Item) => {
   const author = isBook(item) ? item.data.author : item.data.preview?.author
   return author && !['未知作者', 'Unknown Author', '未知', '-'].includes(String(author).trim()) ? author : (props.i18n?.unknownAuthor || 'Unknown Author')
 }
-const onCompactHover = (event: MouseEvent) => (event.target as HTMLElement).hasAttribute('data-playlist-item') && event.stopPropagation()
 const compactMeta = (item: Item) => isGroup(item) ? (props.showGroupMeta ? countText(groupCount(item.data)) : '') : isBook(item) ? (hidden('progress') ? '' : props.getProgress(item.data)) : importStateText(item.data)
 const compactStatusLabel = (item: Item) => isBook(item) && !hidden('status') ? props.statusMap[item.data.status] : ''
 const compactStatusClass = (item: Item) => isBook(item) ? `bs-status-dot--${item.data.status}` : ''
@@ -471,12 +469,6 @@ const tagStyle = (tag: string) => {
 
 <style scoped lang="scss">
 .bs-view{min-height:0;height:100%;padding:0;box-sizing:border-box}
-.bs-tree-view{padding-top:8px}
-.bs-tree-view--dense{padding-top:2px}
-.bs-tree-view .b3-list{padding:0;margin:0}
-.bs-tree-view--dense .b3-list-item{padding-right:4px}
-.bs-tree-children{padding:0;margin:0}
-.bs-tree-leaf-mark{fill:currentColor;opacity:.7}
 .bs-status-dot{flex:0 0 auto;width:7px;height:7px;margin:0 0 0 2px;border-radius:50%;box-shadow:0 0 0 1px color-mix(in srgb,currentColor 28%,transparent)}
 .bs-status-dot--unread{background:#f59e0b;color:#f59e0b}
 .bs-status-dot--reading{background:var(--b3-theme-primary);color:var(--b3-theme-primary)}

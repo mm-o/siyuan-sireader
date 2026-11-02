@@ -7,7 +7,7 @@
 import { computed, createApp, defineComponent, h, onMounted, onUnmounted, provide, ref, toRaw, watch, type Component } from 'vue'
 import { MotionPlugin } from '@vueuse/motion'
 import { openTab, showMessage } from 'siyuan'
-import { usePlugin, setOpenSettingHandler, registerCleanup } from '@/main'
+import { usePlugin, setOpenSettingHandler, registerCleanup, registerReaderTab } from '@/main'
 import { useSetting, settingsManager, parseBookLink, DEFAULT_NAV_ITEMS } from '@/composables/useSetting'
 import { useStats } from '@/composables/useStats'
 import { READER_ICON_ID } from '@/utils/icon'
@@ -17,6 +17,8 @@ import { listPageScripts, registerPageScript, setPageScriptEnabled, unregisterPa
 import DockShell from '@/components/ui/DockShell.vue'
 import BookSearch from '@/components/BookSearch.vue'
 import BookShelf from '@/components/BookShelf.vue'
+import QuickNotes from '@/components/QuickNotes.vue'
+import { createQuickNotesWindow } from '@/utils/quickNotesWindow'
 import OnlineReader from '@/components/OnlineReader.vue'
 import ReaderToc from '@/components/ReaderToc.vue'
 import ReaderMarks from '@/components/ReaderMarks.vue'
@@ -34,6 +36,13 @@ import { registerRecentBooksWidget } from '@/integrations/recentBooksWidget'
 const plugin = usePlugin()
 const { settings, isLoaded } = useSetting(plugin)
 const showStats = ref(false)
+const quickNotesWindow = createQuickNotesWindow(plugin)
+const handleOpenQuickNotes = () => quickNotesWindow.open()
+window.addEventListener('sireader:open-quick-notes', handleOpenQuickNotes)
+registerCleanup(() => {
+  window.removeEventListener('sireader:open-quick-notes', handleOpenQuickNotes)
+  quickNotesWindow.destroy()
+})
 
 const WEREAD_TITLE = '微信读书'
 const normalizeWereadReaderUrl = (url = '') => {
@@ -147,6 +156,7 @@ const SettingsDock = defineComponent({
             onRead: handleRead,
             style: { display: activeTab.value === 'bookshelf' ? '' : 'none' },
           }),
+          activeTab.value === 'notes' ? h(QuickNotes, { plugin }) : null,
           activeTab.value === 'toc'
             ? h(ReaderToc, { mode: 'toc', i18n: props.i18n })
             : null,
@@ -207,18 +217,6 @@ const mountReader = async (el: HTMLElement, props: any) => {
   ;(app as any).resize = () => vm?.resize?.()
   return app
 }
-
-const unmountTabApp = (tab: any) => {
-  tab._app?.unmount?.()
-  tab._app = null
-}
-
-const registerReaderTab = (type: string, init: (tab: any) => void | Promise<void>) => plugin.addTab({
-  type,
-  init() { return init(this as any) },
-  resize() { (this as any)._app?.resize?.() },
-  destroy() { unmountTabApp(this) },
-})
 
 // 暴露渲染接口供其他插件调用
 ;(window as any).sireader = {

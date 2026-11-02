@@ -25,9 +25,9 @@ function buildKernelPlugin(outDir: string) {
     },
   }
 }
-function buildOfflineTTSWorker(outDir: string, targetDir: string) {
+function buildPluginWorker(outDir: string, targetDir: string, entry: string) {
   return {
-    name: 'build-offline-tts-worker',
+    name: `build-${entry}-worker`,
     async buildStart() {
       await viteBuild({
         configFile: false,
@@ -37,14 +37,14 @@ function buildOfflineTTSWorker(outDir: string, targetDir: string) {
           emptyOutDir: false,
           sourcemap: false,
           minify: true,
-          lib: { entry: resolve(__dirname, 'src/services/offlineTTS.worker.ts'), name: 'SiReaderOfflineTTSWorker', formats: ['iife'], fileName: () => 'offlineTTS.worker.js' },
+          lib: { entry: resolve(__dirname, `src/services/${entry}.worker.ts`), name: 'SiReaderWorker', formats: ['iife'], fileName: () => `${entry}.worker.js` },
         },
       })
     },
     async writeBundle() {
-      const workerPath = resolve(outDir, 'offlineTTS.worker.js')
+      const workerPath = resolve(outDir, `${entry}.worker.js`)
       await mkdir(targetDir, { recursive: true })
-      await copyFile(workerPath, resolve(targetDir, 'offlineTTS.worker.js'))
+      await copyFile(workerPath, resolve(targetDir, `${entry}.worker.js`))
     },
   }
 }
@@ -142,6 +142,13 @@ export default defineConfig(({
       vue(),
       viteStaticCopy({
         targets: [
+          { src: ['./node_modules/mupdf/dist/mupdf.js', './node_modules/mupdf/dist/mupdf-wasm.js', './node_modules/mupdf/dist/mupdf-wasm.wasm'], dest: './mupdf/' },
+          { src: './node_modules/mupdf/LICENSE', dest: './mupdf/' },
+          { src: ['./THIRD_PARTY_NOTICES.md', './LICENSE'], dest: './' },
+          { src: './src/vendor/scribe-layout', dest: './sources/' },
+          { src: './src/core/*Reflow*.ts', dest: './sources/reflow/core/' },
+          { src: './src/services/pdfReflow*.ts', dest: './sources/reflow/services/' },
+          { src: ['./src/components/EmbedPdfReader.vue', './src/components/Reader.vue', './vite.config.ts', './package.json', './plugin.json'], dest: './sources/integration/' },
           {
             src: "./README*.md",
             dest: "./",
@@ -228,7 +235,8 @@ export default defineConfig(({
       rollupOptions: {
         plugins: [
           buildKernelPlugin(distDir),
-          buildOfflineTTSWorker(resolve(__dirname, 'node_modules/.cache/siyuan-sireader'), resolve(__dirname, distDir)),
+          buildPluginWorker(resolve(__dirname, 'node_modules/.cache/siyuan-sireader'), resolve(__dirname, distDir), 'offlineTTS'),
+          buildPluginWorker(resolve(__dirname, 'node_modules/.cache/siyuan-sireader'), resolve(__dirname, distDir), 'pdfReflow'),
           ...(isWatch
             ? [
                 ...(useLiveReload ? [livereload(devDistDir)] : []),

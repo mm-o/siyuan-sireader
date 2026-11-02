@@ -189,7 +189,7 @@ export const pdfMarkFromAnnotation = (annotation: any, annotations: any[] = []) 
 export const isPdfImageAnnotation = (annotation: any) => annotation?.rect && [4, 5, 6, 8, 15].includes(Number(annotation.type))
 export const capturePdfAnnotationImage = (renderScope: any, annotation: any) =>
   isPdfImageAnnotation(annotation)
-    ? taskToPromise<Blob>(renderScope?.renderPageRect?.({ pageIndex: annotation.pageIndex, rect: annotation.rect, options: { imageType: 'image/png', scaleFactor: 2, withAnnotations: true } })).catch(() => null)
+    ? taskToPromise<Blob>(renderScope?.renderPageRect?.({ pageIndex: annotation.pageIndex, rect: annotation.rect, options: { imageType: 'image/png', scaleFactor: 2, withAnnotations: !(annotation.strokeColor === 'transparent' && (!annotation.color || annotation.color === 'transparent')) } })).catch(() => null)
     : null
 
 export const pdfSelectionFromAnnotation = (annotation: any) => {

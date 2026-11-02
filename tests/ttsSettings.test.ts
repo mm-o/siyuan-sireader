@@ -25,6 +25,34 @@ describe('TTS setting defaults', () => {
     expect((await settingsManager.get()).tts?.autoTurnPage).toBe(false)
   })
 
+  it('keeps EPUB book styles by default and merges saved override choices', async () => {
+    vi.resetModules()
+    const { settingsManager } = await import('@/composables/useSetting')
+    const defaults = await settingsManager.get()
+    expect(defaults.textSettings.overrideFontSize).toBe(false)
+    expect(defaults.paragraphSettings.overrideLineHeight).toBe(false)
+    storage.settings = { textSettings: { overrideAlignment: true, textAlign: 'left' }, paragraphSettings: { overrideIndent: true, textIndent: 1 } }
+    const saved = await settingsManager.get()
+    expect(saved.textSettings.overrideAlignment).toBe(true)
+    expect(saved.textSettings.textAlign).toBe('left')
+    expect(saved.textSettings.overrideFontSize).toBe(false)
+    expect(saved.paragraphSettings.overrideIndent).toBe(true)
+    expect(saved.paragraphSettings.textIndent).toBe(1)
+    expect(saved.paragraphSettings.overrideLineHeight).toBe(false)
+  })
+
+  it('restores disabled overrides even after repeatedly editing fresh and reset settings', async () => {
+    vi.resetModules()
+    const { settingsManager, resetToDefaults } = await import('@/composables/useSetting')
+    const settings = await settingsManager.get()
+    settings.textSettings.overrideFontSize = true
+    resetToDefaults(settings)
+    expect(settings.textSettings.overrideFontSize).toBe(false)
+    settings.paragraphSettings.overrideIndent = true
+    resetToDefaults(settings)
+    expect(settings.paragraphSettings.overrideIndent).toBe(false)
+  })
+
   it('preserves a saved automatic page turning preference', async () => {
     storage.settings = { tts: { autoTurnPage: true } }
     vi.resetModules()
