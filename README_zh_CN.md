@@ -7,7 +7,7 @@
 让思源笔记变身专业阅读器，支持 EPUB/PDF/TXT/在线小说  
 专业电子书阅读器，支持 EPUB/PDF/MOBI/TXT/在线小说；PDF 支持高亮、墨迹、形状、表单、印章、签名、图片、截图、搜索、打印、导出和回链，并提供标注笔记、词典、翻译、主题与书架管理
 
-[![Version](https://img.shields.io/badge/version-2.6.0-blue.svg)](https://github.com/your-repo/siyuan-sireader)
+[![Version](https://img.shields.io/badge/version-2.6.1-blue.svg)](https://github.com/your-repo/siyuan-sireader)
 [![License](https://img.shields.io/badge/license-MIT%20%2B%20AGPL-green.svg)](LICENSE)
 [![SiYuan](https://img.shields.io/badge/SiYuan-3.0+-orange.svg)](https://github.com/siyuan-note/siyuan)
 
@@ -18,6 +18,13 @@
 ---
 
 ## 📝 最新更新
+
+## v2.6.1 (2026-11-03)
+
+### 修复
+
+- 修复 PDF 底部工具栏笔记和隐藏图标路径绘制异常、显示不完整的问题。
+- 统一 PDF 原生目录、批注与阅读器目录的翻页跳转动画设置，按当前设置即时跳转或平滑滚动。
 
 ## v2.6.0 (2026-11-02)
 

@@ -7,7 +7,7 @@
 Transform SiYuan Notes into a professional eBook reader  
 Professional eBook reader for EPUB/PDF/MOBI/TXT/online novels. PDFs support highlights, ink, shapes, forms, stamps, signatures, images, screenshots, search, printing, export, and backlinks, with annotation notes, dictionary, translation, themes, and bookshelf management.
 
-[![Version](https://img.shields.io/badge/version-2.6.0-blue.svg)](https://github.com/your-repo/siyuan-sireader)
+[![Version](https://img.shields.io/badge/version-2.6.1-blue.svg)](https://github.com/your-repo/siyuan-sireader)
 [![License](https://img.shields.io/badge/license-MIT%20%2B%20AGPL-green.svg)](LICENSE)
 [![SiYuan](https://img.shields.io/badge/SiYuan-3.0+-orange.svg)](https://github.com/siyuan-note/siyuan)
 
@@ -18,6 +18,13 @@ Professional eBook reader for EPUB/PDF/MOBI/TXT/online novels. PDFs support high
 ---
 
 ## 📝 Latest Updates
+
+## v2.6.1 (2026-11-03)
+
+### Fixed
+
+- Fixed malformed paths that clipped the Notes and Hide icons in the PDF bottom toolbar.
+- Unified page-turn animation settings for the native PDF outline and comments with the reader's table of contents, using instant jumps or smooth scrolling according to the current setting.
 
 ## v2.6.0 (2026-11-02)
 

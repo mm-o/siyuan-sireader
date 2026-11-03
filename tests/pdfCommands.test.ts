@@ -40,3 +40,22 @@ test('backlink command updates custom data through the annotation API', async ()
   expect(scope.updateAnnotation).toHaveBeenCalledWith(0, 'a', { custom: { text: 'keep', blockId: 'block' } })
 })
 
+test('native PDF navigation follows page animation without losing its destination', () => {
+  const setupNode = ast.statements.find(node => ts.isVariableStatement(node) && node.declarationList.declarations.some(item => item.name.getText(ast) === 'setupPdfNavigation'))!
+  const setupScript = ts.transpileModule(setupNode.getText(ast), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText
+  let behavior = 'instant'
+  const setupNavigation = new Function('pdfPageBehavior', `${setupScript}; return setupPdfNavigation`)(() => behavior)
+  const scrollToPage = vi.fn()
+  const plugin = { scrollToPage, provides: () => ({ scrollToPage: (options: any) => plugin.scrollToPage(options, 'pdf') }) }
+  const nativeScope = plugin.provides()
+  setupNavigation({ getPlugin: () => plugin })
+  const target = { pageNumber: 9, pageCoordinates: { x: 12, y: 34 }, alignY: 25, behavior: 'smooth' }
+  nativeScope.scrollToPage(target)
+  expect(scrollToPage).toHaveBeenLastCalledWith({ ...target, behavior: 'instant' }, 'pdf')
+  behavior = 'smooth'
+  nativeScope.scrollToPage(target)
+  expect(scrollToPage).toHaveBeenLastCalledWith(target, 'pdf')
+  nativeScope.scrollToPage({ ...target, behavior: 'instant' })
+  expect(scrollToPage).toHaveBeenLastCalledWith({ ...target, behavior: 'instant' }, 'pdf')
+})
+

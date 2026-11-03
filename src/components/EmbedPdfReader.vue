@@ -175,13 +175,8 @@ const installPdfShortcutGuard = () => {
   document.addEventListener('keydown', onKeydown, true)
   return () => document.removeEventListener('keydown', onKeydown, true)
 }
-const pdfIcon = (body: string) => `<svg viewBox="0 0 24 24" style="width:16px;height:16px" fill="none" stroke="currentColor" stroke-width="2">${body}</svg>`
-const sidebarNotesIcon = () => {
-  const use = [...document.querySelectorAll('.sr-nav-tab use')].find(item => item.getAttribute('xlink:href') === '#lucide-notebook-pen' || item.getAttribute('href') === '#lucide-notebook-pen')
-  const id = (use?.getAttribute('xlink:href') || use?.getAttribute('href') || '#lucide-notebook-pen').slice(1)
-  return pdfIcon(document.getElementById(id)?.innerHTML || '')
-}
-const PDF_BOTTOM_ICONS = { toc: pdfIcon('<path d="M4 7h16M4 12h16M4 17h16"/>'), notes: sidebarNotesIcon, show: pdfIcon('<path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>'), hide: pdfIcon('<path d="m2 2 20 20M10.6 10.6a2 2 0 0 0 2.8 2.8M7.4 7.4C3.8 9.2 2 12 2 12s3 7 10 7c1.6 0 3-.4 4.2-1M14.1 5.2C13.4 5.1 12.7 5 12 5 5 5 2 12 2 12c.8 1.8 2 3.3 3.5 4.4M17.7 17.7C20.5 15.9 22 12 22 12s-3-7-10-7"/>'), close: pdfIcon('<path d="M18 6 6 18M6 6l12 12"/>') }
+const pdfIcon = (id: string) => `<svg viewBox="0 0 24 24" style="width:16px;height:16px">${document.getElementById(id)?.innerHTML || ''}</svg>`
+const PDF_BOTTOM_ICONS = { toc: 'lucide-menu', notes: 'lucide-notebook-pen', show: 'lucide-eye', hide: 'lucide-eye-off', close: 'lucide-x' }
 const getCapability = <T = any>(registry: PluginRegistry, pluginId: string): T | null =>
   (registry.getPlugin(pluginId) as any)?.provides?.() || null
 const disposePdfCommands = (commands: any) => { for (const id of pdfCommandIds) { try { commands?.unregisterCommand?.(id) } catch {} }; pdfCommandIds = [] }
@@ -201,7 +196,13 @@ const pdfThemePreference = () => embedPdfThemePreference(props.theme, rootRef.va
 const normalizePdfZoomLevel = (value: unknown) => value === 'automatic' || value === 'fit-page' || value === 'fit-width' || (typeof value === 'number' && Number.isFinite(value) && value > 0) ? value : undefined
 const pdfZoomLevel = () => normalizePdfZoomLevel(props.settings?.pdfZoomLevel)
 const pdfInitialZoomLevel = () => { const value = pdfZoomLevel(); return typeof value === 'number' ? undefined : value }
-const pdfPageBehavior = () => props.settings?.pageAnimation === 'push' ? 'instant' : 'smooth'
+const pdfPageBehavior = () => readerSettings()?.pageAnimation === 'push' ? 'instant' : 'smooth'
+const setupPdfNavigation = (registry: PluginRegistry) => {
+  // 2.15.1 native outline/comment navigation hardcodes smooth scrolling.
+  const scroll = registry.getPlugin('scroll') as any
+  const scrollToPage = scroll.scrollToPage.bind(scroll)
+  scroll.scrollToPage = (options: any, documentId?: string) => scrollToPage({ ...options, behavior: options.behavior === 'instant' ? 'instant' : pdfPageBehavior() }, documentId)
+}
 const readerSettings = () => ((window as any).__sireader_settings || props.settings) as ReaderSettings | undefined
 const ensurePageThemeStyle = () => {
   const shadow = (activeContainer as any)?.shadowRoot as ShadowRoot | undefined
@@ -403,7 +404,7 @@ const setupPdfBottomButtons = (registry: PluginRegistry) => {
   const labelToolbar = () => toolbarHidden ? (props.i18n?.showTopToolbar || 'Show top toolbar') : (props.i18n?.hideTopToolbar || 'Hide top toolbar')
   const paint = (button: HTMLButtonElement, label: string, icon: string) => {
     button.title = button.ariaLabel = label
-    button.innerHTML = icon
+    button.innerHTML = pdfIcon(icon)
   }
   const add = () => {
     const bar = shadow.querySelector('[data-overlay-id="page-controls"] .pointer-events-auto > div') as HTMLElement | null
@@ -428,7 +429,7 @@ const setupPdfBottomButtons = (registry: PluginRegistry) => {
     }
     return (
       mk('sireader-pdf-toc', props.i18n?.toc || props.i18n?.sidebarToc || 'Table of Contents', PDF_BOTTOM_ICONS.toc, () => window.dispatchEvent(new Event('sireader:togglePdfToc'))) &&
-      mk('sireader-pdf-notes', props.i18n?.quickNotes || 'Notebook', PDF_BOTTOM_ICONS.notes(), () => window.dispatchEvent(new Event('sireader:open-quick-notes'))) &&
+      mk('sireader-pdf-notes', props.i18n?.quickNotes || 'Notebook', PDF_BOTTOM_ICONS.notes, () => window.dispatchEvent(new Event('sireader:open-quick-notes'))) &&
       mk('sireader-pdf-toolbar', labelToolbar(), PDF_BOTTOM_ICONS.hide, toggleToolbar) &&
       (!isMobile() || mk('sireader-pdf-close', props.i18n?.close || 'Close', PDF_BOTTOM_ICONS.close, () => window.dispatchEvent(new CustomEvent('reader:mobile-close'))))
     )
@@ -1117,6 +1118,7 @@ const mountPdfViewer = async () => {
     }
     if (token !== viewerToken || viewerHostRef.value !== host) return void viewer?.remove?.()
     activeViewer = viewer
+    setupPdfNavigation(registry)
     handleInit(activeViewer)
     pdfPreparing.value = ''
     void handleReady(registry).catch(error => failPdfLoad(error))
