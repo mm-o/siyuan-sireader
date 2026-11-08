@@ -20,7 +20,53 @@ test('normalizes Siyuan Cloud protocol and temporary-origin URLs to a readable s
 import { ensurePdfRecordMigrated } from '@/core/dataMigration'
 import { ReaderDatabase } from '@/core/database'
 import { diagnosticLog } from '@/core/diagnostics'
-import { BookshelfManager, mergeBookCompletion, compareBookshelfValues } from '@/core/bookshelf'
+import { BookshelfManager, mergeBookCompletion, compareBookshelfValues, listCloudDownloadFolders, uploadCloudBook } from '@/core/bookshelf'
+
+test('cloud download can browse mount names without provider metadata and rejects read-only folders', async () => {
+  const fetchMock = vi.fn()
+    .mockResolvedValueOnce(new Response(JSON.stringify({ code: 200, data: { provider: 'siyuan-storage', content: [
+      { name: 'My drive', is_dir: true },
+      { name: 'Book.pdf', is_dir: false },
+    ] } })))
+    .mockResolvedValueOnce(new Response(JSON.stringify({ code: 200, data: { provider: 'webdav', write: false } })))
+    .mockResolvedValueOnce(new Response(JSON.stringify({ code: 200, data: { provider: 'webdav', write: true } })))
+  vi.stubGlobal('fetch', fetchMock)
+  try {
+    await expect(listCloudDownloadFolders('/', 'test-token')).resolves.toMatchObject({
+      folders: [{ name: 'My drive', path: '/My drive' }],
+      writable: false,
+    })
+    await expect(listCloudDownloadFolders('/My drive', 'test-token')).resolves.toMatchObject({ writable: false })
+    await expect(listCloudDownloadFolders('/My drive/books', 'test-token')).resolves.toMatchObject({ writable: true })
+  } finally {
+    vi.unstubAllGlobals()
+  }
+})
+
+test('cloud upload sends the book bytes with an encoded path and refuses to overwrite', async () => {
+  const fetchMock = vi.fn()
+    .mockResolvedValueOnce(new Response(JSON.stringify({ code: 200 })))
+    .mockResolvedValueOnce(new Response(JSON.stringify({ code: 403, message: 'file exists' })))
+  const file = new File(['book bytes'], 'Book #1.epub', { type: 'application/epub+zip' })
+  vi.stubGlobal('fetch', fetchMock)
+  try {
+    await expect(uploadCloudBook('/My drive', file, 'test-token'))
+      .resolves.toBe('/plugin/private/siyuan-cloud/p/My drive/Book %231.epub')
+    expect(fetchMock).toHaveBeenCalledWith('/plugin/private/siyuan-cloud/api/fs/put', {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/epub+zip',
+        'File-Path': '%2FMy%20drive%2FBook%20%231.epub',
+        Overwrite: 'false',
+        'X-Siyuan-Cloud-Authorization': 'test-token',
+      },
+      body: file,
+    })
+    await expect(uploadCloudBook('/My drive', file, 'test-token')).rejects.toThrow('file exists')
+  } finally {
+    vi.unstubAllGlobals()
+  }
+})
 
 test('bookshelf sorting defaults to newest-first for numeric fields', () => {
   expect(compareBookshelfValues(10, 5, 'time')).toBe(-1)

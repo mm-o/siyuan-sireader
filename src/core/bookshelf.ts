@@ -111,10 +111,19 @@ export const urlFingerprint = (url: string, extra = '') => `url:${url}${extra ? 
 export const normalizeCloudPath = (path = '/') => `/${path}`.replace(/\/+/g, '/').replace(/\/$/, '') || '/'
 export const siyuanCloudUrl = (path: string) => `${SIYUAN_CLOUD_BASE}/p${decodeURI(encodeURI(normalizeCloudPath(path))).replace(/#/g, '%23').replace(/\?/g, '%3F')}`
 export const isCloudBookPath = (path: string) => BOOK_RE.test(path)
-const cloudApi = async (api: string, body: any) => {
-  const r = await fetch(`${SIYUAN_CLOUD_BASE}/api/fs/${api}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json())
-  return r?.code === 0 || r?.code === 200 ? r.data || {} : {}
+const cloudApi = async (api: string, options: RequestInit, strict = false) => {
+  const response = await fetch(`${SIYUAN_CLOUD_BASE}/api/fs/${api}`, options)
+  if (strict && !response.ok) throw new Error(`SiYuan Cloud HTTP ${response.status}`)
+  const result = await response.json()
+  if (result?.code === 0 || result?.code === 200) return result.data || {}
+  if (strict) throw new Error(result?.message || 'SiYuan Cloud request failed')
+  return {}
 }
+const cloudJson = (body: object, token = ''): RequestInit => ({
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json', ...(token ? { 'X-Siyuan-Cloud-Authorization': token } : {}) },
+  body: JSON.stringify(body),
+})
 const mapCloudNodes = (items: any[], parent = '/') => items.map(x => {
   const p = normalizeCloudPath(x.parent || parent), path = normalizeCloudPath(x.path || `${p}/${x.name}`)
   return { name: x.name, path, parent: p, size: x.size || 0, is_dir: !!(x.is_dir ?? x.isDir) }
@@ -124,8 +133,30 @@ export const mergeCloudNodes = (current: SiyuanCloudNode[], items: any[], parent
   const p = parent && normalizeCloudPath(parent), next = mapCloudNodes(items, p || '/')
   return Array.from(new Map([...(p ? current.filter(x => x.parent !== p) : []), ...(p ? cloudParents(p) : []), ...next.flatMap(x => [...cloudParents(x.parent), x])].map(x => [x.path, x])).values())
 }
-export const listCloudNodes = async (path = '/') => (await cloudApi('list', { path: normalizeCloudPath(path), per_page: 0 })).content || []
-export const searchCloudNodes = async (keywords: string) => (await cloudApi('search', { parent: '/', keywords, per_page: 50 })).content || []
+export const listCloudNodes = async (path = '/') => (await cloudApi('list', cloudJson({ path: normalizeCloudPath(path), per_page: 0 }))).content || []
+export const searchCloudNodes = async (keywords: string) => (await cloudApi('search', cloudJson({ parent: '/', keywords, per_page: 50 }))).content || []
+export const listCloudDownloadFolders = async (path: string, token: string) => {
+  const result = await cloudApi('list', cloudJson({ path, per_page: 0 }, token), true)
+  return {
+    folders: mapCloudNodes(result.content || [], path).filter(node => node.is_dir),
+    writable: path !== '/' && !!result.provider
+      && !['siyuan-storage', 'siyuan-workspace'].includes(result.provider) && result.write !== false,
+  }
+}
+export const uploadCloudBook = async (folder: string, file: File, token: string) => {
+  const path = normalizeCloudPath(`${folder}/${file.name.replace(/[\\/]/g, '_')}`)
+  await cloudApi('put', {
+    method: 'PUT',
+    headers: {
+      'Content-Type': file.type || 'application/octet-stream',
+      'File-Path': encodeURIComponent(path),
+      'Overwrite': 'false',
+      ...(token ? { 'X-Siyuan-Cloud-Authorization': token } : {}),
+    },
+    body: file,
+  }, true)
+  return siyuanCloudUrl(path)
+}
 export const cloudNodesToItems = (nodes: SiyuanCloudNode[]) => nodes.map((r, i) => r.is_dir
   ? { type: 'group' as const, data: { id: r.path, name: r.name, parentId: r.parent === '/' ? '' : r.parent, order: i, type: 'folder' as const } }
   : { type: 'book' as const, data: { url: r.path, title: r.name.replace(/\.[^.]+$/, ''), author: r.size ? `${(r.size / 1024 / 1024).toFixed(1)} MB` : '-', cover: '', format: (r.name.split('.').pop()?.toLowerCase() === 'azw' ? 'azw3' : r.name.split('.').pop()?.toLowerCase()) as BookFormat, path: r.path, size: r.size || 0, status: 'unread' as BookStatus, progress: 0, time: 0, chapter: 0, total: 0, pos: {}, rating: 0, meta: {}, tags: [], groups: r.parent === '/' ? [] : [r.parent], read: 0, added: 0, finished: 0 } }
