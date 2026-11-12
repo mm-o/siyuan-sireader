@@ -1,6 +1,6 @@
 {
   "name": "siyuan-sireader",
-  "version": "2.6.1",
+  "version": "2.7.0",
   "type": "module",
   "description": "专业电子书阅读器，支持 EPUB/PDF/MOBI/TXT/在线小说；PDF 支持标注、表单、印章、签名、截图、搜索、打印、导出和回链，并提供词典、翻译、主题与书架管理 - 思阅 SiReader",
   "author": "mm-o",
@@ -18,14 +18,15 @@
     "docs:feishu": "node ./scripts/feishu-doc-sync.mjs",
     "docs:feishu:dry-run": "node ./scripts/feishu-doc-sync.mjs --dry-run",
     "build": "vite build",
+    "build:fast": "vite build --mode fast",
     "test": "vitest",
     "test:ui": "vitest --ui",
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
-    "@embedpdf/default-stamps": "0.0.1",
-    "@embedpdf/snippet": "2.15.1",
+    "@embedpdf/engine": "3.1.0",
+    "@embedpdf/viewer": "3.1.0",
     "@vueuse/motion": "^3.0.3",
     "bzip2-wasm": "1.0.1",
     "construct-style-sheets-polyfill": "^3.1.0",
@@ -33,6 +34,7 @@
     "foliate-js": "github:readest/foliate-js#c7948fe5f424",
     "jszip": "^3.10.1",
     "mupdf": "1.28.1",
+    "sql.js": "^1.16.0",
     "vue": "^3.3.8"
   },
   "devDependencies": {

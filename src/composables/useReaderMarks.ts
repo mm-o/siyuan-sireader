@@ -91,7 +91,7 @@ export const useReaderMarks = (i18n?: any, context?: any) => {
   const marks = computed(() => activeReader.value?.marks || (activeView.value as any)?.marks)
   const isLibraryMode = computed(() => !marks.value)
   const isPdfMode = computed(() => !!(activeView.value as any)?.isPdf)
-  const readOnly = computed(() => !!getContext()?.readOnlyMarks || isLibraryMode.value)
+  const readOnly = computed(() => !!(getContext()?.readOnlyMarks || activeView.value?.readOnlyMarks) || isLibraryMode.value)
   const markSort = computed(() => markFilter.value.sort)
   const searchPlaceholder = tx('marksSearchPlaceholder', 'Search annotations, notes, bookmarks, ink, and shapes')
   const localizedSortOptions = computed(() => MARK_SORT_OPTIONS.map(item => ({ ...item, label: tx(`sort${item.value.charAt(0).toUpperCase()}${item.value.slice(1)}`, item.label) })))
@@ -150,9 +150,7 @@ export const useReaderMarks = (i18n?: any, context?: any) => {
   const toolbarMenuAction = computed(() => ({ id: 'type', icon: typeMode.value.icon, label: typeMode.value.label, tooltipDir: 'south', active: !!typeMode.value.value }))
   const markGroupKeys = computed(() => Array.isArray(list.value) ? list.value.filter((item: any) => item?.isGroup).map((item: any) => item.key) : [])
   const markAllExpanded = computed(() => !!markGroupKeys.value.length && !markGroupKeys.value.some(key => !!collapsed.value[key]))
-  const pdfAnnotationsHidden = computed(() => !!(activeView.value as any)?.annotationsHidden)
   const toolbarActions = computed(() => [
-    { id: 'togglePdfAnnotations', icon: pdfAnnotationsHidden.value ? '#lucide-eye-off' : '#lucide-eye', label: pdfAnnotationsHidden.value ? tx('showPdfAnnotations', 'Show PDF annotations') : tx('hidePdfAnnotations', 'Hide PDF annotations'), active: pdfAnnotationsHidden.value, show: isPdfMode.value },
     { id: 'syncAll', icon: '#iconDownload', label: i18n?.syncAll || '同步全部', active: syncingAll.value, show: !readOnly.value && pendingImportCount.value > 0 },
     { id: 'organize', icon: '#lucide-sliders-horizontal', label: filterLabel.value, active: showOrganize.value || hasActiveFilters.value },
     { id: 'expand', icon: markAllExpanded.value ? '#lucide-panel-top-close' : '#lucide-panel-top-open', label: markAllExpanded.value ? tx('collapse', 'Collapse') : tx('expand', 'Expand'), show: isGroupedMode.value },
@@ -390,8 +388,7 @@ export const useReaderMarks = (i18n?: any, context?: any) => {
     markFilter.value.types = next.value ? [next.value] : []
   }
   const handleToolbarAction = (id: string) => {
-    if (id === 'togglePdfAnnotations') (activeView.value as any)?.toggleAnnotationsHidden?.()
-    else if (id === 'syncAll') void syncAllMarks()
+    if (id === 'syncAll') void syncAllMarks()
     else if (id === 'organize') showOrganize.value = !showOrganize.value
     else if (id === 'type') cycleTypeFilter()
     else if (id === 'expand') toggleGroups()

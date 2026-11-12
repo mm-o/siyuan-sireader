@@ -443,7 +443,7 @@ export interface StoredBookRef {
   cover?: string
 }
 
-const hash = (str: string) => {
+export const hash = (str: string) => {
   let value = 0
   for (let i = 0; i < str.length; i++) value = (((value << 5) - value) + str.charCodeAt(i)) | 0
   return Math.abs(value).toString(36)

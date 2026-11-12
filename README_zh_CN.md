@@ -7,7 +7,7 @@
 让思源笔记变身专业阅读器，支持 EPUB/PDF/TXT/在线小说  
 专业电子书阅读器，支持 EPUB/PDF/MOBI/TXT/在线小说；PDF 支持高亮、墨迹、形状、表单、印章、签名、图片、截图、搜索、打印、导出和回链，并提供标注笔记、词典、翻译、主题与书架管理
 
-[![Version](https://img.shields.io/badge/version-2.6.1-blue.svg)](https://github.com/your-repo/siyuan-sireader)
+[![Version](https://img.shields.io/badge/version-2.7.0-blue.svg)](https://github.com/your-repo/siyuan-sireader)
 [![License](https://img.shields.io/badge/license-MIT%20%2B%20AGPL-green.svg)](LICENSE)
 [![SiYuan](https://img.shields.io/badge/SiYuan-3.0+-orange.svg)](https://github.com/siyuan-note/siyuan)
 
@@ -18,6 +18,47 @@
 ---
 
 ## 📝 最新更新
+
+## v2.7.0 (2026-11-12)
+
+### 新增
+
+- PDF 阅读器接入 EmbedPDF 原生拖拽打开、多文档标签、测量、缩略图、大纲、截图、遮盖、表单设计和只读模式。
+- 文档菜单增加批注 JSON 导入导出和 PDF 变更层导入导出；导入变更层时以原 PDF 打开独立标签，保留变更内容。
+- 恢复鼠标悬停查看 PDF 批注笔记。选中文本或批注时提供查词、翻译、复制回链和发送到思源等操作。
+- 思阅目录、速记和工具栏显隐入口接入原生底部工具栏；移动端保留阅读器关闭入口。
+- PDF 原生目录、批注目录使用 EmbedPDF 大纲跳转；缩略图入口打开原生缩略图面板。
+- 恢复框选后复制截图，并让快捷发送目标在 PDF 阅读期间即时更新。
+- 文档链接入库排除新增「排除关键词」和「排除路径」两类规则：关键词按文件名或链接匹配并支持 `*` 通配，路径按目录前缀整目录排除，可覆盖 `assets/` 与思源云盘（网盘）文件。
+
+### 修复
+
+- 修复旧版批注工具设置触发 PDF 白屏或思源卡死的问题。加载旧设置时转换为当前支持的颜色、线宽、虚线和箭头样式。
+- 保留旧批注数据兼容，转换几何、颜色、箭头端点和印章资源；新批注通过 EmbedPDF 原生事件写回思阅记录。修复空颜色批注导致侧栏批注列表无法显示的问题。
+- 修复 PDF 翻译沿用旧选区 API、矩形快捷键和遮盖删除快捷键失效的问题，并更新翻译、词典、复制回链和笔记本图标。
+- 修复打开 PDF 标签时来源不是有效文件对象导致阅读器无法挂载的问题。
+- 修复设置面板多行输入框被固定最小高度撑高的问题。移除 `min-height:96px` 后，文本框高度重新由 `rows` 决定：文档链接排除的关键词、路径、正则恢复为 2 行，不再显示成 4 行高。
+- 国标 PDF 中文乱码仍未解决。已确认 3.1.0 的官方 `engine.fallbackFonts` 在未嵌入中文字体的 Adobe-GB1 样本上导致 WASM 渲染内存越界，因此没有启用；上游有 CJK 缺字和字体配置讨论，尚无与该崩溃吻合的修复。
+- 修复从 v0.9.x～v1.2.x 升级后旧版 SQLite 数据不再被读取、书架显示为空的问题。启动时自动识别插件目录里的 `reader.db` / `reader.last-good.db`，以及老版本迁移后留下的 `petal/siyuan-sireader-backup/<时间戳>/` 备份，导入书目、标注、分组、设置和阅读记录；按「数据源 + 文件字节数」幂等，重复启动或重复拷贝同一份库不会重复导入。
+- 修复旧笔记里 `pdf://标题_大小` 形式的回链在书籍被重新导入为 `file://` 条目后点击提示「书籍不存在」的问题。打开书籍、续读链接、标注面板和链接悬停预览统一按「文件名」与「标题 + 大小」解析到现有书目，命中后跳转到原标注位置。
+
+### 优化
+
+- 优化文档链接排除设置：改为直接填写的关键词与路径输入框，常用路径一键勾选添加，并提供链接实时测试命中结果；正则保留为高级选项。
+- 调整文档链接排除设置项位置，收纳到「打开与界面 → 书架配置」下方，与书架相关选项集中，避免在笔记插入中查找。
+- 调整侧边栏顶部导航顺序：笔记本按钮移到标注之后，设置按钮固定为最后一项；同时修正老配置补齐笔记按钮时可能把它追加到设置之后的问题。
+- 从 EmbedPDF 2.x Snippet 迁移到官方 `@embedpdf/viewer` 和 `@embedpdf/engine` 3.1.0 API，移除旧 Snippet、重复的文档管理、滚动和缩放代码，以及依赖 Shadow DOM 的 DOM 补丁。
+- 阅读器命令与快捷键映射到 EmbedPDF 原生 `commands`；文档生命周期使用 `viewer.documents.open()`、`setActive()`、`download()` 和 `close()`。额外标签与思阅书架批注数据隔离。
+- 页面导航、倍率、滚动和旋转交由原生 `stage`；缩放快捷键使用原生倍率步进，减少自定义滚动及缩放逻辑。移除重复的 PDF 滚动方向设置。
+- 批注改用原生 `annotation.create()`、`update()`、`delete()` 和事件；视图上下文通过 `viewer.get()`、`viewer.forDocument(id).get()` 获取。思阅继续保存兼容的旧批注记录。
+- 封面和离线批注预览复用 `localEngine().open()`、`page.text.get()` 与 `page.render.image()`，移除隐藏 Viewer 和旧引擎桥接。
+- 重排生成的 PDF 通过原生多文档接口在同一 Viewer 中打开，继续保留源页与批注映射及切换前的保存等待。
+- 构建使用本地 Viewer、Engine Worker 和 WASM，调整重排 Worker 的浏览器构建处理，消除构建警告。
+- 旧数据迁移改为合并语义：书架里已有的书、已有标注（按标注 ID 去重）、进度和设置一律优先，只补缺不覆盖；`daily_reading` 标注汇总进 `daily.json`，PDF 阅读进度与章节在为空时回填，旧库原件不被删除或改写。
+- 旧标注兼容增强：PDF 的旧式扁平标注（highlight / note / ink / shape）在打开时按真实页高转换为 EmbedPDF 结构，页码、矩形、墨迹路径与便签内容保持原样，标注 ID 不变，重复打开不会产生重复标注。
+- 旧库解析引擎按需加载：只在检测到旧版数据库时才下载内联 WASM 的 SQLite 解析器，不增加启动开销与主包体积。
+
+[EmbedPDF 3.x 官方迁移指南](https://www.embedpdf.com/docs/viewer/vanilla/migrate)
 
 ## v2.6.1 (2026-11-03)
 

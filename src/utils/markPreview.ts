@@ -2,7 +2,7 @@
 
 import { sameBookUrl } from '@/core/bookshelf'
 import { extractText } from '@/services/TTSExtractor'
-import { createEmbedPdfDocumentSource, ensureEmbedPdfWasmUrl, initEmbedPdfViewer, waitForPdfDocument } from '@/utils/embedPdfActions'
+import { openPdf } from '@/utils/embedPdfActions'
 import { pdfPageFromCfi } from '@/utils/jump'
 
 type PreviewContext = {
@@ -25,7 +25,7 @@ const offlineViewCache = new Map<string, Promise<any>>()
 const textCache = new Map<string, Promise<string>>()
 const pdfTextCache = new Map<string, Promise<string>>()
 let offlinePdfKey = ''
-let offlinePdfSession: Promise<any> | null = null
+let offlinePdfSession: ReturnType<typeof openPdf> | null = null
 
 const esc = (value = '') => String(value)
   .replace(/&/g, '&amp;')
@@ -78,42 +78,15 @@ const getOfflineView = async (ctx: PreviewContext) => {
   return offlineViewCache.get(bookUrl)!
 }
 
-const disposeOfflinePdfSession = () => {
-  offlinePdfSession?.then(({ host }) => host?.remove?.()).catch(() => {})
-}
-
-const getOfflinePdfSession = async (ctx: PreviewContext) => {
+const getOfflinePdfSession = (ctx: PreviewContext) => {
   const bookUrl = ctx.bookUrl || ctx.book?.url || ''
   if (offlinePdfSession && offlinePdfKey === bookUrl) return offlinePdfSession
-  disposeOfflinePdfSession()
+  void offlinePdfSession?.then(doc => doc.close()).catch(() => {})
   offlinePdfKey = bookUrl
-  offlinePdfSession = (async () => {
-    const wasmUrl = await ensureEmbedPdfWasmUrl()
-    const source = await getBookSource(ctx)
-    const documentId = 'sireader-preview-document'
-    const documentSource = await createEmbedPdfDocumentSource(documentId, source, `${bookUrl || 'document'}.pdf`)
-    const host = document.createElement('div')
-    host.style.cssText = 'position:fixed;left:-9999px;top:-9999px;width:1px;height:1px;visibility:hidden;pointer-events:none'
-    document.body.appendChild(host)
-    return new Promise((resolve, reject) => {
-      void (async () => {
-        const viewer = await initEmbedPdfViewer(host, {
-          tabBar: 'never',
-          worker: true,
-          wasmUrl,
-          documentManager: { initialDocuments: [documentSource] },
-          fonts: { ui: null, signature: null },
-          stamp: { manifests: [] },
-        })
-        if (!viewer) throw new Error('PDF preview load failed')
-        viewer.registry?.then((registry: any) => waitForPdfDocument(registry, documentId)
-          .then((doc: any) => resolve({ registry, documentId, doc, host }))
-          .catch(reject),
-        )
-      })().catch(reject)
-    })
-  })()
-  return offlinePdfSession
+  const pending = getBookSource(ctx).then(openPdf)
+  offlinePdfSession = pending
+  void pending.catch(() => { if (offlinePdfSession === pending) offlinePdfSession = null })
+  return pending
 }
 
 const getPdfPageText = (mark: any, ctx: PreviewContext) => {
@@ -125,8 +98,10 @@ const getPdfPageText = (mark: any, ctx: PreviewContext) => {
   const key = `${bookUrl}:${page}`
   if (!pdfTextCache.has(key)) {
     const promise = (async () => {
-      const { registry, doc } = await getOfflinePdfSession(ctx)
-      return await registry.getEngine().extractText(doc, [page - 1]).toPromise()
+      const doc = await getOfflinePdfSession(ctx)
+      const { pages } = await doc.pages.list()
+      if (!pages[page - 1]) return ''
+      return (await doc.page(pages[page - 1].ref).text.get()).text
     })().catch(error => {
       pdfTextCache.delete(key)
       throw error

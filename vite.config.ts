@@ -1,7 +1,8 @@
 /* eslint-disable node/prefer-global/process */
-import { existsSync } from "node:fs"
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { copyFile, mkdir } from "node:fs/promises"
-import { resolve } from "node:path"
+import { createHash } from "node:crypto"
+import { dirname, resolve } from "node:path"
 import vue from "@vitejs/plugin-vue"
 import fg from "fast-glob"
 import minimist from "minimist"
@@ -10,6 +11,7 @@ import {
   build as viteBuild,
   defineConfig,
   loadEnv,
+  transformWithEsbuild,
 } from "vite"
 import { viteStaticCopy } from "vite-plugin-static-copy"
 import zipPack from "vite-plugin-zip-pack"
@@ -21,7 +23,69 @@ function buildKernelPlugin(outDir: string) {
   return {
     name: 'build-siyuan-kernel',
     async closeBundle() {
-      await viteBuild({ configFile: false, build: { outDir, emptyOutDir: false, sourcemap: false, minify: false, lib: { entry: resolve(__dirname, 'src/kernel/index.js'), name: 'SiReaderKernel', formats: ['iife'], fileName: () => 'kernel.js' } } })
+      const startedAt = Date.now()
+      await viteBuild({ configFile: false, logLevel: 'warn', build: { outDir, emptyOutDir: false, sourcemap: false, minify: false, reportCompressedSize: false, lib: { entry: resolve(__dirname, 'src/kernel/index.js'), name: 'SiReaderKernel', formats: ['iife'], fileName: () => 'kernel.js' } } })
+      console.log(`[build] kernel.js  ${Date.now() - startedAt}ms`)
+    },
+  }
+}
+// EmbedPDF 运行时只依赖 node_modules 里的两个 dist 入口，内容不变时跳过重建（SIREREADER_FORCE_EMBEDPDF=1 可强制）。
+const EMBEDPDF_STAMP = resolve(__dirname, 'node_modules/.cache/siyuan-sireader/embedpdf-stamp.json')
+const EMBEDPDF_CACHE = resolve(__dirname, 'node_modules/.cache/siyuan-sireader/embedpdf')
+const embedpdfSignature = (outDir: string) => {
+  // 用内容哈希而不是 mtime：pnpm 每次调用都可能刷新 node_modules 里的文件时间
+  const parts = ['@embedpdf/engine/dist/index.js', '@embedpdf/viewer/dist/index.js'].map((file) => {
+    const path = resolve(__dirname, 'node_modules', file)
+    if (!existsSync(path)) return `${file}:missing`
+    return `${file}:${createHash('sha1').update(readFileSync(path)).digest('hex').slice(0, 12)}`
+  })
+  return JSON.stringify({ target: resolve(outDir, 'embedpdf'), parts })
+}
+function buildPdfRuntime(outDir: string) {
+  return {
+    name: 'build-pdf-runtime',
+    async closeBundle() {
+      const target = resolve(outDir, 'embedpdf')
+      const signature = embedpdfSignature(outDir)
+      const stampMatches = existsSync(EMBEDPDF_STAMP) && readFileSync(EMBEDPDF_STAMP, 'utf8') === signature
+      const cacheReady = stampMatches && existsSync(resolve(EMBEDPDF_CACHE, 'engine.js'))
+      // 主构建会 emptyOutDir 清空 dist，所以缓存放 node_modules/.cache，命中后复制回去
+      if (cacheReady && process.env.SIREREADER_FORCE_EMBEDPDF !== '1') {
+        const startedAt = Date.now()
+        rmSync(target, { recursive: true, force: true })
+        cpSync(EMBEDPDF_CACHE, target, { recursive: true, force: true })
+        console.log(`[build] embedpdf runtime  ${Date.now() - startedAt}ms（缓存命中，未重新打包）`)
+        return
+      }
+      // 依赖变了就整目录重建，避免旧 hash 资源残留在包里
+      rmSync(target, { recursive: true, force: true })
+      const startedAt = Date.now()
+      await viteBuild({
+        configFile: false,
+        base: './',
+        logLevel: 'warn',
+        build: {
+          outDir: target,
+          emptyOutDir: false,
+          assetsInlineLimit: 0,
+          reportCompressedSize: false,
+          // EmbedPDF ships its PDFium worker fallback as one JavaScript string.
+          chunkSizeWarningLimit: 1700,
+          rollupOptions: {
+            input: {
+              viewer: resolve(__dirname, 'node_modules/@embedpdf/viewer/dist/index.js'),
+              engine: resolve(__dirname, 'node_modules/@embedpdf/engine/dist/index.js'),
+            },
+            preserveEntrySignatures: 'strict',
+            output: { entryFileNames: '[name].js' },
+          },
+        },
+      })
+      console.log(`[build] embedpdf runtime  ${Date.now() - startedAt}ms（含 wasm 与 worker 资源）`)
+      rmSync(EMBEDPDF_CACHE, { recursive: true, force: true })
+      cpSync(target, EMBEDPDF_CACHE, { recursive: true, force: true })
+      mkdirSync(dirname(EMBEDPDF_STAMP), { recursive: true })
+      writeFileSync(EMBEDPDF_STAMP, signature)
     },
   }
 }
@@ -29,17 +93,34 @@ function buildPluginWorker(outDir: string, targetDir: string, entry: string) {
   return {
     name: `build-${entry}-worker`,
     async buildStart() {
+      const startedAt = Date.now()
       await viteBuild({
         configFile: false,
+        logLevel: 'warn',
         resolve: { alias: { '@': resolve(__dirname, 'src') } },
+        // Scribe's Node branches are unreachable in this browser worker.
+        plugins: entry === 'pdfReflow' ? [{
+          name: 'scribe-browser-worker',
+          enforce: 'pre',
+          transform(code, id) {
+            if (!id.endsWith('/src/vendor/scribe-layout/js/utils/miscUtils.js')) return
+            return transformWithEsbuild(code, id, {
+              loader: 'js',
+              define: { process: 'undefined' },
+              minifySyntax: true,
+            })
+          },
+        }] : [],
         build: {
           outDir,
           emptyOutDir: false,
           sourcemap: false,
           minify: true,
+          reportCompressedSize: false,
           lib: { entry: resolve(__dirname, `src/services/${entry}.worker.ts`), name: 'SiReaderWorker', formats: ['iife'], fileName: () => `${entry}.worker.js` },
         },
       })
+      console.log(`[build] ${entry}.worker.js  ${Date.now() - startedAt}ms`)
     },
     async writeBundle() {
       const workerPath = resolve(outDir, `${entry}.worker.js`)
@@ -95,6 +176,8 @@ export default defineConfig(({
   const isWatch = args.watch || args.w || false
   const useLiveReload = isWatch && env.VITE_ENABLE_LIVERELOAD === 'true'
   const distDir = isWatch ? devDistDir : "./dist"
+  // 打 zip 是整个构建里最慢的一步（45MB→~16MB），日常迭代用 build:fast 跳过
+  const skipZip = !isWatch && (mode === 'fast' || process.env.SIREREADER_NO_ZIP === '1')
   const privateSources = resolve(__dirname, "private-sources/src/privateSources.ts")
 
   return {
@@ -170,29 +253,12 @@ export default defineConfig(({
             dest: "./i18n/",
           },
           {
-            src: [
-              "./node_modules/@embedpdf/snippet/dist/embedpdf*.js",
-              "./node_modules/@embedpdf/snippet/dist/worker-engine*.js",
-              "./node_modules/@embedpdf/snippet/dist/direct-engine*.js",
-              "./node_modules/@embedpdf/snippet/dist/browser*.js",
-            ],
-            dest: "./embedpdf/snippet/",
-          },
-          {
-            src: "./node_modules/@embedpdf/snippet/dist/pdfium.wasm",
-            dest: "./embedpdf/",
-          },
-          {
-            src: "./node_modules/@embedpdf/default-stamps/zh-CN/*",
-            dest: "./embedpdf/stamps/zh-CN/",
-          },
-          {
-            src: "./node_modules/@embedpdf/default-stamps/en/*",
-            dest: "./embedpdf/stamps/en/",
-          },
-          {
             src: "./node_modules/bzip2-wasm/bzip2-1.0.8/bzip2.wasm",
             dest: "./bzip2-wasm/",
+          },
+          {
+            src: "./node_modules/sql.js/dist/sql-wasm-inline.js",
+            dest: "./legacy/",
           },
           {
             src: "./src/libs/sherpa-onnx/sherpa-onnx.wasm",
@@ -235,6 +301,7 @@ export default defineConfig(({
       rollupOptions: {
         plugins: [
           buildKernelPlugin(distDir),
+          buildPdfRuntime(distDir),
           buildPluginWorker(resolve(__dirname, 'node_modules/.cache/siyuan-sireader'), resolve(__dirname, distDir), 'offlineTTS'),
           buildPluginWorker(resolve(__dirname, 'node_modules/.cache/siyuan-sireader'), resolve(__dirname, distDir), 'pdfReflow'),
           ...(isWatch
@@ -247,7 +314,7 @@ export default defineConfig(({
                     const files = await fg([
                       "src/i18n/*.json",
                       "./README*.md",
-                      
+
                       "./plugin.json",
                     ])
                     for (const file of files) {
@@ -256,13 +323,20 @@ export default defineConfig(({
                   },
                 },
               ]
-            : [
-                zipPack({
-                  inDir: "./dist",
-                  outDir: "./",
-                  outFileName: "package.zip",
-                }),
-              ]),
+            : skipZip
+              ? [{
+                  name: 'skip-zip-pack',
+                  closeBundle() {
+                    console.log('[build] 已跳过 package.zip（build:fast / SIREREADER_NO_ZIP=1）')
+                  },
+                }]
+              : [
+                  zipPack({
+                    inDir: "./dist",
+                    outDir: "./",
+                    outFileName: "package.zip",
+                  }),
+                ]),
         ],
 
         // make sure to externalize deps that shouldn't be bundled

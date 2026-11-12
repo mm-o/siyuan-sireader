@@ -8,7 +8,7 @@
     toolbar-tooltip-dir="south"
     @toolbar-action="handleToolbarAction"
   >
-    <div v-show="!showThumbnail" class="fn__flex-1 fn__flex-column file-tree sy__file bs-view bs-tree-view">
+    <div class="fn__flex-1 fn__flex-column file-tree sy__file bs-view bs-tree-view">
       <div
         ref="tocRef"
         class="fn__flex-1 fn__hidescrollbar"
@@ -18,45 +18,18 @@
       ></div>
     </div>
 
-    <div v-show="showThumbnail" class="fn__flex-1 fn__flex-column sy__file bs-view">
-      <div ref="thumbContainer" class="fn__flex-1 bs-view bs-grid">
-        <div v-if="!isPdfMode" class="ft__secondary" style="grid-column:1/-1;padding:8px 12px">{{ props.i18n?.pdfThumbnailsOnly || 'Thumbnails are available for PDF only' }}</div>
-        <div v-else v-for="i in pageCount" :key="i" class="bs-grid-item">
-          <div class="b3-list b3-list--background">
-            <div
-              class="b3-list-item"
-              :data-page="i"
-              style="display:flex;flex-direction:column;gap:8px;align-items:stretch;padding:8px 12px;cursor:pointer"
-              @click="goToPage(i)"
-            >
-              <div style="display:block;aspect-ratio:3/4;overflow:hidden">
-                <img
-                  v-if="loadedThumbs[i]"
-                  :src="loadedThumbs[i]"
-                  :alt="`${props.i18n?.page || 'Page '}${i}${props.i18n?.pageSuffix || ''}`"
-                  style="display:block;width:100%;height:100%;object-fit:contain"
-                >
-                <div v-else style="display:flex;align-items:center;justify-content:center;width:100%;height:100%">{{ i }}</div>
-              </div>
-              <div class="b3-list-item__text">{{ props.i18n?.page || 'Page ' }}{{ i }}{{ props.i18n?.pageSuffix || '' }}</div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
   </DockShell>
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { Menu, showMessage } from 'siyuan'
 import DockShell from './ui/DockShell.vue'
 import { useReaderState } from '@/core/epub/state'
 import { getTocChapterText } from '@/core/epub/chapterText'
 import { exportBookLink } from '@/utils/copy'
-import { bookmarkToc } from '@/utils/embedPdfActions'
 import { bookshelfManager } from '@/core/bookshelf'
-import { jump, pdfPageFromCfi } from '@/utils/jump'
+import { pdfPageFromCfi } from '@/utils/jump'
 import type { TOCItem } from '@/core/epub/types'
 
 const props = withDefaults(defineProps<{ mode?: 'toc'; i18n?: any; context?: any }>(), {
@@ -70,21 +43,17 @@ const activeReader = computed(() => props.context?.activeReader || globalReaderS
 
 const keyword = ref('')
 const tocRef = ref<HTMLElement>()
-const thumbContainer = ref<HTMLElement>()
-const showThumbnail = ref(false)
 const reverse = ref(false)
-const loadedThumbs = ref<Record<number, string>>({})
 const pdfBookmarks = ref<TOCItem[]>([])
 const expandedKeys = ref<Record<string, boolean>>({})
 const currentHref = ref('')
 
 const isEmbedPdfMode = computed(() => (activeView.value as any)?.engine === 'embedpdf')
 const isPdfMode = computed(() => !!(activeView.value as any)?.isPdf)
-const pageCount = computed(() => (activeView.value as any)?.pageCount || 0)
 const searchPlaceholder = computed(() => props.i18n?.searchChapter || 'Search table of contents...')
 
 const tocLabel = (item: TOCItem) => item.label || (item as any).title || ''
-const tocKey = (item: TOCItem, parentKey = 'root') => item.href || `${parentKey}/${tocLabel(item)}`
+const tocKey = (item: TOCItem, parentKey = 'root') => item.id !== undefined && isEmbedPdfMode.value ? String(item.id) : item.href || `${parentKey}/${tocLabel(item)}`
 const goToLocation = async (location: string | number) => {
   const page = typeof location === 'string' ? pdfPageFromCfi(location) : 0
   return activeView.value?.goTo(page ? Number(page) : location)
@@ -142,13 +111,12 @@ const branchKeys = computed(() => {
 const hasExpanded = computed(() => branchKeys.value.some(key => expandedKeys.value[key]))
 
 const toolbarActions = computed(() => [
-      { id: 'thumbnail', icon: showThumbnail.value ? '#lucide-scroll-text' : '#lucide-panels-top-left', label: showThumbnail.value ? (props.i18n?.tocTitle || 'Table of Contents') : (props.i18n?.tocThumbnail || 'Thumbnails'), show: isPdfMode.value },
-      { id: 'expand', icon: hasExpanded.value ? '#lucide-panel-top-close' : '#lucide-panel-top-open', label: hasExpanded.value ? (props.i18n?.collapse || 'Collapse') : (props.i18n?.expand || 'Expand'), show: !showThumbnail.value },
+      { id: 'thumbnail', icon: '#lucide-panels-top-left', label: props.i18n?.tocThumbnail || 'Thumbnails', show: isEmbedPdfMode.value },
+      { id: 'expand', icon: hasExpanded.value ? '#lucide-panel-top-close' : '#lucide-panel-top-open', label: hasExpanded.value ? (props.i18n?.collapse || 'Collapse') : (props.i18n?.expand || 'Expand') },
       { id: 'reverse', icon: reverse.value ? '#lucide-arrow-up-1-0' : '#lucide-arrow-down-0-1', label: reverse.value ? (props.i18n?.descending || 'Descending') : (props.i18n?.ascending || 'Ascending') },
     ])
 
 let relocateHandler: any
-let thumbObs: IntersectionObserver | undefined
 let renderFrame = 0
 let initFrame = 0
 
@@ -241,10 +209,7 @@ const initToc = () => {
     currentHref.value = pdfHrefAt(view?.getCurrentPage?.() || 1)
     return renderToc()
   }
-  if (!view?.book?.toc?.length) {
-    if (isPdfMode.value) showThumbnail.value = true
-    return
-  }
+  if (!view?.book?.toc?.length) return
   currentHref.value = view.lastLocation?.tocItem?.href || ''
   renderToc()
   if (view.addEventListener) {
@@ -357,46 +322,31 @@ const onTocClick = async (event: MouseEvent) => {
     return void toggleBookmark(href, label)
   }
   if (target.closest('.b3-list-item__toggle') && hasChild) return void toggleTocNode(key)
+  if (isEmbedPdfMode.value && /^\d+$/.test(key) && activeView.value?.activateOutline?.(Number(key))) return
   if (href) await goToLocation(href)
   else if (hasChild) toggleTocNode(key)
 }
 
 const handleToolbarAction = (id: string) => {
-  if (id === 'thumbnail') showThumbnail.value = !showThumbnail.value
-  else if (id === 'expand') setAllExpanded(!hasExpanded.value)
+  if (id === 'thumbnail') {
+    window.dispatchEvent(new Event('sireader:close-reader-panels'))
+    activeView.value?.executePdfCommand?.('panel:thumbnails')
+  } else if (id === 'expand') setAllExpanded(!hasExpanded.value)
   else if (id === 'reverse') reverse.value = !reverse.value
 }
-
-const goToPage = (page: number) =>
-  jump(page, activeView.value, activeReader.value, activeReader.value?.marks || (activeView.value as any)?.marks)
 
 const loadPdfBookmarks = async () => {
   if (!isEmbedPdfMode.value) {
     pdfBookmarks.value = []
     return
   }
-  const bookmarks = await (activeView.value as any)?.getBookmarks?.().catch(() => [])
-  pdfBookmarks.value = bookmarkToc(bookmarks) as TOCItem[]
+  const view = activeView.value
+  const bookmarks = await view?.getPdfToc?.().catch(() => [])
+  if (view !== activeView.value) return
+  pdfBookmarks.value = bookmarks || []
   scheduleInit()
 }
 
-const initThumbs = () => nextTick(() => {
-  thumbObs?.disconnect()
-  const getThumbnail = (activeView.value as any)?.getThumbnail
-  if (!showThumbnail.value || !isPdfMode.value || !pageCount.value || !getThumbnail) return
-  thumbObs = new IntersectionObserver(entries => entries.forEach(entry => {
-    if (!entry.isIntersecting) return
-    const page = +(entry.target as HTMLElement).dataset.page!
-    if (!loadedThumbs.value[page]) {
-      getThumbnail(page).then((url: string) => {
-        if (url) loadedThumbs.value[page] = url
-      })
-    }
-  }), { root: thumbContainer.value, rootMargin: '200px' })
-  thumbContainer.value?.querySelectorAll('[data-page]').forEach(el => thumbObs?.observe(el))
-})
-
-watch([showThumbnail, () => pageCount.value], () => showThumbnail.value && initThumbs())
 watch(() => activeView.value, () => { props.mode === 'toc' && (isEmbedPdfMode.value ? void loadPdfBookmarks() : scheduleInit()) }, { immediate: true })
 watch(() => activeView.value?.book, book => (
   !isEmbedPdfMode.value && book?.toc && props.mode === 'toc' ? scheduleInit() : cleanupToc()
@@ -430,7 +380,6 @@ onUnmounted(() => {
   cleanupToc()
   cancelAnimationFrame(renderFrame)
   cancelAnimationFrame(initFrame)
-  thumbObs?.disconnect()
   window.removeEventListener('sireader:marks-updated', onMarks)
   window.removeEventListener('sireader:tab-switched', onSwitch)
   window.removeEventListener('sireader:pdf-page', onPdfPage)
@@ -443,7 +392,4 @@ onUnmounted(() => {
 .bs-tree-view{padding-top:8px}
 .bs-tree-view :deep(.b3-list){padding:0;margin:0}
 .bs-tree-view :deep(.bs-tree-children){padding:0;margin:0}
-.bs-grid{display:grid;gap:6px;overflow:auto;scrollbar-gutter:stable;align-content:start;padding:8px 0 8px 8px;box-sizing:border-box;grid-template-columns:repeat(auto-fill,minmax(92px,1fr))}
-.bs-grid .b3-list{margin:0}
-.bs-grid-item{position:relative;min-width:0;cursor:pointer;content-visibility:auto;contain-intrinsic-size:150px}
 </style>

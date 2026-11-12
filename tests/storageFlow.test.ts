@@ -418,16 +418,6 @@ test('failed deferred save does not block the next progress update', async () =>
 
 describe('storage flow', () => {
 
-  test('pending PDF update includes the patch, not the pre-edit annotation', async () => {
-    const { snapshotPdfAnnotationEvent } = await import('@/utils/embedPdfActions')
-    const original = { id: 'note', contents: 'old', pageIndex: 0 }
-    const patch = { contents: 'new', rect: { x: 12 } }
-    const event = snapshotPdfAnnotationEvent({ type: 'update', committed: false, annotation: original, patch })
-    patch.rect.x = 99
-    expect(event.annotation).toEqual({ ...original, contents: 'new', rect: { x: 12 } })
-    expect(original.contents).toBe('old')
-  })
-
   test('valid primary progress does not read a corrupt obsolete alias', async () => {
     const progress = { pageNumber: 7, totalPages: 20, updatedAt: 10 }
     files.set(bookRecordKey('primary').name, JSON.stringify({ ...record(), progress }))

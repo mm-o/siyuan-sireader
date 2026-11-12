@@ -1,4 +1,4 @@
-﻿/**
+/**
  * 书架管理 - 极简架构
  */
 import { getDatabase, type Book } from './database';
@@ -135,6 +135,20 @@ const safeDecode = (url = '') => { try { return decodeURI(url) } catch { return 
 const safeEncode = (url = '') => { try { return encodeURI(safeDecode(url)) } catch { return url } }
 export const bookUrlCandidates = (url = '') => Array.from(new Set([url, normalizeSiyuanCloudUrl(url), safeDecode(url), safeEncode(url)].filter(Boolean)))
 export const sameBookUrl = (a = '', b = '') => { const set = new Set(bookUrlCandidates(b)); return bookUrlCandidates(a).some(url => set.has(url)) }
+// 旧链接 `pdf://标题_大小`（书被重新导入成 file:// 后书架键对不上）按「标题+大小」归一化匹配回现有书目。
+const titleKey = (title = '') => normalizeBookTitle(String(title || '')).toLowerCase().replace(/[\s_\-—–·.]+/g, '')
+export const matchLegacyBook = (url: string, books: any[] = []) => {
+  const rest = url.match(/^(?:epub|pdf|mobi|azw3|azw|txt|fb2|cbz):\/\/(.+)$/i)?.[1]?.replace(/_(?:highlight|note|bookmark|vocab|shape|ink)-[^_&]+$/i, '')
+  if (!rest) return null
+  const size = Number(rest.match(/_(\d+)$/)?.[1] || 0)
+  const key = titleKey(rest.replace(/_(\d+)$/, ''))
+  if (!key) return null
+  const hit = books.filter((book) => {
+    const bookKey = titleKey(book?.title)
+    return bookKey && (bookKey === key || bookKey.includes(key) || key.includes(bookKey))
+  })
+  return (hit.find(book => size > 0 && Number(book?.size) === size) || hit[0] || null) as any
+}
 export const applyBookArrayPatch = (current: string[] = [], patch?: BookArrayPatch) => {
   if (!patch) return current
   const base = patch.set ? normalizeBookList(patch.set) : normalizeBookList(current)
@@ -226,7 +240,16 @@ export class BookshelfManager {
   async init() { if (this.ready) return; await getDatabase(); this.ready = true; }
   async getBooks() { return this.useDb(db => db.getBooks()); }
   async getRecentBooks(limit = 5) { return this.useDb(db => db.getRecentBooks(limit)); }
-  async getBook(url: string) { return this.useDb(async db => { for (const key of bookUrlCandidates(url)) { const book = await db.getBook(key); if (book) return book } return null }); }
+  async getBook(url: string) {
+    return this.useDb(async (db) => {
+      for (const key of bookUrlCandidates(url)) {
+        const book = await db.getBook(key)
+        if (book) return book
+      }
+      // 旧链接（pdf://标题_大小）在书被重新导入成 file:// 条目后仍要能打开
+      return matchLegacyBook(url, await db.getBooks())
+    })
+  }
   async getSetting<T = any>(key: string, fallback?: T) { const value = await this.useDb(db => db.getSetting<T>(key)); return (value ?? fallback) as T; }
   async saveSetting(key: string, value: any) { await this.useDb(db => db.saveSetting(key, value)); }
   async patchSetting(key: string, patch: Record<string, unknown>) { await this.useDb(db => db.patchSetting(key, patch)); }

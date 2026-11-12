@@ -1,4 +1,4 @@
-﻿// ===== 阅读器设置管理 =====
+// ===== 阅读器设置管理 =====
 import { computed, defineComponent, h, ref, toRaw, type Ref } from 'vue'
 import { showMessage, fetchSyncPost } from 'siyuan'
 import type { Plugin } from 'siyuan'
@@ -11,7 +11,6 @@ import type { OfflineTTSModelManifest } from '@/services/offlineTTSModels'
 
 export type PageTurnStyle = 'push' | 'slide' | 'curl'
 export type ViewMode = 'single' | 'double' | 'scroll'
-export type PdfScrollDirection = 'vertical' | 'horizontal'
 export type NavPosition = 'left' | 'right' | 'top' | 'bottom'
 export type NavItem = { id: string; icon: string; tip: string; enabled: boolean; order: number }
 export type DocInfo = { id: string; name: string; path: string; notebook: string }
@@ -27,9 +26,8 @@ export interface VisualSettings { brightness: number; contrast: number; sepia: n
 export interface TTSVoice { name: string; displayName: string; locale: string; isLocal?: boolean }
 export interface TTSSettings { enabled: boolean; voice: string; rate: number; pitch: number; sentenceGap: number; paragraphGap: number; autoTurnPage: boolean; highlightText: boolean; favoriteVoices?: TTSVoice[] }
 export interface TranslationSettings { autoOnSelection: boolean; engine: 'google' | 'azure' | 'transmart' | 'youdao' | 'volcengine' | 'wechat' | 'mymemory' | 'ai' }
-export interface ReaderSettings { enabled: boolean; openMode: 'newTab' | 'rightTab' | 'bottomTab' | 'newWindow'; navPosition: NavPosition; pageAnimation: PageTurnStyle; viewMode: ViewMode; pdfScrollDirection?: PdfScrollDirection; theme: string; customTheme: ReadTheme; backgroundImage?: string; notebookId?: string; parentDoc?: DocInfo; noteInsertTarget: NoteInsertTarget; noteInsertMode: NoteInsertMode; linkFormat: string; wereadExportTemplate?: string; annotationTagPresets: string; annotationSyncOnAdd: boolean; annotationSyncOnDelete: boolean; bookshelfCoverSize: number; bookshelfHiddenItems: string[]; openDocAssets: boolean; docAssetExcludeRegex: string; showWereadTopBar: boolean; epubOpeningSplash: boolean; toolbarOpacity: number; pdfZoomLevel?: 'automatic' | 'fit-page' | 'fit-width' | number; pdfAnnotationToolDefaults?: Record<string, Record<string, any>>; quickSendDocs?: DocInfo[]; navItems?: NavItem[]; textSettings: TextSettings; paragraphSettings: ParagraphSettings; layoutSettings: LayoutSettings; visualSettings: VisualSettings; translation: TranslationSettings; tts?: TTSSettings }
+export interface ReaderSettings { enabled: boolean; openMode: 'newTab' | 'rightTab' | 'bottomTab' | 'newWindow'; navPosition: NavPosition; pageAnimation: PageTurnStyle; viewMode: ViewMode; theme: string; customTheme: ReadTheme; backgroundImage?: string; notebookId?: string; parentDoc?: DocInfo; noteInsertTarget: NoteInsertTarget; noteInsertMode: NoteInsertMode; linkFormat: string; wereadExportTemplate?: string; annotationTagPresets: string; annotationSyncOnAdd: boolean; annotationSyncOnDelete: boolean; bookshelfCoverSize: number; bookshelfHiddenItems: string[]; openDocAssets: boolean; docAssetExcludeKeywords: string; docAssetExcludePaths: string; docAssetExcludeRegex: string; showWereadTopBar: boolean; epubOpeningSplash: boolean; toolbarOpacity: number; pdfZoomLevel?: 'automatic' | 'fit-page' | 'fit-width' | number; pdfAnnotationToolDefaults?: Record<string, Record<string, any>>; quickSendDocs?: DocInfo[]; navItems?: NavItem[]; textSettings: TextSettings; paragraphSettings: ParagraphSettings; layoutSettings: LayoutSettings; visualSettings: VisualSettings; translation: TranslationSettings; tts?: TTSSettings }
 
-export const getPdfScrollStrategy = (direction?: PdfScrollDirection): PdfScrollDirection => direction === 'horizontal' ? 'horizontal' : 'vertical'
 
 export const useTTSSettings = (settings: Ref<ReaderSettings>, { i18n, save, can, showUpgrade, openArchiveImport, openFolderImport }: { i18n: any; save: () => Promise<unknown>; can: (feature: string) => boolean; showUpgrade: (feature: string) => void; openArchiveImport: () => void; openFolderImport: () => void }) => {
   const offlineTTS = new OfflineTTSManager(), voices = ref<any[]>([]), loading = ref(false), progress = ref(0), models = ref<OfflineTTSModelManifest[]>([]), operation = ref(''), confirmingRemoval = ref<string|null>(null)
@@ -103,6 +101,30 @@ export const PRESET_THEMES: Record<string, ReadTheme> = { default: { name: 'them
 
 // ===== 工具 =====
 const fixUrl = (u: string) => !u || u[0] === '/' || u.startsWith('http') ? u : `/${u}`;
+// ===== 文档链接排除：关键词（支持 *）/ 路径前缀 / 正则 =====
+const docLines = (v = '') => v.split(/\r?\n/).map(s => s.trim()).filter(Boolean)
+const docEsc = (v: string) => v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+const docPath = (v = '') => {
+  try { v = decodeURIComponent(v) } catch {}
+  const cloud = v.match(/(?:siyuan-cloud:\/\/+|\/plugin\/private\/siyuan-cloud\/[pd]?\/?)/i)
+  v = cloud ? `siyuan-cloud/${v.slice(cloud.index! + cloud[0].length)}` : v.replace(/^asset:\/\//i, '').replace(/^(?:https?:\/\/[^/]+)?\/+/, '')
+  return v.replace(/\/+$/, '').toLowerCase()
+}
+export const isDocAssetExcluded = (url = '', s?: ReaderSettings) => {
+  if (!url || !s) return false
+  let text = url
+  try { text = decodeURIComponent(url) } catch {}
+  const name = text.split(/[?#]/)[0].split('/').pop() || '', path = docPath(text)
+  if (docLines(s.docAssetExcludeKeywords).some(k => {
+    const re = new RegExp(k.split('*').map(docEsc).join('.*'), 'i')
+    return re.test(name) || re.test(text)
+  })) return true
+  if (docLines(s.docAssetExcludePaths).some(p => {
+    const pre = docPath(p)
+    return !!pre && (path === pre || path.startsWith(pre + '/'))
+  })) return true
+  try { return !!s.docAssetExcludeRegex.trim() && new RegExp(s.docAssetExcludeRegex).test(text) } catch { return false }
+}
 const msg = { success: (m: string) => showMessage(m, 2000, 'info'), error: (m: string) => showMessage(m, 3000, 'error') };
 export const getReaderTheme = (s: ReaderSettings) => ({ ...(s.theme === 'custom' ? s.customTheme : PRESET_THEMES[s.theme] || PRESET_THEMES.default), bgImg: s.backgroundImage || '' });
 export const CUSTOM_FONT_DIR = '/data/public/siyuan-sireader/fonts'
@@ -112,8 +134,7 @@ export const applyTheme = (el: HTMLElement, s: ReaderSettings) => { const t = ge
 
 // ===== 默认配置 =====
 export const DEFAULT_WEREAD_EXPORT_TEMPLATE = `# {{书名}}\n\n{{封面}}\n\n- 作者：{{作者}}\n- 微信读书：{{链接}}\n- 书籍详情：{{详情链接}}\n- bookId：{{bookId}}\n- ISBN：{{ISBN}}\n- 出版社：{{出版社}}\n- 分类：{{分类}}\n- 出版时间：{{出版时间}}\n- 字数：{{字数}}\n- 阅读人数：{{阅读人数}}\n- 评分：{{评分}}\n\n{{简介}}\n\n## 目录\n\n{{目录}}\n\n## 划线与想法\n\n{{划线与想法}}\n\n## 书签\n\n{{书签}}`
-const DEFAULT_SETTINGS: ReaderSettings = { enabled: true, openMode: 'newTab', navPosition: 'top', pageAnimation: 'push', viewMode: 'single', theme: 'auto', customTheme: { name: 'custom', color: '#202124', bg: '#ffffff' }, backgroundImage: '', notebookId: '', parentDoc: undefined, noteInsertTarget: 'clipboard', noteInsertMode: 'insertBlock', linkFormat: '> [!NOTE] 📑 书名\n> [章节](链接) 文本\n> 图片\n> 笔记', wereadExportTemplate: DEFAULT_WEREAD_EXPORT_TEMPLATE, annotationTagPresets: '未分组:', annotationSyncOnAdd: false, annotationSyncOnDelete: false, bookshelfCoverSize: 120, bookshelfHiddenItems: [], openDocAssets: true, docAssetExcludeRegex: '', showWereadTopBar: true, epubOpeningSplash: false, toolbarOpacity: 70, pdfAnnotationToolDefaults: {}, quickSendDocs: [], textSettings: { fontFamily: 'serif', fontSize: 16, fontWeight: 400, letterSpacing: 0, overrideFontSize: false, overrideLetterSpacing: false, overrideAlignment: false, textAlign: 'justify', customFont: { fontFamily: '', fontFile: '' } }, paragraphSettings: { overrideLineHeight: false, overrideParagraphSpacing: false, overrideIndent: false, lineHeight: 1.6, paragraphSpacing: 1, textIndent: 2 }, layoutSettings: { marginTopPx: 44, marginBottomPx: 44, marginLeftPx: 16, marginRightPx: 16, gapPercent: 5, showHeader: true, showFooter: true, showRemainingTime: false, showProgressInfo: true, progressStyle: 'fraction', referencePageCount: 0, showCurrentTime: false, showCurrentBatteryStatus: false, use24HourClock: false }, visualSettings: { brightness: 1, contrast: 1, sepia: 0, saturate: 1, invert: false }, translation: { autoOnSelection: false, engine: 'azure' }, tts: { enabled: false, voice: 'zh-CN-XiaoxiaoNeural', rate: 1.0, pitch: 1.0, sentenceGap: 0, paragraphGap: 0.3, autoTurnPage: false, highlightText: true }, }
-DEFAULT_SETTINGS.pdfScrollDirection = 'vertical'
+const DEFAULT_SETTINGS: ReaderSettings = { enabled: true, openMode: 'newTab', navPosition: 'top', pageAnimation: 'push', viewMode: 'single', theme: 'auto', customTheme: { name: 'custom', color: '#202124', bg: '#ffffff' }, backgroundImage: '', notebookId: '', parentDoc: undefined, noteInsertTarget: 'clipboard', noteInsertMode: 'insertBlock', linkFormat: '> [!NOTE] 📑 书名\n> [章节](链接) 文本\n> 图片\n> 笔记', wereadExportTemplate: DEFAULT_WEREAD_EXPORT_TEMPLATE, annotationTagPresets: '未分组:', annotationSyncOnAdd: false, annotationSyncOnDelete: false, bookshelfCoverSize: 120, bookshelfHiddenItems: [], openDocAssets: true, docAssetExcludeKeywords: '', docAssetExcludePaths: '', docAssetExcludeRegex: '', showWereadTopBar: true, epubOpeningSplash: false, toolbarOpacity: 70, pdfAnnotationToolDefaults: {}, quickSendDocs: [], textSettings: { fontFamily: 'serif', fontSize: 16, fontWeight: 400, letterSpacing: 0, overrideFontSize: false, overrideLetterSpacing: false, overrideAlignment: false, textAlign: 'justify', customFont: { fontFamily: '', fontFile: '' } }, paragraphSettings: { overrideLineHeight: false, overrideParagraphSpacing: false, overrideIndent: false, lineHeight: 1.6, paragraphSpacing: 1, textIndent: 2 }, layoutSettings: { marginTopPx: 44, marginBottomPx: 44, marginLeftPx: 16, marginRightPx: 16, gapPercent: 5, showHeader: true, showFooter: true, showRemainingTime: false, showProgressInfo: true, progressStyle: 'fraction', referencePageCount: 0, showCurrentTime: false, showCurrentBatteryStatus: false, use24HourClock: false }, visualSettings: { brightness: 1, contrast: 1, sepia: 0, saturate: 1, invert: false }, translation: { autoOnSelection: false, engine: 'azure' }, tts: { enabled: false, voice: 'zh-CN-XiaoxiaoNeural', rate: 1.0, pitch: 1.0, sentenceGap: 0, paragraphGap: 0.3, autoTurnPage: false, highlightText: true }, }
 export const LINK_FORMAT_PRESETS: Record<LinkFormatPreset, string> = {
   simple: '[书名](链接) 文本',
   heading: '## 书名\n- [章节](链接) 文本\n- 位置\n- 笔记\n- 图片',
@@ -127,12 +148,11 @@ const splitTags = (value = '') => value.split(/[#;,\uFF1B\uFF0C\u3001\n]/).map(t
 // ===== UI配置常量 =====
 const r = (k: string, min: number, max: number, step: number, unit = '') => ({ key: k, type: 'range' as const, min, max, step, unit })
 const c = (key: string) => ({ key, type: 'checkbox' as const })
-export const PDF_SCROLL_DIRECTION_ITEM = { key: 'pdfScrollDirection', opts: ['vertical', 'horizontal'] }
 export const UI_CONFIG = { interfaceItems: [{ key: 'openMode', opts: ['newTab', 'rightTab', 'bottomTab', 'newWindow'] }, { key: 'openDocAssets', type: 'checkbox' as const }, { key: 'showWereadTopBar', type: 'checkbox' as const }, { key: 'epubOpeningSplash', type: 'checkbox' as const }, { key: 'navPosition', opts: ['left', 'right', 'top', 'bottom'] }, { key: 'viewMode', opts: ['single', 'double', 'scroll'] }, { key: 'pageAnimation', opts: ['push', 'slide', 'curl'] }, r('bookshelfCoverSize', 80, 160, 10, 'px'), r('toolbarOpacity', 0, 100, 5, '%')], customThemeItems: [{ key: 'color', label: 'textColor', type: 'color' }, { key: 'bg', label: 'bgColor', type: 'color' }, { key: 'bgImg', label: 'bgImage', type: 'text' }], appearanceGroups: [{ title: 'textSettings', items: [c('overrideFontSize'), r('fontSize', 12, 32, 1, 'px'), r('fontWeight', 300, 900, 100), c('overrideLetterSpacing'), r('letterSpacing', 0, 0.2, 0.01, 'em'), c('overrideAlignment'), { key: 'textAlign', opts: ['justify', 'left', 'right', 'center'], labels: ['alignJustify', 'alignLeft', 'alignRight', 'alignCenter'] }] }, { title: 'paragraphSettings', items: [c('overrideLineHeight'), r('lineHeight', 1.0, 3.0, 0.1), c('overrideParagraphSpacing'), r('paragraphSpacing', 0, 2, 0.1, 'em'), c('overrideIndent'), r('textIndent', 0, 4, 0.5, 'em')] }, { title: 'layoutSettings', items: [r('marginTopPx', 0, 144, 4, 'px'), r('marginBottomPx', 0, 144, 4, 'px'), r('marginLeftPx', 0, 144, 4, 'px'), r('marginRightPx', 0, 144, 4, 'px'), r('gapPercent', 0, 30, 1, '%'), c('showHeader'), c('showFooter'), c('showRemainingTime'), c('showProgressInfo'), { key: 'progressStyle', opts: ['fraction', 'percentage', 'reference'], labels: ['progressStyleFraction', 'progressStylePercentage', 'progressStyleReference'] }, r('referencePageCount', 0, 10000, 50), c('showCurrentTime'), c('showCurrentBatteryStatus'), c('use24HourClock')] }, { title: 'visualSettings', items: [r('brightness', 0.5, 1.5, 0.05), r('contrast', 0.5, 1.5, 0.05), r('sepia', 0, 1, 0.05), r('saturate', 0, 2, 0.1), { key: 'invert', type: 'checkbox' as const }] }], ttsItems: [{ key: 'enabled', type: 'checkbox' as const }, r('rate', 0.5, 2.0, 0.1, 'x'), r('pitch', 0.5, 1.5, 0.1), r('sentenceGap', 0, 3, 0.1, 's'), r('paragraphGap', 0, 5, 0.1, 's')], ttsOptions: [{ key: 'autoTurnPage', type: 'checkbox' as const }, { key: 'highlightText', type: 'checkbox' as const }] }
 export const DEFAULT_NAV_ITEMS: NavItem[] = [
   { id: 'bookshelf', icon: 'lucide-library-big', tip: 'bookshelf', enabled: true, order: 0 },
   { id: 'search', icon: 'lucide-book-search', tip: 'search', enabled: true, order: 1 },
-  { id: 'notes', icon: 'lucide-notebook-pen', tip: 'quickNotes', enabled: true, order: 2 },
+  { id: 'notes', icon: 'lucide-notebook-pen', tip: 'quickNotes', enabled: true, order: 5 },
   { id: 'toc', icon: 'lucide-scroll-text', tip: 'sidebarToc', enabled: true, order: 3 },
   { id: 'mark', icon: 'lucide-square-pen', tip: 'sidebarAnnotation', enabled: true, order: 4 },
   { id: 'appearance', icon: 'lucide-settings-2', tip: 'sidebarSettings', enabled: true, order: 7 }
@@ -142,7 +162,7 @@ export const NOTE_MODE_OPTIONS = ['insertBlock', 'prependBlock', 'appendBlock', 
 export const NOTE_MODE_LABELS: Record<typeof NOTE_MODE_OPTIONS[number], string> = { insertBlock: 'noteInsertModeCursor', prependBlock: 'noteInsertModeBefore', appendBlock: 'noteInsertModeAfter', updateBlock: 'noteInsertModeReplace', prependDoc: 'noteInsertModeDocTop', appendDoc: 'noteInsertModeDocBottom' }
 export const SETTING_SECTION_ICONS = {
   root: { preview: '#lucide-eye', license: '#lucide-square-star', interface: '#lucide-monitor-cog', theme: '#lucide-palette', dictionary: '#lucide-languages', other: '#lucide-notebook-tabs', tts: '#lucide-volume-2' },
-  sub: { navItems: '#lucide-list-tree', customFont: '#lucide-book-text' },
+  sub: { navItems: '#lucide-list-tree', customFont: '#lucide-book-text', docAssetExclude: '#lucide-eye-off' },
   appearance: { textSettings: '#lucide-book-open-text', paragraphSettings: '#lucide-scroll-text', layoutSettings: '#lucide-layout-template', visualSettings: '#lucide-sliders-horizontal' },
   dictionary: { offlineDict: '#lucide-hard-drive', onlineDict: '#lucide-wifi' },
   voice: { ttsFavorites: '#lucide-star', ttsVoices: '#lucide-radio' }
@@ -361,7 +381,7 @@ const merge = (d: any, s: any): any => { const r = { ...d }; for (const k in s) 
 let persistedSettings: ReaderSettings | null = null
 const cloneSettings = <T>(value: T): T => JSON.parse(JSON.stringify(toRaw(value)))
 export const settingsManager = {
-  get: async (): Promise<ReaderSettings> => { const s = await bookshelfManager.getSetting('reader_settings'); const v = merge(cloneSettings(DEFAULT_SETTINGS), s || {}); if (Array.isArray(v.navItems) && v.navItems.length && !v.navItems.some((item: NavItem) => item.id === 'notes')) { const item = DEFAULT_NAV_ITEMS.find(item => item.id === 'notes')!; v.navItems = [...v.navItems, { ...item, order: Math.max(-1, ...v.navItems.map((nav: NavItem) => Number(nav.order) || 0)) + 1 }] } if (!v.backgroundImage && v.customTheme?.bgImg) v.backgroundImage = v.customTheme.bgImg; const old = s?.layoutSettings?.headerFooterMargin; if (old > 0 && s.layoutSettings?.marginTopPx == null) Object.assign(v.layoutSettings, { marginTopPx: old, marginBottomPx: old, marginLeftPx: old, marginRightPx: old }); if (v.layoutSettings.gapPercent == null) v.layoutSettings.gapPercent = v.layoutSettings.gap || 5; if (v.layoutSettings.showHeader && v.layoutSettings.marginTopPx <= 0) v.layoutSettings.marginTopPx = 44; if (v.layoutSettings.showFooter && v.layoutSettings.marginBottomPx <= 0) v.layoutSettings.marginBottomPx = 44; v.linkFormat = normalizeLinkFormat(v.linkFormat); persistedSettings = cloneSettings(v); return (window as any).__sireader_settings = v; },
+  get: async (): Promise<ReaderSettings> => { const s = await bookshelfManager.getSetting('reader_settings'); const v = merge(cloneSettings(DEFAULT_SETTINGS), s || {}); if (Array.isArray(v.navItems) && v.navItems.length && !v.navItems.some((item: NavItem) => item.id === 'notes')) { const item = DEFAULT_NAV_ITEMS.find(item => item.id === 'notes')!, next = Math.max(-1, ...v.navItems.map((nav: NavItem) => Number(nav.order) || 0)) + 1; v.navItems = [...v.navItems.map(nav => nav.id === 'appearance' ? { ...nav, order: next + 1 } : nav), { ...item, order: next }] } if (!v.backgroundImage && v.customTheme?.bgImg) v.backgroundImage = v.customTheme.bgImg; const old = s?.layoutSettings?.headerFooterMargin; if (old > 0 && s.layoutSettings?.marginTopPx == null) Object.assign(v.layoutSettings, { marginTopPx: old, marginBottomPx: old, marginLeftPx: old, marginRightPx: old }); if (v.layoutSettings.gapPercent == null) v.layoutSettings.gapPercent = v.layoutSettings.gap || 5; if (v.layoutSettings.showHeader && v.layoutSettings.marginTopPx <= 0) v.layoutSettings.marginTopPx = 44; if (v.layoutSettings.showFooter && v.layoutSettings.marginBottomPx <= 0) v.layoutSettings.marginBottomPx = 44; v.linkFormat = normalizeLinkFormat(v.linkFormat); persistedSettings = cloneSettings(v); return (window as any).__sireader_settings = v; },
   save: async (settings: ReaderSettings) => { const v = cloneSettings(settings); const baseline = persistedSettings; const patch = (baseline ? diffLeaves(v as unknown as Record<string, unknown>, baseline as unknown as Record<string, unknown>) : v) as Record<string, unknown>; if (Object.keys(patch).length) await bookshelfManager.patchSetting('reader_settings', patch); persistedSettings = cloneSettings(merge(baseline || DEFAULT_SETTINGS, patch)); const current = merge((window as any).__sireader_settings || DEFAULT_SETTINGS, patch); (window as any).__sireader_settings = current; window.dispatchEvent(new CustomEvent('sireaderSettingsUpdated', { detail: current })); },
   patch: async (patch: Partial<ReaderSettings>) => { const value = cloneSettings(patch); await bookshelfManager.patchSetting('reader_settings', value); const v = merge((window as any).__sireader_settings || DEFAULT_SETTINGS, value); persistedSettings = cloneSettings(merge(persistedSettings || DEFAULT_SETTINGS, value)); (window as any).__sireader_settings = v; window.dispatchEvent(new CustomEvent('sireaderSettingsUpdated', { detail: v })); return v; }
 };

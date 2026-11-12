@@ -7,7 +7,7 @@
 Transform SiYuan Notes into a professional eBook reader  
 Professional eBook reader for EPUB/PDF/MOBI/TXT/online novels. PDFs support highlights, ink, shapes, forms, stamps, signatures, images, screenshots, search, printing, export, and backlinks, with annotation notes, dictionary, translation, themes, and bookshelf management.
 
-[![Version](https://img.shields.io/badge/version-2.6.1-blue.svg)](https://github.com/your-repo/siyuan-sireader)
+[![Version](https://img.shields.io/badge/version-2.7.0-blue.svg)](https://github.com/your-repo/siyuan-sireader)
 [![License](https://img.shields.io/badge/license-MIT%20%2B%20AGPL-green.svg)](LICENSE)
 [![SiYuan](https://img.shields.io/badge/SiYuan-3.0+-orange.svg)](https://github.com/siyuan-note/siyuan)
 
@@ -18,6 +18,47 @@ Professional eBook reader for EPUB/PDF/MOBI/TXT/online novels. PDFs support high
 ---
 
 ## 📝 Latest Updates
+
+## v2.7.0 (2026-11-12)
+
+### Added
+
+- The PDF reader now uses EmbedPDF's native drag-to-open, multi-document tabs, measurement, thumbnails, outline, screenshots, redaction, form design, and read-only mode.
+- Document menu adds annotation JSON import/export and PDF change-layer import/export; importing a change layer opens the source PDF in a separate tab and preserves the changes.
+- Restored hover-to-view PDF annotation notes. Selecting text or an annotation offers dictionary lookup, translation, copy-backlink, and send-to-SiYuan actions.
+- SiYuan table of contents, quick notes, and toolbar visibility toggles integrate with the native bottom toolbar; mobile keeps the reader close entry.
+- PDF native outline and annotation panels use EmbedPDF outline navigation; the thumbnail entry opens the native thumbnail panel.
+- Restored copy-screenshot after area selection, with quick-send targets updating live during PDF reading.
+- Document-link auto-import exclusion adds "exclude keywords" and "exclude paths": keywords match filenames or links with `*` wildcards, paths exclude whole directories by prefix, covering `assets/` and SiYuan cloud (web drive) files.
+
+### Fixed
+
+- Fixed legacy annotation tool settings causing PDF white screens or SiYuan freezes; legacy settings are converted to the current colors, line widths, dashes, and arrow styles on load.
+- Kept legacy annotation data compatibility, converting geometry, colors, arrow endpoints, and stamp resources; new annotations write back to SiReader records through native EmbedPDF events. Fixed empty-color annotations breaking the sidebar list.
+- Fixed PDF translation using the old selection API, and broken rectangle and redaction-delete shortcuts; updated the translation, dictionary, copy-backlink, and notebook icons.
+- Fixed the reader failing to mount when the PDF tab source is not a valid file object.
+- Fixed the settings panel multiline inputs being stretched by a fixed minimum height. Removing `min-height:96px` lets textarea height follow `rows` again: the document-link exclusion keywords, paths, and regex return to 2 rows instead of 4.
+- GB PDF Chinese garble remains unresolved. The official 3.1.0 `engine.fallbackFonts` triggers WASM memory out-of-bounds on Adobe-GB1 samples without embedded CJK fonts, so it is disabled; upstream has open CJK missing-glyph and font-config discussions with no matching fix.
+- Fixed legacy SQLite data no longer being read after upgrading from v0.9.x–v1.2.x, leaving the bookshelf empty. Startup now auto-detects `reader.db` / `reader.last-good.db` in the plugin directory, as well as the `petal/siyuan-sireader-backup/<timestamp>/` backups left by older migrations, and imports books, annotations, groups, settings, and reading records. Import is idempotent by "source + byte size", so repeated launches or re-copying the same database never duplicate.
+- Fixed old `pdf://title_size` backlinks in notes showing "book not found" after the book was re-imported as a `file://` entry. Opening books, resume links, the annotation panel, and link-hover preview now resolve to the existing book by "filename" and "title + size", then jump to the original annotation.
+
+### Improved
+
+- Improved document-link exclusion settings: direct keyword and path input boxes with one-click common-path presets and live link-match testing; regex remains an advanced option.
+- Moved the document-link exclusion setting under "Open & Interface → Bookshelf Config" to group bookshelf-related options and avoid hunting through note insertion.
+- Reordered the sidebar's top navigation: the notebook button moves after annotations, and the settings button is fixed as the last item; also fixed old configs adding the notebook button after settings when backfilling.
+- Migrated from the EmbedPDF 2.x Snippet to the official `@embedpdf/viewer` and `@embedpdf/engine` 3.1.0 API, removing the old Snippet, duplicated document management, scroll/zoom code, and Shadow-DOM-dependent DOM patches.
+- Reader commands and shortcuts map to native EmbedPDF `commands`; document lifecycle uses `viewer.documents.open()`, `setActive()`, `download()`, and `close()`. Extra tabs stay isolated from SiReader bookshelf annotation data.
+- Page navigation, zoom, scroll, and rotation are handled by the native `stage`; zoom shortcuts use native zoom stepping, reducing custom scroll/zoom logic. Removed the duplicate PDF scroll-direction setting.
+- Annotations use native `annotation.create()`, `update()`, `delete()`, and events; view contexts come from `viewer.get()` and `viewer.forDocument(id).get()`. SiReader keeps storing compatible legacy annotation records.
+- Cover and offline annotation previews reuse `localEngine().open()`, `page.text.get()`, and `page.render.image()`, removing the hidden Viewer and old engine bridge.
+- Reflowed PDFs open in the same Viewer through the native multi-document interface, preserving source-page and annotation mapping plus the save-wait before switching.
+- Build uses local Viewer, Engine Worker, and WASM, with adjusted reflow Worker browser builds to remove build warnings.
+- Legacy data migration now merges: existing books, annotations (deduplicated by annotation ID), progress, and settings take precedence, only filling gaps; `daily_reading` annotations aggregate into `daily.json`, empty PDF progress and chapter are backfilled, and the original database file is neither deleted nor rewritten.
+- Legacy annotation compatibility improved: legacy flat PDF annotations (highlight / note / ink / shape) are converted to EmbedPDF structure using real page heights on open, keeping page numbers, rectangles, ink paths, and note text unchanged, with stable annotation IDs and no duplicates on repeated opens.
+- The legacy database engine loads on demand: the WASM-inlined SQLite parser is downloaded only when a legacy database is detected, adding no startup cost or main-bundle size.
+
+[EmbedPDF 3.x official migration guide](https://www.embedpdf.com/docs/viewer/vanilla/migrate)
 
 ## v2.6.1 (2026-11-03)
 

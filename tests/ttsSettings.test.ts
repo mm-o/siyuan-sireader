@@ -60,26 +60,6 @@ describe('TTS setting defaults', () => {
     expect((await settingsManager.get()).tts?.autoTurnPage).toBe(true)
   })
 
-  it('defaults PDF scrolling to vertical and preserves a saved horizontal preference', async () => {
-    vi.resetModules()
-    const { settingsManager } = await import('@/composables/useSetting')
-    expect((await settingsManager.get()).pdfScrollDirection).toBe('vertical')
-
-    storage.settings = { pdfScrollDirection: 'horizontal' }
-    vi.resetModules()
-    const { settingsManager: savedSettingsManager } = await import('@/composables/useSetting')
-    expect((await savedSettingsManager.get()).pdfScrollDirection).toBe('horizontal')
-  })
-
-  it('offers PDF scroll direction and normalizes missing values to vertical', async () => {
-    vi.resetModules()
-    const { PDF_SCROLL_DIRECTION_ITEM, getPdfScrollStrategy } = await import('@/composables/useSetting')
-
-    expect(PDF_SCROLL_DIRECTION_ITEM.opts).toEqual(['vertical', 'horizontal'])
-    expect(getPdfScrollStrategy()).toBe('vertical')
-    expect(getPdfScrollStrategy('horizontal')).toBe('horizontal')
-  })
-
   it('renders disabled setting-row actions as inert', async () => {
     vi.resetModules()
     const { SettingRows } = await import('@/composables/useSetting')

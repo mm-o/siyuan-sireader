@@ -1,5 +1,11 @@
 {
   "pdfReflow": "Text reflow",
+  "pdfReadOnly": "Read-only mode",
+  "pdfImportAnnotations": "Import PDF annotations",
+  "pdfExportAnnotations": "Export PDF annotations",
+  "pdfAnnotationImportSkipped": "Skipped annotation fields or entries: {count}",
+  "pdfImportLayer": "Open PDF change layer",
+  "pdfExportLayer": "Export PDF change layer",
   "pdfReflowFailed": "PDF reflow failed",
   "quickNotes": "Notebook",
   "quickNotesFilter": "Filter notebook documents…",
@@ -81,8 +87,6 @@
   "none": "None",
   "viewMode": "View Mode",
   "viewModeDesc": "Choose single page, double page, or continuous scroll",
-  "pdfScrollDirection": "PDF Scroll Direction",
-  "pdfScrollDirectionDesc": "Choose vertical or horizontal PDF page layout",
   "vertical": "Vertical",
   "horizontal": "Horizontal",
   "single": "Single Page",
@@ -433,9 +437,21 @@
   "toolbarOpacityDesc": "Adjust the bottom toolbar opacity when it is not hovered (0% opaque, 100% transparent)",
   "openDocAssets": "Use the plugin PDF reader",
   "openDocAssetsDesc": "When enabled, document links and local PDFs open in the plugin reader first. Otherwise, they open in SiYuan's built-in PDF tab",
-  "docAssetExcludeRegex": "Exclude document links from the bookshelf",
-  "docAssetExcludeRegexDesc": "Matching links still open according to the reader switch, but are not added to the bookshelf. Do not include outer /.../. Leave empty to disable filtering",
-  "docAssetExcludeRegexPlaceholder": "Example: ^(发票|收据|报销).*\\.pdf$|.*办法.*\\.pdf$\n^ start; $ end; | or; () group; .* any text; \\. matches a dot\nTo exclude “2007新的编制办法-xxx.pdf”, use .*办法.*\\.pdf$",
+  "docAssetExclude": "Exclude document links",
+  "docAssetExcludeKeywords": "Exclude keywords",
+  "docAssetExcludeKeywordsDesc": "Excluded files still open but stay off the bookshelf; one per line, * wildcards supported",
+  "docAssetExcludeKeywordsPlaceholder": "invoice\nreceipt\n*report*.pdf",
+  "docAssetExcludePaths": "Exclude paths",
+  "docAssetExcludePathsDesc": "One path prefix per line; every file under that folder is excluded",
+  "docAssetExcludePathsPlaceholder": "assets/books/\n/plugin/private/siyuan-cloud/My Drive/",
+  "docAssetPathAssets": "Document assets (assets/)",
+  "docAssetPathCloud": "SiYuan Cloud / drive files",
+  "docAssetExcludeTest": "Test a link or file name",
+  "docAssetExcludeMatched": "Matched: not added to the bookshelf",
+  "docAssetExcludeNotMatched": "Not matched: added to the bookshelf",
+  "docAssetExcludeRegex": "Exclude regex (optional)",
+  "docAssetExcludeRegexDesc": "Advanced: matches stay off the bookshelf. Do not include outer /.../",
+  "docAssetExcludeRegexPlaceholder": ".*report.*\\.pdf$",
   "showWereadTopBar": "Show the WeRead button",
   "showWereadTopBarDesc": "Hide the WeRead button while keeping its commands and links available",
   "epubOpeningSplash": "EPUB opening animation",
@@ -844,4 +860,5 @@
   ,"sortByReadTime": "Reading time"
   ,"recentReading": "Recent reading"
   ,"continueReading": "Continue reading a recently opened book"
+  ,"legacyDbRestored": "Bookshelf and annotations restored from the legacy database"
 }

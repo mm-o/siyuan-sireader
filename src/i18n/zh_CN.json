@@ -1,5 +1,11 @@
 {
   "pdfReflow": "文字重排",
+  "pdfReadOnly": "只读模式",
+  "pdfImportAnnotations": "导入 PDF 批注",
+  "pdfExportAnnotations": "导出 PDF 批注",
+  "pdfAnnotationImportSkipped": "部分批注或字段未导入（{count} 项）",
+  "pdfImportLayer": "打开 PDF 增量层",
+  "pdfExportLayer": "导出 PDF 增量层",
   "pdfReflowFailed": "PDF 重排失败",
   "quickNotes": "笔记本",
   "quickNotesFilter": "筛选笔记本文档…",
@@ -81,8 +87,6 @@
   "none": "无动画",
   "viewMode": "显示模式",
   "viewModeDesc": "选择单页、双页或连续滚动显示",
-  "pdfScrollDirection": "PDF 滚动方向",
-  "pdfScrollDirectionDesc": "设置 PDF 页面纵向或横向排列",
   "vertical": "纵向",
   "horizontal": "横向",
   "single": "单页",
@@ -431,9 +435,21 @@
   "toolbarOpacityDesc": "调整底部工具栏未悬停时的透明度（0%=不透明，100%=完全透明）",
   "openDocAssets": "使用插件 PDF 阅读器",
   "openDocAssetsDesc": "启用后，文档链接和书架中的本地 PDF 将优先使用插件阅读器打开；关闭后使用思源内置 PDF 标签页",
-  "docAssetExcludeRegex": "文档链接入库排除正则",
-  "docAssetExcludeRegexDesc": "匹配后仍按开关打开，但不自动加入书架；不用写外层 /.../；留空则不过滤",
-  "docAssetExcludeRegexPlaceholder": "示例：^(发票|收据|报销).*\\.pdf$|.*办法.*\\.pdf$\n^ 开头；$ 结尾；| 或；() 分组；.* 任意文字；\\. 匹配普通点\n排除“2007新的编制办法-xxx.pdf”：写 .*办法.*\\.pdf$",
+  "docAssetExclude": "文档链接入库排除",
+  "docAssetExcludeKeywords": "排除关键词",
+  "docAssetExcludeKeywordsDesc": "被排除的文件仍可打开，只是不自动加入书架；每行一个，支持 * 通配",
+  "docAssetExcludeKeywordsPlaceholder": "发票\n收据\n*办法*.pdf",
+  "docAssetExcludePaths": "排除路径",
+  "docAssetExcludePathsDesc": "每行一个路径前缀，该目录下文件全部排除",
+  "docAssetExcludePathsPlaceholder": "assets/books/\n/plugin/private/siyuan-cloud/我的网盘/",
+  "docAssetPathAssets": "文档资源 assets/",
+  "docAssetPathCloud": "思源云盘 / 网盘文件",
+  "docAssetExcludeTest": "测试链接或文件名",
+  "docAssetExcludeMatched": "匹配：不会加入书架",
+  "docAssetExcludeNotMatched": "不匹配：会加入书架",
+  "docAssetExcludeRegex": "排除正则（可选）",
+  "docAssetExcludeRegexDesc": "高级用法，匹配后不自动加入书架；不用写外层 /.../",
+  "docAssetExcludeRegexPlaceholder": ".*办法.*\\.pdf$",
   "showWereadTopBar": "显示微信读书顶部按钮",
   "showWereadTopBarDesc": "关闭后隐藏顶部栏微信读书按钮，仍可通过命令和链接打开",
   "epubOpeningSplash": "EPUB 开卷有益",
@@ -842,4 +858,5 @@
   ,"sortByReadTime": "阅读时长"
   ,"recentReading": "最近阅读"
   ,"continueReading": "继续阅读最近打开的书籍"
+  ,"legacyDbRestored": "已从旧版数据库补齐书架与标注"
 }

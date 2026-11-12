@@ -6,6 +6,7 @@ import { mountReaderIconSprite, registerReaderIcons } from '@/utils/icon'
 import { initMobile } from '@/utils/mobile'
 import { setPlugin } from '@/utils/copy'
 import { flushStorage, storageEngine, recoverBackupRecords } from '@/core/storage'
+import { migrateLegacyDatabase } from '@/core/legacyDbMigration'
 import { drainPendingTasks, trackPending } from '@/core/storage'
 import { installDiagnostics, diagnosticLog, disposeDiagnostics } from '@/core/diagnostics'
 
@@ -38,6 +39,11 @@ export async function init(p: Plugin) {
   installDiagnostics({ plugin: p.name, version: (p as any).version || '', frontend: (p as any).platform || '' })
   diagnosticLog('info', 'plugin.init.start', { plugin: p.name })
   // Finish recovery before mounting readers; sync notifications never trigger it.
+  // Legacy SQLite storage (reader.db from v0.9.x ~ v1.2.x) must be imported first,
+  // otherwise an upgraded user sees an empty bookshelf with no clue.
+  await migrateLegacyDatabase(p)
+  // 支持手动补导：控制台执行 await sireaderImportLegacyDatabase()（比如用户又补了一份更全的 reader.db）
+  ;(window as any).sireaderImportLegacyDatabase = () => migrateLegacyDatabase(p, { force: true })
   await recoverBackupRecords()
   initDictModule(p)
   initMobile(p)

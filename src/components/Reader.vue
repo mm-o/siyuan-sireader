@@ -3,7 +3,7 @@
     <ReaderSplash v-if="showOpeningSplash" ref="readerSplashRef" :book-info="props.bookInfo" :file-name="props.file?.name" :i18n="i18n" status="opening" />
     <div v-if="loading || error" class="reader-loading"><div v-if="loading" class="spinner"></div><div>{{ error || 'Loading...' }}</div></div>
     <div v-if="showToc&&!loading" class="reader-overlay" @click="closePanels"/>
-    <EmbedPdfReader v-if="isEmbedPdfMode" ref="embedPdfReaderRef" :source="embedPdfSource" :book-url="currentBookUrl" :storage-key="props.bookInfo?.dataId || currentBookUrl" :settings="currentSettings" :theme="currentSettings?.theme" :custom-theme="currentSettings?.customTheme" :hide-annotations="embedPdfAnnotationsHidden" :i18n="i18n" :on-annotation-persisted="syncEmbedPdfEvent" class="viewer-container" @ready="handleEmbedPdfReady" @annotations-ready="handleEmbedPdfAnnotationsReady"/>
+    <EmbedPdfReader v-if="isEmbedPdfMode" ref="embedPdfReaderRef" :source="embedPdfSource" :book-url="currentBookUrl" :storage-key="props.bookInfo?.dataId || currentBookUrl" :settings="currentSettings" :theme="currentSettings?.theme" :custom-theme="currentSettings?.customTheme" :i18n="i18n" :on-annotation-persisted="syncEmbedPdfEvent" class="viewer-container" @ready="handleEmbedPdfReady" @read-only="setPdfReadOnly" @detached="detachPdfView"/>
     <div v-if="!isEmbedPdfMode&&!loading&&currentSettings?.layoutSettings.showHeader" class="reader-header" :style="{height:`${currentSettings.layoutSettings.marginTopPx||44}px`,paddingLeft:`${(currentSettings.layoutSettings.marginLeftPx||16)+8}px`,paddingRight:`${(currentSettings.layoutSettings.marginRightPx||16)+8}px`}">{{ chapterTitle }}</div>
     <div v-if="!isEmbedPdfMode" ref="viewerContainerRef" class="viewer-container"></div>
     <div v-if="!isEmbedPdfMode&&!loading&&currentSettings?.layoutSettings.showFooter" class="reader-footer" :style="{height:`${currentSettings.layoutSettings.marginBottomPx||44}px`,paddingLeft:`${(currentSettings.layoutSettings.marginLeftPx||16)+8}px`,paddingRight:`${(currentSettings.layoutSettings.marginRightPx||16)+8}px`}">{{ footerInfo }}</div>
@@ -36,18 +36,18 @@
         </div>
       </div>
       <div v-if="!isEmbedPdfMode" class="reader-toolbar" :class="{'is-visible':toolbarVisible}">
-        <button v-if="!isEmbedPdfMode" class="toolbar-btn ariaLabel" data-position="north" data-tooltip-encoding="none" @click.stop="handlePrev" :aria-label="i18n.prevChapter||'Previous chapter'"><svg><use xlink:href="#iconLeft"/></svg></button>
+        <button class="toolbar-btn ariaLabel" data-position="north" data-tooltip-encoding="none" @click.stop="handlePrev" :aria-label="i18n.prevChapter||'Previous chapter'"><svg><use xlink:href="#iconLeft"/></svg></button>
         <input v-model="progressJump" class="reader-progress-jump" type="number" min="0" max="100" step="1" placeholder="%" :aria-label="i18n.jumpToProgress || 'Jump to reading progress'" @focus="progressJump=String(Math.round(readingProgress*100))" @keydown.enter.prevent="submitProgressJump">
-                <button v-if="!isEmbedPdfMode" class="toolbar-btn ariaLabel" data-position="north" data-tooltip-encoding="none" @click.stop="handleNext" :aria-label="i18n.nextChapter||'Next chapter'"><svg><use xlink:href="#iconRight"/></svg></button>
-        <button v-if="!isEmbedPdfMode" class="toolbar-btn ariaLabel" data-position="north" data-tooltip-encoding="none" @click.stop="openToc" :aria-label="i18n.toc||'Table of contents'"><svg><use xlink:href="#iconList"/></svg></button>
+        <button class="toolbar-btn ariaLabel" data-position="north" data-tooltip-encoding="none" @click.stop="handleNext" :aria-label="i18n.nextChapter||'Next chapter'"><svg><use xlink:href="#iconRight"/></svg></button>
+        <button class="toolbar-btn ariaLabel" data-position="north" data-tooltip-encoding="none" @click.stop="openToc" :aria-label="i18n.toc||'Table of contents'"><svg><use xlink:href="#iconList"/></svg></button>
         <button class="toolbar-btn ariaLabel" data-position="north" data-tooltip-encoding="none" @click.stop="openQuickNotes" :aria-label="i18n.quickNotes||'Notebook'"><svg><use xlink:href="#lucide-notebook-pen"/></svg></button>
-        <button v-if="!isEmbedPdfMode" class="toolbar-btn ariaLabel" data-position="north" data-tooltip-encoding="none" :class="{active:hasBookmark}" @click.stop="toggleBookmark" :aria-label="hasBookmark?(i18n.removeBookmark||'Remove bookmark'):(i18n.addBookmark||'Add bookmark')"><svg><use xlink:href="#iconBookmark"/></svg></button>
-        <button v-if="!isEmbedPdfMode" class="toolbar-btn ariaLabel" data-position="north" data-tooltip-encoding="none" :class="{active:showSearch}" @click.stop="toggleSearch" :aria-label="i18n.search||'Search'"><svg><use xlink:href="#iconSearch"/></svg></button>
-        <button v-if="!isEmbedPdfMode" class="toolbar-btn toolbar-mark-btn ariaLabel" data-position="north" data-tooltip-encoding="none" :class="{active:quickMarkMode}" @click.stop="toggleQuickMark" :aria-label="quickMarkMode ? (i18n.exitQuickMark || 'Exit quick annotation') : (i18n.quickMark || 'Quick annotation')">
+        <button class="toolbar-btn ariaLabel" data-position="north" data-tooltip-encoding="none" :class="{active:hasBookmark}" @click.stop="toggleBookmark" :aria-label="hasBookmark?(i18n.removeBookmark||'Remove bookmark'):(i18n.addBookmark||'Add bookmark')"><svg><use xlink:href="#iconBookmark"/></svg></button>
+        <button class="toolbar-btn ariaLabel" data-position="north" data-tooltip-encoding="none" :class="{active:showSearch}" @click.stop="toggleSearch" :aria-label="i18n.search||'Search'"><svg><use xlink:href="#iconSearch"/></svg></button>
+        <button class="toolbar-btn toolbar-mark-btn ariaLabel" data-position="north" data-tooltip-encoding="none" :class="{active:quickMarkMode}" @click.stop="toggleQuickMark" :aria-label="quickMarkMode ? (i18n.exitQuickMark || 'Exit quick annotation') : (i18n.quickMark || 'Quick annotation')">
           <svg><use xlink:href="#iconMark"/></svg>
           <span class="mark-indicator" :style="{background:COLORS[quickMarkColor].bg}"></span>
         </button>
-        <button v-if="ttsEnabled&&!isEmbedPdfMode" class="toolbar-btn ariaLabel" data-position="north" data-tooltip-encoding="none" :class="{active:ttsPlaying}" @click.stop="toggleTTS" :aria-label="ttsPlaying?(i18n.ttsPause||'暂停朗读'):(i18n.ttsPlay||'开始朗读')"><svg><use :xlink:href="ttsPlaying?'#iconPause':'#iconPlay'"/></svg></button>
+        <button v-if="ttsEnabled" class="toolbar-btn ariaLabel" data-position="north" data-tooltip-encoding="none" :class="{active:ttsPlaying}" @click.stop="toggleTTS" :aria-label="ttsPlaying?(i18n.ttsPause||'暂停朗读'):(i18n.ttsPlay||'开始朗读')"><svg><use :xlink:href="ttsPlaying?'#iconPause':'#iconPlay'"/></svg></button>
         <button v-if="isMobile()" class="toolbar-btn ariaLabel" data-position="north" data-tooltip-encoding="none" @click.stop="handleClose" aria-label="Close"><svg><use xlink:href="#iconClose"/></svg></button>
       </div>
     </div>
@@ -55,7 +55,7 @@
   <MarkPanel v-if="!isEmbedPdfMode" ref="markPanelRef" :root="containerRef" :book-url="getBookUrl()" :manager="markManager" :reader="reader" :current-view="currentView" :read-only="false" :i18n="i18n" :tts-controller="ttsController" :tts-config="currentSettings?.tts" :quick-mark-mode="quickMarkMode" :quick-mark-color="COLORS[quickMarkColor].color" :quick-mark-style="quickMarkStyle" :can="can" :show-upgrade="showUpgrade" @copy="(text,sel)=>handleCopy({text,cfi:sel?.cfi,page:sel?.page,section:sel?.section,rects:sel?.rects,textOffset:sel?.textOffset})" @dict="handleOpenDict" @copy-mark-only="handleCopyToClipboard" />
 </template>
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, shallowRef, computed, onMounted, onBeforeUnmount } from 'vue'
 import { Menu, showMessage } from 'siyuan'
 import type { Plugin } from 'siyuan'
 import type { ReaderSettings } from '@/composables/useSetting'
@@ -74,7 +74,7 @@ import ReaderSplash from './ui/ReaderSplash.vue'
 import DockShell from './ui/DockShell.vue'
 import { gotoEPUB, pdfPageFromCfi } from '@/utils/jump'
 import { copyMark as copyMarkUtil } from '@/utils/copy'
-import { capturePdfAnnotationImage, isPdfImageAnnotation, taskToPromise } from '@/utils/embedPdfActions'
+import { capturePdfAnnotationImage, isPdfImageAnnotation, openPdf } from '@/utils/embedPdfActions'
 import { cloneStorageValue } from '@/core/storage'
 import { diagnosticLog } from '@/core/diagnostics'
 import { trackPending } from '@/core/storage'
@@ -108,7 +108,7 @@ const readerContext = computed(() => ({
   activeReader: reader,
   bookUrl: isEmbedPdfMode.value ? getPdfBookUrl() : getBookUrl(),
   settings: getSettings(),
-  readOnlyMarks: false,
+  readOnlyMarks: !!currentView.value?.readOnlyMarks,
 }))
 const tocPaneProps = computed(() => tocMode.value === 'settings'
   ? { modelValue: currentSettings.value!, i18n: i18n.value, onSave: saveReaderSettings, 'onUpdate:modelValue': updateSettingsState }
@@ -133,7 +133,7 @@ const handleSettingsUpdate=async(e:Event)=>{
 }
 const containerRef = ref<HTMLElement>()
 const viewerContainerRef = ref<HTMLElement>()
-const embedPdfReaderRef = ref<{ resize?: () => void; flushAnnotations?: () => Promise<void> } | null>(null)
+const embedPdfReaderRef = ref<InstanceType<typeof EmbedPdfReader> | null>(null)
 const readerSplashRef = ref<{ dismiss: () => void; cleanup: () => void; isVisible: () => boolean } | null>(null)
 const loading = ref(true)
 const error = ref('')
@@ -160,11 +160,8 @@ const bindTouchPaging=(target:EventTarget|null|undefined)=>{if(!isMobile()||!tar
 const unbindTouchPaging=()=>{touchTargets.forEach(target=>touchPagingEvents.forEach(([type,handler])=>target.removeEventListener(type,handler,true)));touchTargets.clear()}
 const embedPdfSource = ref<File | string | null>(null)
 const embedPdfDocumentContext = ref<{ documentId: string; bookUrl: string; storageKey: string } | null>(null)
-const embedPdfPages = ref<any>(null)
-const embedPdfAnnotations = ref<any>(null)
+const embedPdfPages = shallowRef<any>(null)
 const embedPdfMarks = ref<any[]>([])
-let embedPdfNativeIds = new Set<string>()
-const embedPdfAnnotationsHidden = ref(false)
 const currentView = ref<any>(null)
 let cleanupEmbedPdfEvents: (()=>void) | null = null
 const showSearch = ref(false)
@@ -201,45 +198,31 @@ const searchCount=computed(()=>searchResults.value.length?`${searchResults.value
 const browserSource=(path='')=>path.startsWith('/data/public/')?path.replace('/data/public/','/public/'):path.startsWith('/public/')||path.startsWith('/assets/')||/^https?:\/\//.test(path)?path:path.startsWith('public/')||path.startsWith('assets/')?`/${path}`:''
 const PDF_MARKUP_TYPES:Record<string,number>={highlight:9,underline:10,squiggly:11,strikeout:12}
 const PDF_REDACT_TYPE=28
-const embedPdfColor=(color='')=>(COLORS.find(item=>item.color===color)?.bg||color).toLowerCase()
+const embedPdfColor=(color?:string|null)=>(COLORS.find(item=>item.color===color)?.bg||color||'').toLowerCase()
 const embedPdfStyle=(type:number,custom?:any)=>type===PDF_REDACT_TYPE?'redaction':custom?.style||Object.entries(PDF_MARKUP_TYPES).find(([,value])=>value===type)?.[0]||'highlight'
 const embedPdfMark=(item:any)=>{
   const a=item?.annotation||item, page=(a.pageIndex??0)+1, bookmark=a.custom?.type==='bookmark', redaction=a.type===PDF_REDACT_TYPE
   const text=a.custom?.title||a.custom?.text||a.contents||(redaction?i18n.value.redaction||'Redaction':i18n.value.annotation||i18n.value.mark||'Annotation')
   const color=[a.strokeColor,a.color,a.fontColor,a.backgroundColor].map(embedPdfColor).find(c=>c&&c!=='transparent')||'#ffcd45'
-  return Object.assign(item,{id:a.id,type:bookmark?'bookmark':redaction?'redaction':a.type===1||a.type===3?'note':'highlight',format:'pdf',readOnly:embedPdfNativeIds.has(a.id)||a.flags?.includes('readOnly'),page,cfi:`#page-${page}`,title:bookmark?text:a.custom?.title,text:bookmark?text:a.custom?.text||a.contents||text,note:bookmark||redaction?'':a.custom?.note||a.contents||'',tags:a.custom?.tags||[],blockId:a.custom?.blockId,blockIds:a.custom?.blockIds,color,style:embedPdfStyle(a.type,a.custom),timestamp:new Date(a.created||a.modified||Date.now()).getTime(),chapter:bookmark?'':a.custom?.chapter||`${i18n.value.page||'Page '}${page}${i18n.value.pageSuffix||''}`,customOrder:a.custom?.customOrder})
+  return Object.assign(item,{id:a.id,type:bookmark?'bookmark':redaction?'redaction':a.type===1||a.type===3?'note':'highlight',format:'pdf',readOnly:a.flags?.includes('readOnly'),page,cfi:`#page-${page}`,title:bookmark?text:a.custom?.title,text:bookmark?text:a.custom?.text||a.contents||text,note:bookmark||redaction?'':a.custom?.note||a.contents||'',tags:a.custom?.tags||[],blockId:a.custom?.blockId,blockIds:a.custom?.blockIds,color,style:embedPdfStyle(a.type,a.custom),timestamp:new Date(a.created||a.modified||Date.now()).getTime(),chapter:bookmark?'':a.custom?.chapter||`${i18n.value.page||'Page '}${page}${i18n.value.pageSuffix||''}`,customOrder:a.custom?.customOrder})
 }
-const uniquePdfItems=(items:any[]=[])=>[...new Map(items.map((item:any)=>[(item.annotation||item)?.id,item]).filter(([id])=>id)).values()]
 const compact=(value:Record<string,any>)=>Object.fromEntries(Object.entries(value).filter(([,v])=>v!==undefined))
-const readEmbedPdfMarkItems=async(scope:any)=>{
-  const tracked=scope?.getAnnotations?.()
-  if(Array.isArray(tracked))return tracked.map((item:any)=>({annotation:item.object})).filter((item:any)=>item.annotation)
-  try{return await taskToPromise<any[]>(scope?.exportAnnotations?.())||[]}catch{return []}
+const refreshEmbedPdfMarks=()=>{
+  if(isEmbedPdfMode.value)embedPdfMarks.value=(embedPdfReaderRef.value?.annotationActions.list() || []).filter(isUserEmbedPdfAnnotation).map((annotation:any)=>embedPdfMark({annotation}))
 }
-const loadEmbedPdfMarks=async()=>{
-  if(!embedPdfAnnotations.value)return
-  embedPdfMarks.value=uniquePdfItems(await readEmbedPdfMarkItems(embedPdfAnnotations.value)).filter(isUserEmbedPdfAnnotation).map(embedPdfMark)
-}
-const nextFrame=()=>new Promise<void>(resolve=>requestAnimationFrame(()=>resolve()))
-const latestPdfAnnotation=(item:any)=>embedPdfAnnotations.value?.getAnnotations?.().find((x:any)=>x.object?.id===item.id)?.object||item.annotation||item
-const imageEmbedPdfMark=async(item:any,contextKey?:string)=>{
-  for(let i=0;!item.image&&i<8;i++){
-    if(contextKey&&embedPdfDocumentContext.value?.storageKey!==contextKey)return item
-    const a=latestPdfAnnotation(item)
-    if(!isPdfImageAnnotation(a))return item
-    item={...item,annotation:a,image:await capturePdfAnnotationImage(currentView.value?.render,a)}
-    await nextFrame()
-  }
-  return item
+const latestPdfAnnotation=(item:any)=>embedPdfReaderRef.value?.annotationActions.get(item.id)||item.annotation||item
+const imageEmbedPdfMark = async (item: any, contextKey?: string) => {
+  if (item.image || (contextKey && embedPdfDocumentContext.value?.storageKey !== contextKey)) return item
+  const annotation = latestPdfAnnotation(item)
+  if (!isPdfImageAnnotation(annotation)) return item
+  return { ...item, annotation, image: await capturePdfAnnotationImage(currentView.value?.render, annotation) }
 }
 const pdfSyncQueues=new Map<string,Promise<void>>()
-const pdfSyncMetadataUpdates=new Set<string>()
 const syncEmbedPdfEvent=(event:any)=>{
   const a=event?.annotation,mark=a&&embedPdfMark({annotation:cloneStorageValue(a)})
   const eventUrl=event?.bookUrl||getPdfBookUrl(),eventKey=event?.storageKey||embedPdfDocumentContext.value?.storageKey||props.bookInfo?.dataId||getBookUrl()
   if(!mark)return
   const key=`${eventUrl}:${mark.id}`,previous=pdfSyncQueues.get(key)||Promise.resolve()
-  if(event?.type==='update'&&pdfSyncMetadataUpdates.delete(key)) return
   const task=previous.catch(()=>undefined).then(async()=>{
     try{
       const m=await import('@/utils/copy'),ctx={bookUrl:eventUrl,isPdf:true,marks:currentView.value?.marks}
@@ -249,13 +232,10 @@ const syncEmbedPdfEvent=(event:any)=>{
         const durableMarks={updateMark:async(item:any,updates:any)=>{
           const annotation=item.annotation||a
           Object.assign(item,updates)
-          await upsertEmbedPdfAnnotation(eventKey,{annotation:{...annotation,custom:{...(annotation.custom||{}),...updates}}})
-          const live=latestPdfAnnotation(item), scope=embedPdfAnnotations.value
-          if(embedPdfDocumentContext.value?.storageKey===eventKey&&scope?.updateAnnotation&&live){
-            pdfSyncMetadataUpdates.add(key)
-            await scope.updateAnnotation(live.pageIndex,live.id,{custom:{...(live.custom||{}),...updates}})
-            await embedPdfReaderRef.value?.flushAnnotations?.()
-          }
+          const live=latestPdfAnnotation(item), scope=embedPdfReaderRef.value?.annotationActions
+          if(embedPdfDocumentContext.value?.storageKey===eventKey&&scope&&live){
+            await scope.update(live.id,{custom:updates})
+          } else await upsertEmbedPdfAnnotation(eventKey,{annotation:{...annotation,custom:{...(annotation.custom||{}),...updates}}})
         }}
         const durableCtx={...ctx,marks:durableMarks}
         if(event?.type==='update'&&next.blockId)await m.updateMarkInDoc(next,durableCtx)
@@ -268,26 +248,24 @@ const syncEmbedPdfEvent=(event:any)=>{
 }
 const updateEmbedPdfMark=async(item:any,updates:any)=>{
   const requested=item.annotation||item
-  const current=embedPdfAnnotations.value?.getAnnotations?.().find((x:any)=>x.object?.id===requested.id)?.object||requested
+  const current=latestPdfAnnotation(requested)
   const a={...current,custom:{...(current.custom||{})}}
   a.custom={...a.custom,...compact({text:updates.text,title:updates.title,note:updates.note,tags:updates.tags,style:updates.style,blockId:updates.blockId,blockIds:updates.blockIds})}
   a.contents=updates.note??updates.text??a.contents
   if(updates.style)a.type=PDF_MARKUP_TYPES[updates.style]||a.type
   if(updates.color)a.strokeColor=a.color=updates.color
   Object.assign(item,updates,{style:embedPdfStyle(a.type,a.custom),color:embedPdfColor(a.strokeColor||a.color||'')})
-  await embedPdfAnnotations.value.updateAnnotation(a.pageIndex,a.id,compact({type:a.type,contents:a.contents,custom:a.custom,strokeColor:a.strokeColor,color:a.color}))
+  await embedPdfReaderRef.value?.annotationActions.update(a.id,compact({type:a.type,contents:a.contents,custom:a.custom,strokeColor:a.strokeColor,color:a.color}))
   await embedPdfReaderRef.value?.flushAnnotations?.()
-  await loadEmbedPdfMarks()
 }
-const deleteEmbedPdfMark=async(item:any)=>{const a=item.annotation||item;await embedPdfAnnotations.value.deleteAnnotation(a.pageIndex,a.id);await embedPdfReaderRef.value?.flushAnnotations?.();return true}
+const deleteEmbedPdfMark=async(item:any)=>{const a=item.annotation||item;await embedPdfReaderRef.value?.annotationActions.delete(a.id);await embedPdfReaderRef.value?.flushAnnotations?.();return true}
 const toggleEmbedPdfBookmark=async(loc:any,title?:string)=>{
   const page=typeof loc==='string'?pdfPageFromCfi(loc):Number(loc||0), found=embedPdfMarks.value.find(item=>item.type==='bookmark'&&item.page===page)
   if(!page)return false
   if(found)return await deleteEmbedPdfMark(found),false
   const text=title||`${i18n.value.page || 'Page'} ${page}${i18n.value.pageSuffix || ''}`, now=new Date()
-  embedPdfAnnotations.value.createAnnotation(page-1,{id:`bookmark-${Date.now()}`,type:1,pageIndex:page-1,rect:{origin:{x:0,y:0},size:{width:1,height:1}},contents:text,created:now,modified:now,flags:['hidden','noView'],custom:{type:'bookmark',title:text}})
+  await embedPdfReaderRef.value?.annotationActions.create({id:`bookmark-${Date.now()}`,type:1,pageIndex:page-1,rect:{origin:{x:0,y:0},size:{width:1,height:1}},contents:text,created:now,modified:now,flags:['hidden','noView'],custom:{type:'bookmark',title:text}})
   await embedPdfReaderRef.value?.flushAnnotations?.()
-  await loadEmbedPdfMarks()
   return true
 }
 const initEmbedPdfMode=async(loadSource:()=>Promise<File|string|null>)=>{
@@ -295,45 +273,86 @@ const initEmbedPdfMode=async(loadSource:()=>Promise<File|string|null>)=>{
   if(!file)throw new Error(i18n.value.pdfFileMissing || 'PDF file is missing')
   embedPdfDocumentContext.value=null
   embedPdfSource.value=file
-  embedPdfNativeIds=new Set()
   embedPdfMarks.value=[]
-  embedPdfAnnotationsHidden.value=false
   markManager.value=null
-  currentView.value={engine:'embedpdf',isPdf:true,annotationsHidden:embedPdfAnnotationsHidden,marks:{getAnnotations:()=>embedPdfMarks.value.filter((item:any)=>item.type!=='bookmark'),getBookmarks:()=>embedPdfMarks.value.filter((item:any)=>item.type==='bookmark'),updateMark:updateEmbedPdfMark,deleteMark:deleteEmbedPdfMark,toggleBookmark:toggleEmbedPdfBookmark,imageMark:imageEmbedPdfMark},goTo:(page:any,id?:string)=>{const pageNumber=Number(page)||1;embedPdfPages.value?.scrollToPage({pageNumber,behavior:getSettings()?.pageAnimation==='push'?'instant':'smooth'});if(id)requestAnimationFrame(()=>embedPdfAnnotations.value?.selectAnnotation?.(pageNumber-1,id))},getCurrentPage:()=>embedPdfPages.value?.getCurrentPage?.()||1,toggleAnnotationsHidden:()=>embedPdfAnnotationsHidden.value=!embedPdfAnnotationsHidden.value,cleanup:()=>{cleanupEmbedPdfEvents?.();cleanupEmbedPdfEvents=null;embedPdfSource.value=null;embedPdfPages.value=null;embedPdfAnnotations.value=null;embedPdfNativeIds=new Set();embedPdfMarks.value=[];embedPdfAnnotationsHidden.value=false}}
+  currentView.value = {
+    engine: 'embedpdf',
+    isPdf: true,
+    marks: {
+      getAnnotations: () => embedPdfMarks.value.filter(item => item.type !== 'bookmark'),
+      getBookmarks: () => embedPdfMarks.value.filter(item => item.type === 'bookmark'),
+      updateMark: updateEmbedPdfMark,
+      deleteMark: deleteEmbedPdfMark,
+      toggleBookmark: toggleEmbedPdfBookmark,
+      imageMark: imageEmbedPdfMark,
+    },
+    goTo: (page: number, id?: string) => {
+      embedPdfPages.value?.goToPage((Number(page) || 1) - 1)
+      if (id) embedPdfReaderRef.value?.annotationActions.select(id)
+    },
+    getCurrentPage: () => (embedPdfPages.value?.getCurrentPageIndex() ?? 0) + 1,
+    cleanup: () => {
+      cleanupEmbedPdfEvents?.()
+      cleanupEmbedPdfEvents = null
+      embedPdfSource.value = null
+      embedPdfPages.value = null
+      embedPdfMarks.value = []
+    },
+  }
   setActiveReader(currentView.value,null,getSettings(),getBookUrl())
 }
-const handleEmbedPdfReady=(registry:any,context?:{documentId:string;bookUrl:string;storageKey:string})=>{
-  embedPdfDocumentContext.value=context||null
-  embedPdfPersistenceReady=false
-  const documentId=context?.documentId||'sireader-document'
-  const scroll=registry.getPlugin('scroll').provides()
-  embedPdfPages.value=scroll.forDocument(documentId)
-  embedPdfAnnotations.value=registry.getPlugin('annotation').provides().forDocument(documentId)
-  currentView.value.render=registry.getPlugin('render')?.provides?.().forDocument(documentId)
-  const emitPage=(page:number)=>window.dispatchEvent(new CustomEvent('sireader:pdf-page',{detail:{bookUrl:getBookUrl(),page}}))
-  const offPage=scroll.onPageChange?.((event:any)=>event.documentId===documentId&&emitPage(event.pageNumber))
-  const rememberNative=()=>embedPdfNativeIds=new Set(embedPdfAnnotations.value?.getAnnotations?.().map((item:any)=>item.object?.id).filter(Boolean)||[])
-  const offAnno=embedPdfAnnotations.value.onAnnotationEvent?.((event:any)=>{if(event?.type==='loaded')rememberNative();if(event?.type==='loaded'||event.committed===true)requestAnimationFrame(()=>void loadEmbedPdfMarks())})
+const setPdfReadOnly=(value:boolean)=>{if(currentView.value)currentView.value.readOnlyMarks=value}
+const detachPdfView=()=>{
   cleanupEmbedPdfEvents?.()
-  cleanupEmbedPdfEvents=()=>{offPage?.();offAnno?.()}
-  emitPage(embedPdfPages.value?.getCurrentPage?.()||1)
-  rememberNative()
-  void loadEmbedPdfMarks()
-  const pageTextCache=new Map<number,Promise<string>>()
+  cleanupEmbedPdfEvents=null
+  embedPdfDocumentContext.value=null
+  embedPdfPages.value=null
+  embedPdfMarks.value=[]
+}
+const handleEmbedPdfReady=(viewer:any,context:{documentId:string;bookUrl:string;storageKey:string})=>{
+  embedPdfDocumentContext.value=context
+  const scope=viewer.forDocument(context.documentId)
+  const stage=scope.get('stage')
+  embedPdfPages.value=stage
+  currentView.value.render=scope.get('render')
+  const emitPage=()=>window.dispatchEvent(new CustomEvent('sireader:pdf-page',{detail:{bookUrl:getBookUrl(),page:stage.getCurrentPageIndex()+1}}))
+  cleanupEmbedPdfEvents?.()
+  cleanupEmbedPdfEvents=stage.onPageChanged(emitPage)
+  emitPage()
+  let textDocument: ReturnType<typeof openPdf> | undefined
+  const pageText=new Map<number,Promise<string>>()
   currentView.value.getPageText=(page:number)=>{
-    const pageNumber=Number(page)||1
-    if(!pageTextCache.has(pageNumber))pageTextCache.set(pageNumber,(async()=>{
-      const doc=registry.getPlugin('document-manager')?.provides?.().getDocument(documentId)
-      return doc ? await registry.getEngine().extractText(doc,[pageNumber-1]).toPromise() : ''
-    })())
-    return pageTextCache.get(pageNumber)!
+    if (!pageText.has(page)) pageText.set(page,(async()=>{
+      textDocument ||= viewer.documents.download(context.documentId).then(openPdf)
+      const document=await textDocument
+      const {pages}=await document.pages.list()
+      return pages[page-1] ? (await document.page(pages[page-1].ref).text.get()).text : ''
+    })().catch(error=>{pageText.delete(page);throw error}))
+    return pageText.get(page)
   }
-  currentView.value.getBookmarks=()=>taskToPromise<any>(registry.getPlugin('bookmark')?.provides?.()?.forDocument?.(documentId)?.getBookmarks?.()).then((result:any)=>result?.bookmarks||[])
+  const offPage=cleanupEmbedPdfEvents
+  cleanupEmbedPdfEvents=()=>{
+    offPage?.()
+    void textDocument?.then(document=>document.close()).catch(()=>{})
+  }
+  const outline=scope.get('outline')
+  currentView.value.activateOutline=(id:number)=>{
+    const ref={kind:'objectNumber',objectNumber:id}
+    return !!outline.get(ref) && outline.activate(ref).status!=='none'
+  }
+  currentView.value.getPdfToc=async()=>{
+    await outline.ensureLoaded()
+    const branch=(parent:any):any[]=>outline.getChildren(parent).map((item:any)=>{
+      const page=item.target?.kind==='goto' ? viewer.documents.getPageIndex(item.target.destination.page,context.documentId) : -1
+      return { id:item.ref.objectNumber,label:item.title,href:page>=0?`#page-${page+1}`:'',subitems:branch(item.ref) }
+    })
+    return branch(null)
+  }
   currentView.value.executePdfCommand=(id:string)=>{
     if (!id || !isThisActiveReader()) return
-    try { registry.getPlugin('commands')?.provides?.()?.execute?.(id, documentId, 'siyuan') }
-    catch (error:any) { showMessage(error?.message || i18n.value.pdfOperationFailed || 'PDF operation failed', 2000, 'error') }
+    void embedPdfReaderRef.value?.executeCommand(id)?.catch(error=>showMessage(error?.message || i18n.value.pdfOperationFailed || 'PDF operation failed',2000,'error'))
   }
+  refreshEmbedPdfMarks()
   window.dispatchEvent(new CustomEvent('sireader:tab-switched'))
 }
 const loadViewer=()=>document.getElementById('protyleViewerScript')?Promise.resolve():new Promise<void>((resolve,reject)=>{
@@ -360,8 +379,6 @@ const copyImageAsPng=async(src:string)=>{
     if(blob) await navigator.clipboard.write([new ClipboardItem({'image/png':blob})])
   }catch{showMessage(i18n.value.copyImageFailed || 'Copy image failed',2000,'error')}
 }
-let embedPdfPersistenceReady=false
-const handleEmbedPdfAnnotationsReady=()=>{embedPdfPersistenceReady=true;void loadEmbedPdfMarks()}
 const openImageViewer=async({item}:any)=>{
   if(!item?.image)return
   await loadViewer().catch(()=>{})
@@ -452,11 +469,10 @@ const handleCopy=(item:any)=>copyReaderMark(item)
 const handleCopyToClipboard=(item:any)=>copyReaderMark(item,true)
 const handleOpenDict=(text:string,x:number,y:number,selection:any)=>selection&&openDictDialog(text,x,y,selection)
 const isEpubScrollMode=()=>getSettings()?.viewMode==='scroll'
-const pdfPageBehavior=()=>getSettings()?.pageAnimation==='push'?'instant':'smooth'
 const flipPage=async(dir:'prev'|'next',distance?:number)=>{
   if(dir==='next'&&readerSplashRef.value?.isVisible())return readerSplashRef.value.dismiss()
   if(props.bookInfo?.temporary&&typeof props.bookInfo?.webpageTurn==='function')return props.bookInfo.webpageTurn(dir)
-  if(isEmbedPdfMode.value)return embedPdfPages.value?.[dir==='prev'?'scrollToPreviousPage':'scrollToNextPage'](pdfPageBehavior())
+  if(isEmbedPdfMode.value)return embedPdfPages.value?.[dir==='prev'?'previousPage':'nextPage']()
     if(reader)return isEpubScrollMode() ? reader[dir](distance) : reader[dir==='prev'?'goLeft':'goRight']()
   return currentView.value?.[dir]?.()||currentView.value?.[dir==='prev'?'goLeft':'goRight']?.()
 }
@@ -507,7 +523,6 @@ const handleGoto=(e:CustomEvent)=>{
   void gotoEPUB(cfi,id,reader,markManager.value)
 }
 const handleUndo=()=>markManager.value?.undo?.()
-const refreshEmbedPdfMarks=()=>{if(isEmbedPdfMode.value)void loadEmbedPdfMarks()}
 const getScrollStep=()=>{
   if(!isEpubScrollMode())return undefined
   const size=Number(reader?.getView?.()?.renderer?.size)
@@ -531,8 +546,7 @@ const events=[
 const suppressError=(e:PromiseRejectionEvent)=>/createTreeWalker|destroy/.test(e.reason?.message||'')&&e.preventDefault()
 const setupTabObserver=()=>{if(isMobile())return;let el=containerRef.value?.parentElement;while(el){if(el.hasAttribute('data-id')){const h=document.querySelector(`li[data-type="tab-header"][data-id="${el.getAttribute('data-id')}"]`);if(h){const obs=new MutationObserver(ms=>ms.forEach(m=>{if(m.type!=='attributes'||m.attributeName!=='class')return;const focused=(m.target as HTMLElement).classList.contains('item--focus');focused&&setActiveReader(currentView.value,reader,getSettings(),getBookUrl());focused&&window.dispatchEvent(new CustomEvent('sireader:tab-switched'));syncReaderFocus(focused&&hasReaderFocus())}));obs.observe(h,{attributes:true,attributeFilter:['class']});(containerRef.value as any).__observer=obs;break}}el=el.parentElement}}
 const resize=()=>{
-  if(isEmbedPdfMode.value) embedPdfReaderRef.value?.resize?.()
-  else reader?.resize?.()
+  reader?.resize?.()
 }
 defineExpose({ resize })
 onMounted(()=>{init();if(!isPdfBook.value){footerTimer=window.setInterval(syncReadingProgress,60000);const getBattery=(navigator as any).getBattery;if(typeof getBattery==='function')void getBattery.call(navigator).then((value:any)=>{battery.value=value;syncReadingProgress()}).catch(()=>{})}containerRef.value?.focus();events.forEach(([e,h])=>window.addEventListener(e,h as any));window.addEventListener('keydown',handleKeydown);window.addEventListener('unhandledrejection',suppressError);window.addEventListener('blur',handleWindowBlur);window.addEventListener('focus',handleWindowFocus);document.addEventListener('visibilitychange',handleVisibilityChange);setupTabObserver();const c=containerRef.value;c&&(c.addEventListener('focusin',handleFocusIn),c.addEventListener('focusout',handleFocusOut));bindTouchPaging(c);bindTouchPaging(viewerContainerRef.value);dispatchReaderLifecycle('open',getBookUrl());syncReaderFocus(true)})

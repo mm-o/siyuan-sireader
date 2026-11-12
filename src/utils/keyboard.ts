@@ -1,4 +1,4 @@
-﻿// 阅读器快捷键处理
+// 阅读器快捷键处理
 export interface KeyboardHandlers {
   handlePrev: (distance?: number) => void
   handleNext: (distance?: number) => void
@@ -126,3 +126,38 @@ export const PDF_SHORTCUT_COMMANDS = [
   ['history:undo', '撤销'], ['history:redo', '重做'], ['pan:toggle', '平移'], ['pointer:toggle', '指针'],
   ['mode:view', '查看模式'], ['mode:annotate', '标注模式'], ['mode:insert', '插入模式'], ['mode:redact', '遮盖模式'], ['mode:form', '表单模式'],
 ] as const
+
+const PDF_VIEWER_COMMANDS: Record<string, string> = {
+  'zoom:marquee': 'tool:zoom',
+  'rotate:clockwise': 'view:rotate-clockwise',
+  'rotate:counter-clockwise': 'view:rotate-counterclockwise',
+  'scroll:previous-page': 'page:previous',
+  'scroll:next-page': 'page:next',
+  'panel:toggle-sidebar': 'panel:outline',
+  'panel:toggle-search': 'panel:search',
+  'panel:toggle-comment': 'panel:comments',
+  'panel:toggle-annotation-style': 'panel:style',
+  'panel:toggle-redaction': 'panel:redaction',
+  'document:export': 'document:download',
+  'document:fullscreen': 'view:fullscreen',
+  'document:capture': 'tool:snapshot',
+  'annotation:add-text': 'tool:free-text',
+  'annotation:add-rectangle': 'tool:square',
+  'annotation:add-ink-highlighter': 'tool:ink-highlight',
+  'annotation:delete-selected': 'annotation:delete',
+  'annotation:toggle-comment': 'annotation:comment',
+  'annotation:toggle-link': 'annotation:link',
+  'annotation:toggle-annotation-style': 'annotation:style',
+  'annotation:toggle-widget-edit': 'form:design',
+  'redaction:redact-text': 'tool:redact',
+  'redaction:delete-selected': 'sireader:delete-redactions',
+  'redaction:commit-selected': 'annotation:apply-redaction',
+  'insert:add-image': 'tool:image',
+  'insert:add-rubber-stamp': 'tool:stamp',
+  'insert:add-signature': 'tool:signature',
+  'pan:toggle': 'tool:pan',
+  'pointer:toggle': 'tool:pointer',
+}
+
+export const pdfViewerCommand = (id: string) =>
+  PDF_VIEWER_COMMANDS[id] || id.replace(/^annotation:add-/, 'tool:')

@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <Stats :visible="showStats" @close="showStats=false" @open="handleOpenBook" />
   <TTSMini :i18n="plugin.i18n" />
 </template>
@@ -8,7 +8,7 @@ import { computed, createApp, defineComponent, h, onMounted, onUnmounted, provid
 import { MotionPlugin } from '@vueuse/motion'
 import { openTab, showMessage } from 'siyuan'
 import { usePlugin, setOpenSettingHandler, registerCleanup, registerReaderTab } from '@/main'
-import { useSetting, settingsManager, parseBookLink, DEFAULT_NAV_ITEMS } from '@/composables/useSetting'
+import { useSetting, settingsManager, parseBookLink, DEFAULT_NAV_ITEMS, isDocAssetExcluded } from '@/composables/useSetting'
 import { useStats } from '@/composables/useStats'
 import { READER_ICON_ID } from '@/utils/icon'
 import { isMobile } from '@/utils/mobile'
@@ -183,17 +183,6 @@ const openSetting = (openLicense = false) => {
 
 // ===== 阅读器核心 =====
 const BOOK_RE = /\.(epub|pdf|mobi|azw3|azw|fb2|cbz|txt)(?:[?#].*)?$/i
-let docAssetExcludePattern = '', docAssetExcludeRegex: RegExp | null = null
-const decodeLink = (value = '') => { try { return decodeURIComponent(value) } catch { return value } }
-const shouldAddDocAssetToShelf = (url: string, pattern = '') => {
-  pattern = pattern.trim()
-  if (pattern !== docAssetExcludePattern) {
-    docAssetExcludePattern = pattern
-    try { docAssetExcludeRegex = pattern ? new RegExp(pattern) : null } catch { docAssetExcludeRegex = null }
-  }
-  const name = decodeLink(url.split(/[?#]/)[0].split('/').pop() || '')
-  return !docAssetExcludeRegex || (!docAssetExcludeRegex.test(decodeLink(url)) && !docAssetExcludeRegex.test(name))
-}
 const fetchFile = async (url: string) => {
   try {
     const res = await fetch(url[0] === '/' || url.startsWith('http') ? url : `/${url}`)
@@ -235,8 +224,9 @@ registerCleanup(() => {
 // 注册标签页
 registerReaderTab('epub_reader', async tab => {
   const { url, blockId, file } = tab.data
-  if (!file && !url) return showReaderError(tab.element)
-  tab._app = await mountReader(tab.element, { file, url, blockId })
+  const sourceFile = typeof file?.arrayBuffer === 'function' ? file : undefined
+  if (!sourceFile && !url) return showReaderError(tab.element)
+  tab._app = await mountReader(tab.element, { file: sourceFile, url, blockId })
 })
 registerReaderTab('custom_tab_book_reader', async tab => {
   const { bookInfo } = tab.data
@@ -301,7 +291,7 @@ const handleEbookLink = async (e: MouseEvent) => {
     e.preventDefault(), e.stopPropagation()
     const file = await fetchFile(cleanUrl)
     if (!file) return showMessage(plugin.i18n?.fileNotFound || 'File not found', 3000, 'error')
-    if (!shouldAddDocAssetToShelf(url, settings.value.docAssetExcludeRegex)) {
+    if (isDocAssetExcluded(url, settings.value)) {
       const title = file.name.replace(/\.[^.]+$/, '') || 'Reader'
       return openReaderTab(plugin, title, { file, bookInfo: { title, url: `asset://${url}`, temporary: true } }, `${plugin.name}epub_reader`, settings.value)
     }
@@ -314,12 +304,16 @@ const handleEbookLink = async (e: MouseEvent) => {
   e.preventDefault(), e.stopPropagation()
   const readUrl = normalizeSiyuanCloudUrl(cleanUrl)
   const blockId = link.closest('[data-node-id]')?.getAttribute('data-node-id')
+  const name = readUrl.split('/').pop()?.split('?')[0] || ''
+  const title = (decodeURIComponent(name).replace(/\.[^.]+$/, '') || 'Reader')
+  // 命中排除规则时仍可打开，但不写入书架、不记录阅读进度
+  if (isDocAssetExcluded(url, settings.value)) {
+    return openReaderTab(plugin, title, { url: readUrl, blockId, bookInfo: { title, url: readUrl, temporary: true } }, `${plugin.name}epub_reader`, settings.value)
+  }
   const existing = await bookshelfManager.getBook(readUrl)
   const addedUrl = existing ? readUrl : await bookshelfManager.addUrlBook(readUrl).catch(() => '')
   const book = existing || (addedUrl ? await bookshelfManager.getBook(addedUrl) : null)
   if (book) return openOrActivateBook(plugin, book, settings.value)
-  const name = readUrl.split('/').pop()?.split('?')[0] || ''
-  const title = (decodeURIComponent(name).replace(/\.[^.]+$/, '') || 'Reader')
   openReaderTab(plugin, title, { url: readUrl, blockId }, `${plugin.name}epub_reader`, settings.value)
 }
 

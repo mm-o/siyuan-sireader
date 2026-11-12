@@ -11,7 +11,6 @@ const tasks = new Map<string, Promise<BookRecord | null>>()
 const req = (id: string) => { try { return (window as any).require?.(id) } catch { return null } }
 const now = () => typeof performance === 'undefined' ? Date.now() : performance.now()
 const sleep = () => new Promise(resolve => setTimeout(resolve, 0))
-const taskToPromise = <T>(task: any) => new Promise<T>((resolve, reject) => task?.wait ? task.wait(resolve, reject) : resolve(task as T))
 const emitMigration = (detail: Record<string, any>) => {
   if (typeof window === 'undefined') return
   window.dispatchEvent(new CustomEvent('sireader:pdf-migration', { detail }))
@@ -279,77 +278,39 @@ export const ensurePdfRecordMigrated = (url: string, io: PdfMigrationIO, pageHei
   return task
 }
 
-const textPart = (value = '') => String(value).normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '')
-const textKey = (value = '') => [...String(value)].map(textPart).join('')
-const textMap = (value = '') => {
-  const map: number[] = []
-  const key = [...String(value)].map((char, index) => {
-    const part = textPart(char)
-    for (let i = 0; i < part.length; i++) map.push(index)
-    return part
-  }).join('')
-  return { key, map }
-}
-const textMatches = (key: string, needle: string) => {
-  const exact = []
-  for (let at = key.indexOf(needle); at >= 0; at = key.indexOf(needle, at + 1)) exact.push(at)
-  if (exact.length || needle.length < 4) return exact
-  const n = Math.min(4, Math.max(2, Math.floor(needle.length / 2)))
-  const hits = new Map<number, number>()
-  for (let i = 0; i <= needle.length - n; i++) for (let at = key.indexOf(needle.slice(i, i + n)); at >= 0; at = key.indexOf(needle.slice(i, i + n), at + 1)) {
-    const start = Math.max(0, Math.min(key.length - needle.length, at - i))
-    hits.set(start, (hits.get(start) || 0) + n)
-  }
-  return [...hits.entries()].filter(([, score]) => score >= Math.max(2, needle.length * .45)).sort((a, b) => b[1] - a[1]).slice(0, 12).map(([start]) => start)
-}
 const rectCenter = (box: any) => ({ x: Number(box?.origin?.x || 0) + Number(box?.size?.width || 0) / 2, y: Number(box?.origin?.y || 0) + Number(box?.size?.height || 0) / 2 })
 const rectDistance = (a: any, b: any) => {
   const ca = rectCenter(a), cb = rectCenter(b)
   return Math.abs(ca.x - cb.x) + Math.abs(ca.y - cb.y)
 }
-const rectsFromGeometry = (geo: any, start: number, end: number) => (geo?.runs || []).flatMap((run: any) => {
-  const runStart = Number(run.charStart || 0), runEnd = runStart + (run.glyphs || []).length - 1
-  if (runEnd < start || runStart > end) return []
-  const glyphs = (run.glyphs || []).slice(Math.max(start, runStart) - runStart, Math.min(end, runEnd) - runStart + 1).filter((glyph: any) => glyph.flags !== 2)
-  if (!glyphs.length) return []
-  const xs = glyphs.flatMap((glyph: any) => [glyph.x, glyph.x + glyph.width])
-  const ys = glyphs.flatMap((glyph: any) => [glyph.y, glyph.y + glyph.height])
-  return [{ origin: { x: Math.min(...xs), y: Math.min(...ys) }, size: { width: Math.max(...xs) - Math.min(...xs), height: Math.max(...ys) - Math.min(...ys) } }]
-})
 export const needsLegacyPdfTextAlign = (items: any[] = []) => items.some(item => {
   const custom = item?.annotation?.custom
   return custom?.text && ['highlight', 'note'].includes(custom?.legacyType) && custom?.textCoord !== PDF_MIGRATION_VERSION
 })
-export const alignLegacyPdfAnnotations = async (items: any[], registry: any, documents: any, documentId = 'sireader-document') => {
-  if (!needsLegacyPdfTextAlign(items)) return items
-  const doc = documents?.getDocumentState(documentId)?.document
-  const engine = registry?.getEngine?.()
-  if (!doc || !engine) return items
-  const cache = new Map<number, Promise<any>>()
-  const pageData = (pageIndex: number) => cache.get(pageIndex) || cache.set(pageIndex, Promise.all([
-    taskToPromise<string>(engine.extractText(doc, [pageIndex])).catch(() => ''),
-    taskToPromise<any>(engine.getPageGeometry(doc, doc.pages[pageIndex])).catch(() => null),
-  ]).then(([text, geo]) => ({ ...textMap(text), geo }))).get(pageIndex)!
-  let changed = false
-  const next = await Promise.all(items.map(async item => {
-    const a = item?.annotation, needle = textKey(a?.custom?.text || '')
-    if (!needle || !['highlight', 'note'].includes(a?.custom?.legacyType) || a?.custom?.textCoord === PDF_MIGRATION_VERSION) return item
-    let best: any = null
-    const oldRect = bounds(a.segmentRects || []) || a.rect
-    for (const pageIndex of [a.pageIndex, a.pageIndex - 1, a.pageIndex + 1].filter((page: number) => page >= 0 && page < doc.pages.length)) {
-      const page = await pageData(pageIndex)
-      if (!page.geo) continue
-      for (const at of textMatches(page.key, needle)) {
-        const rects = rectsFromGeometry(page.geo, page.map[at], page.map[Math.min(page.map.length - 1, at + needle.length - 1)])
-        const rect = bounds(rects)
-        if (!rect) continue
-        const score = (pageIndex === a.pageIndex ? 0 : 100000) + rectDistance(oldRect, rect)
-        if (!best || score < best.score) best = { pageIndex, rect, rects, score }
-      }
+export const alignLegacyPdfAnnotations = async (items: any[], document: Awaited<ReturnType<import('@embedpdf/engine').LocalEngine['open']>>) => {
+  const { pages } = await document.pages.list()
+  const pageIndexes = new Map(pages.map((page, index) => [JSON.stringify(page.ref), index]))
+  return Promise.all(items.map(async item => {
+    if (!needsLegacyPdfTextAlign([item])) return item
+    const a = item.annotation
+    const page = pages[a.pageIndex]
+    if (!page) return item
+    const start = Math.max(0, a.pageIndex - 1)
+    const { matches } = await document.search.query({
+      text: a.custom.text, ignoreWhitespace: true, from: pages[start].ref,
+      limit: { pages: Math.min(a.pageIndex + 2, pages.length) - start },
+    })
+    let best: { pageIndex: number; rect: any; rects: any[]; score: number } | undefined
+    for (const match of matches) {
+      const pageIndex = pageIndexes.get(JSON.stringify(match.page))
+      if (pageIndex === undefined || Math.abs(pageIndex - a.pageIndex) > 1) continue
+      const rects = match.segments.map(({ rect }) => ({ origin: { x: rect.x, y: rect.y }, size: { width: rect.width, height: rect.height } }))
+      const rect = bounds(rects)
+      if (!rect) continue
+      const score = (pageIndex === a.pageIndex ? 0 : 100000) + rectDistance(a.rect, rect)
+      if (!best || score < best.score) best = { pageIndex, rect, rects, score }
     }
     if (!best) return item
-    changed = true
     return { ...item, annotation: { ...a, type: 9, strokeColor: a.strokeColor || DEFAULT_HIGHLIGHT, pageIndex: best.pageIndex, rect: best.rect, segmentRects: best.rects, custom: { ...a.custom, textCoord: PDF_MIGRATION_VERSION } } }
   }))
-  return changed ? next : items
 }

@@ -2,7 +2,7 @@
 import { computed, h, onMounted, onUnmounted, ref, watch } from 'vue'
 import { showMessage } from 'siyuan'
 import type { ReaderSettings, FontFileInfo } from '@/composables/useSetting'
-import { DEFAULT_NAV_ITEMS, LINK_FORMAT_PRESETS, NOTE_MODE_LABELS, NOTE_MODE_OPTIONS, NOTE_TARGET_OPTIONS, PDF_SCROLL_DIRECTION_ITEM, PRESET_THEMES, SectionTitle, SettingItem, SettingRows, SettingSection, UI_CONFIG, getLicenseMedia, settingSectionIcon, useSetting, useConfirm, useDocSearch, useNotebooks, useTTSSettings } from '@/composables/useSetting'
+import { DEFAULT_NAV_ITEMS, isDocAssetExcluded, LINK_FORMAT_PRESETS, NOTE_MODE_LABELS, NOTE_MODE_OPTIONS, NOTE_TARGET_OPTIONS, PRESET_THEMES, SectionTitle, SettingItem, SettingRows, SettingSection, UI_CONFIG, getLicenseMedia, settingSectionIcon, useSetting, useConfirm, useDocSearch, useNotebooks, useTTSSettings } from '@/composables/useSetting'
 import { bookshelfManager } from '@/core/bookshelf'
 import { offlineDictManager, onlineDictManager } from '@/utils/dictionary'
 import { usePlugin } from '@/main'
@@ -20,7 +20,6 @@ const settings = ref<ReaderSettings>(props.modelValue),
 const plugin = usePlugin()
 const {customFonts,isLoadingFonts,loadCustomFonts,loadFont,uploadCustomFonts,deleteCustomFont,backgroundImages,uploadBackground,deleteBackground,resetStyles:resetStylesRaw} = useSetting(plugin)
 const {interfaceItems,customThemeItems,appearanceGroups,ttsItems,ttsOptions} = UI_CONFIG
-const interfaceSettings = [...interfaceItems, PDF_SCROLL_DIRECTION_ITEM]
 const {confirming:resetConfirm,handleClick:handleReset} = useConfirm(() => {resetStylesRaw();save()})
 
 // TTS orchestration lives with the other setting logic; the view only binds state/actions.
@@ -95,6 +94,23 @@ const dictSections = computed(() => [
     key: 'onlineDict', title: props.i18n.onlineDict||'在线词典', items: onlineDicts.value, empty: '', manager: onlineDictManager, desc: (d:any) => d.desc, drop: (e:DragEvent,i:number) => dragDrop(e,i,'dict',onlineDicts,onlineDictManager)
   }
 ])
+const docAssetExcludeTest = ref('')
+const DOC_PATHS = [['assets/', 'docAssetPathAssets'], ['/plugin/private/siyuan-cloud/', 'docAssetPathCloud']] as const
+const docPathChecked = (p: string) => (settings.value.docAssetExcludePaths || '').split(/\r?\n/).map(s => s.trim()).includes(p)
+const toggleDocPath = (p: string, on: boolean) => {
+  const list = (settings.value.docAssetExcludePaths || '').split(/\r?\n/).map(s => s.trim()).filter(s => s && s !== p)
+  settings.value.docAssetExcludePaths = (on ? [...list, p] : list).join('\n')
+  debouncedSave()
+}
+const docAssetExcludeTestMatched = computed(() => !!docAssetExcludeTest.value.trim() && isDocAssetExcluded(docAssetExcludeTest.value.trim(), settings.value))
+const docAssetExcludeFields = computed(() => {
+  const i = props.i18n, set = (key: 'docAssetExcludeKeywords' | 'docAssetExcludePaths' | 'docAssetExcludeRegex') => (v: string) => (settings.value[key] = v, debouncedSave())
+  return [
+    { key: 'docAssetExcludeKeywords' as const, label: i.docAssetExcludeKeywords || '排除关键词', hint: i.docAssetExcludeKeywordsDesc || '每行一个，可为文件名或链接片段；支持 * 通配', value: settings.value.docAssetExcludeKeywords || '', placeholder: i.docAssetExcludeKeywordsPlaceholder || '发票\n收据\n*办法*.pdf' },
+    { key: 'docAssetExcludePaths' as const, label: i.docAssetExcludePaths || '排除路径', hint: i.docAssetExcludePathsDesc || '每行一个路径前缀，该目录下文件全部排除', value: settings.value.docAssetExcludePaths || '', placeholder: i.docAssetExcludePathsPlaceholder || 'assets/books/\n/plugin/private/siyuan-cloud/我的网盘/' },
+    { key: 'docAssetExcludeRegex' as const, label: i.docAssetExcludeRegex || '排除正则（可选）', hint: i.docAssetExcludeRegexDesc || '高级用法，匹配后不自动加入书架', value: settings.value.docAssetExcludeRegex || '', placeholder: i.docAssetExcludeRegexPlaceholder || '.*办法.*\\.pdf$' },
+  ].map(f => ({ ...f, set: set(f.key) }))
+})
 const noteFields = computed(() => [
   checkboxField('annotationSyncOnAdd', props.i18n.annotationSyncOnAdd || '添加时同步', settings.value.annotationSyncOnAdd, value => (settings.value.annotationSyncOnAdd = value, save()), true, props.i18n.annotationSyncOnAddDesc || '新增标注时自动同步到已绑定文档'),
   checkboxField('annotationSyncOnDelete', props.i18n.annotationSyncOnDelete || '删除时同步', settings.value.annotationSyncOnDelete, value => (settings.value.annotationSyncOnDelete = value, save()), true, props.i18n.annotationSyncOnDeleteDesc || '删除标注时同步删除已绑定块'),
@@ -104,7 +120,6 @@ const noteFields = computed(() => [
   selectField('linkFormatPreset', props.i18n.linkFormatPreset || '模板预设', linkFormatPresetValue.value, linkFormatPresetOptions.map(value => ({ value: LINK_FORMAT_PRESETS[value], label: props.i18n[`linkFormatPreset${value.charAt(0).toUpperCase()}${value.slice(1)}`] || value })), applyLinkFormatPreset, true, props.i18n.selectPreset || '请选择'),
   { key: 'linkFormat', type: 'textarea', label: props.i18n.linkFormat || '链接格式', value: settings.value.linkFormat, set: (value:string) => (settings.value.linkFormat = value, debouncedSave()), hint: props.i18n.linkFormatDesc || '可用变量：书名 作者 章节 位置 链接 文本 笔记 图片' },
   { key: 'wereadExportTemplate', type: 'textarea', rows: 12, label: '微信读书导出模板', value: settings.value.wereadExportTemplate || '', set: (value:string) => (settings.value.wereadExportTemplate = value, debouncedSave()), hint: '支持变量：{{书名}} {{封面}} {{作者}} {{链接}} {{详情链接}} {{bookId}} {{ISBN}} {{出版社}} {{分类}} {{出版时间}} {{字数}} {{阅读人数}} {{评分}} {{简介}} {{目录}} {{划线}} {{想法}} {{划线与想法}}' },
-  { key: 'docAssetExcludeRegex', type: 'textarea', rows: 3, label: props.i18n.docAssetExcludeRegex || '文档链接入库排除正则', value: settings.value.docAssetExcludeRegex, set: (value:string) => (settings.value.docAssetExcludeRegex = value, debouncedSave()), hint: props.i18n.docAssetExcludeRegexDesc || '匹配后仍按开关打开，但不自动加入书架；不用写外层 /.../；留空则不过滤', placeholder: props.i18n.docAssetExcludeRegexPlaceholder || '示例：^(发票|收据|报销).*\\.pdf$|.*办法.*\\.pdf$\n^ 开头；$ 结尾；| 或；() 分组；.* 任意文字；\\. 匹配普通点\n排除“2007新的编制办法-xxx.pdf”：写 .*办法.*\\.pdf$' },
   { key: 'annotationTagPresets', type: 'textarea', label: props.i18n.annotationTagPresets || '标注标签预设', value: settings.value.annotationTagPresets, set: (value:string) => (settings.value.annotationTagPresets = value, debouncedSave()), hint: props.i18n.annotationTagPresetsDesc || '每行一组：分组: 标签1, 标签2' },
   searchField('parentDoc', props.i18n.parentDoc || '父文档', settings.value.parentDoc ? [settings.value.parentDoc] : [], insertDoc.state.value.input, insertDoc.state.value.results, value => (insertDoc.state.value.input = value, !value.trim() && (insertDoc.state.value.results = [])), insertDoc.search, doc => insertDoc.select(doc, selectInsertDoc), () => clearInsertDoc(), settings.value.noteInsertTarget === 'document'),
   searchField('quickSendDocs', props.i18n.quickSendDocs || '快捷发送文档', settings.value.quickSendDocs || [], quickDoc.state.value.input, quickDoc.state.value.results, value => (quickDoc.state.value.input = value, !value.trim() && (quickDoc.state.value.results = [])), quickDoc.search, doc => quickDoc.select(doc, addQuickDoc), (_doc:any, i:number) => removeQuickDoc(i), true, props.i18n.quickSendDocsDesc || '用于快速发送标注', 'quickDoc')
@@ -406,7 +421,7 @@ onUnmounted(() => window.removeEventListener('sireaderSettingsUpdated', syncAnno
 
         <SettingSection :title="i18n.interfaceLayout || '界面布局'" :icon="settingSectionIcon('root', 'interface')" :open="isOpen('interface')" @toggle="toggleAccordion('interface')">
             <SettingItem
-              v-for="item in interfaceSettings"
+              v-for="item in interfaceItems"
               :key="item.key"
               :item="item"
               :model-value="settings[item.key]"
@@ -423,6 +438,29 @@ onUnmounted(() => window.removeEventListener('sireaderSettingsUpdated', syncAnno
             <SectionTitle :title="i18n.bookshelfConfig || '书架配置'" icon="#lucide-library-big" :open="isSubOpen('bookshelfConfig')" @toggle="toggleSub('bookshelfConfig')" />
             <template v-if="isSubOpen('bookshelfConfig')">
               <SettingRows :rows="bookshelfRows" :i18n="i18n" />
+            </template>
+            <SectionTitle :title="i18n.docAssetExclude || '文档链接入库排除'" :icon="settingSectionIcon('sub', 'docAssetExclude')" :open="isSubOpen('docAssetExclude')" @toggle="toggleSub('docAssetExclude')" />
+            <template v-if="isSubOpen('docAssetExclude')">
+              <li v-for="field in docAssetExcludeFields" :key="field.key" class="b3-list-item b3-list-item--hide-action">
+                <span class="b3-list-item__toggle fn__hidden"></span>
+                <div class="fn__flex-1">
+                  <span class="b3-list-item__text ariaLabel" :aria-label="field.hint">{{ field.label }}</span>
+                  <textarea :value="field.value" class="b3-text-field sr-textarea-control" rows="2" :placeholder="field.placeholder" @input="field.set(($event.target as HTMLTextAreaElement).value)"></textarea>
+                </div>
+              </li>
+              <li v-for="[p, label] in DOC_PATHS" :key="p" class="b3-list-item b3-list-item--hide-action">
+                <span class="b3-list-item__toggle fn__hidden"></span>
+                <span class="b3-list-item__text ariaLabel" :aria-label="p">{{ i18n[label] || p }}</span>
+                <span class="fn__space"></span>
+                <label class="fn__flex-center"><input type="checkbox" class="b3-switch" :checked="docPathChecked(p)" @change="toggleDocPath(p, ($event.target as HTMLInputElement).checked)"></label>
+              </li>
+              <li class="b3-list-item b3-list-item--hide-action">
+                <span class="b3-list-item__toggle fn__hidden"></span>
+                <div class="fn__flex-1">
+                  <input :value="docAssetExcludeTest" class="b3-text-field" :placeholder="i18n.docAssetExcludeTest || '测试链接或文件名'" @input="docAssetExcludeTest = ($event.target as HTMLInputElement).value">
+                  <div v-if="docAssetExcludeTest.trim()" class="ft__smaller" :class="docAssetExcludeTestMatched ? 'ft__error' : 'ft__on-surface'">{{ docAssetExcludeTestMatched ? (i18n.docAssetExcludeMatched || '匹配：不会加入书架') : (i18n.docAssetExcludeNotMatched || '不匹配：会加入书架') }}</div>
+                </div>
+              </li>
             </template>
         </SettingSection>
 
@@ -575,7 +613,7 @@ onUnmounted(() => window.removeEventListener('sireaderSettingsUpdated', syncAnno
 .bs-tree :deep(.sr-resource-actions){position:absolute;right:4px;bottom:4px;display:flex;gap:2px;padding:2px;border-radius:4px;background:color-mix(in srgb,var(--b3-theme-background) 80%,transparent)}
 .bs-tree :deep(.sr-resource-actions .b3-list-item__action){display:flex;margin:0}
 .bs-tree :deep(.b3-text-field){width:100%;max-width:100%;box-sizing:border-box}
-.sr-textarea-control{width:100%;min-height:96px;margin-top:6px;resize:vertical}
+.sr-textarea-control{width:100%;margin-top:6px;resize:vertical}
 .bs-tree :deep(ul.b3-list.b3-list--background){border:1px solid var(--bs-tree-border);border-radius:var(--b3-border-radius)}
 .bs-tree :deep(.sr-section-title > svg.b3-list-item__graphic){width:14px;height:14px;flex:0 0 14px;color:var(--b3-theme-on-surface);opacity:.86;stroke-width:1.8;shape-rendering:geometricPrecision}
 .bs-tree :deep(.sr-section-title:hover > svg.b3-list-item__graphic){color:inherit;opacity:1}

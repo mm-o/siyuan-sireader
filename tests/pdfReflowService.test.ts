@@ -5,7 +5,7 @@ const storage = vi.hoisted(() => ({ upsertEmbedPdfAnnotation: vi.fn(async () => 
 vi.mock('@/core/storage', () => storage)
 const bridge = vi.hoisted(() => ({ open: vi.fn(async () => {}), page: vi.fn(async () => ({ pageIndex: 0, ocr: false, blocks: [{ text: '正文', spans: [] }] })), ocr: vi.fn(async () => ({ pageIndex: 0, ocr: true, blocks: [{ text: '重新识别' }] })), begin: vi.fn(async () => {}), append: vi.fn(async () => {}), finish: vi.fn(async () => ({ buffer: new ArrayBuffer(4), pageMap: [0], annotationMap: [] })), dispose: vi.fn() }))
 vi.mock('@/core/diagnostics', () => ({ diagnosticLog: vi.fn() }))
-import { recognizePdfPage, createPdfReflowSession, replacePdfDocument, synchronizeReflowAnnotation } from '../src/services/pdfReflow'
+import { recognizePdfPage, createPdfReflowSession, synchronizeReflowAnnotation } from '../src/services/pdfReflow'
 import { projectReflowAnnotation } from '../src/core/pdfReflow'
 // Exercise RPC and generation together; only the browser transport is substituted.
 let transport: any
@@ -60,28 +60,25 @@ test('failed and aborted OCR requests clean up their image and propagate errors'
 })
 
 test('PDF extraction restrictions cannot be bypassed through OCR', () => {
-  const getPageTextRuns = vi.fn()
-  const registry = { getEngine: () => ({ getPageTextRuns }), getPlugin: () => ({ provides: () => ({ getDocumentState: () => ({ document: { permissions: 0, isOwnerUnlocked: false } }) }) }) }
-  expect(() => createPdfReflowSession(registry, 'document', async value => value)).toThrow('does not allow text extraction')
-  expect(getPageTextRuns).not.toHaveBeenCalled()
+  const document = { page: vi.fn() }
+  expect(() => createPdfReflowSession(document, [], false)).toThrow('does not allow text extraction')
+  expect(document.page).not.toHaveBeenCalled()
 })
 
 const layout = { width: 300, height: 400, fontSize: 18 }
 const setupSession = () => {
-  const page = { index: 0, size: { width: 200, height: 300 } }, doc = { pages: [page], permissions: 16 }
-  const engine = { saveAsCopy: vi.fn() }
-  const renderPage = vi.fn(() => png())
-  const registry = { getEngine: () => engine, getPlugin: (name: string) => ({ provides: () => name === 'document-manager' ? { getDocumentState: () => ({ document: doc }) } : { forDocument: () => ({ renderPage }) } }) }
-  const session = createPdfReflowSession(registry, 'document', async value => value)
-  return { session, engine, renderPage }
+  const page = { ref: { kind: 'baseIndex', index: 0 }, size: { width: 200, height: 300 } }
+  const renderPage = vi.fn(async () => ({ blob: async () => png() }))
+  const document = { page: () => ({ render: { image: renderPage } }) }
+  const session = createPdfReflowSession(document, [page], true)
+  return { session, renderPage }
 }
 
 test('generation reuses the committed snapshot and streams native pages without OCR', async () => {
-  const { session, engine, renderPage } = setupSession(), progress = vi.fn()
+  const { session, renderPage } = setupSession(), progress = vi.fn()
   const buffer = new Uint8Array([1, 2, 3, 4]).buffer
   const output = await session.generate(buffer, layout, new AbortController().signal, progress)
   expect(output.pageMap).toEqual([0])
-  expect(engine.saveAsCopy).not.toHaveBeenCalled()
   // The caller retains its rollback snapshot even when worker.postMessage transfers its copy.
   expect(bridge.open.mock.calls[0][0]).not.toBe(buffer)
   expect(bridge.open.mock.calls[0][0]).toEqual(buffer)
@@ -98,7 +95,7 @@ test('scans and empty pages use fresh SiYuan OCR before being appended', async (
     bridge.page.mockResolvedValueOnce({ pageIndex: 0, ocr: false, ...page } as any)
     const { session, renderPage } = setupSession()
     await session.generate(new ArrayBuffer(4), layout, new AbortController().signal, vi.fn())
-    expect(renderPage).toHaveBeenCalledWith(expect.objectContaining({ options: expect.objectContaining({ withAnnotations: false }) }))
+    expect(renderPage).toHaveBeenCalledWith(expect.objectContaining({ includeAnnotations: false }))
     expect(bridge.append).toHaveBeenLastCalledWith(expect.objectContaining({ blocks: [{ text: '重新识别' }], ocr: true }))
     session.dispose()
   }
@@ -159,57 +156,4 @@ test('create/update/delete share a stable source id without copying appearance c
   expect(storage.upsertEmbedPdfAnnotation).toHaveBeenLastCalledWith('source-key', expect.objectContaining({ annotation: expect.objectContaining({ id: first, contents: 'edited' }) }))
   expect(storage.upsertEmbedPdfAnnotation.mock.calls[0][1]).not.toHaveProperty('ctx')
   expect(storage.deleteEmbedPdfAnnotation).toHaveBeenCalledWith('source-key', first)
-})
-
-
-test('hands PDF bytes to the existing document-manager with its original document id', async () => {
-  const documents = { closeDocument: vi.fn(async () => {}), openDocumentBuffer: vi.fn(async () => {}) }
-  const next = { buffer: new Uint8Array([1, 2]).buffer, name: 'reflow.pdf' }, old = { buffer: new ArrayBuffer(3), name: 'source.pdf' }
-  await replacePdfDocument(documents, 'reader', next, old, async value => value)
-  expect(documents.closeDocument).toHaveBeenCalledWith('reader')
-  expect(documents.openDocumentBuffer).toHaveBeenCalledWith({ documentId: 'reader', buffer: next.buffer, name: 'reflow.pdf', autoActivate: true })
-  expect(documents.openDocumentBuffer.mock.calls[0][0].buffer).not.toBe(next.buffer)
-})
-
-test('a failed replacement restores the previous PDF without discarding its bytes', async () => {
-  const documents = { closeDocument: vi.fn(async () => {}), openDocumentBuffer: vi.fn().mockRejectedValueOnce(new Error('load failed')).mockResolvedValueOnce({}) }
-  const old = { buffer: new Uint8Array([9, 8]).buffer, name: 'source.pdf' }
-  await expect(replacePdfDocument(documents, 'reader', { buffer: new ArrayBuffer(1), name: 'reflow.pdf' }, old, async value => value)).rejects.toThrow('load failed')
-  expect(documents.openDocumentBuffer).toHaveBeenLastCalledWith(expect.objectContaining({ documentId: 'reader', name: 'source.pdf', buffer: old.buffer }))
-  expect(old.buffer.byteLength).toBe(2)
-})
-
-test('waits for native annotation initialization before allowing stored annotations to be restored', async () => {
-  let publish!: (event: any) => void
-  const off = vi.fn(), annotations = { onAnnotationEvent: (listener: typeof publish) => { publish = listener; return off } }
-  const documents = { closeDocument: vi.fn(async () => {}), openDocumentBuffer: vi.fn(async () => {}) }
-  let ready = false
-  const source = { buffer: new ArrayBuffer(1), name: 'document.pdf' }
-  const opening = replacePdfDocument(documents, 'reader', source, source, async value => value, annotations).then(() => { ready = true })
-  await vi.waitFor(() => expect(documents.openDocumentBuffer).toHaveBeenCalledTimes(1))
-  expect(ready).toBe(false)
-  publish({ type: 'loaded', documentId: 'unrelated' })
-  await Promise.resolve()
-  expect(ready).toBe(false)
-  publish({ type: 'loaded', documentId: 'reader' })
-  await opening
-  expect(ready).toBe(true)
-  expect(off).toHaveBeenCalledTimes(1)
-})
-
-test('lets the old native viewport unmount before reusing its document id', async () => {
-  const frames: FrameRequestCallback[] = []
-  vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => { frames.push(callback); return frames.length })
-  const documents = { closeDocument: vi.fn(async () => {}), openDocumentBuffer: vi.fn(async () => {}) }
-  const source = { buffer: new ArrayBuffer(1), name: 'document.pdf' }
-  try {
-    const opening = replacePdfDocument(documents, 'reader', source, source, async value => value)
-    await vi.waitFor(() => expect(frames.length).toBe(1))
-    expect(documents.openDocumentBuffer).not.toHaveBeenCalled()
-    frames.shift()!(0)
-    expect(documents.openDocumentBuffer).not.toHaveBeenCalled()
-    frames.shift()!(16)
-    await opening
-    expect(documents.openDocumentBuffer).toHaveBeenCalledTimes(1)
-  } finally { vi.unstubAllGlobals() }
 })
