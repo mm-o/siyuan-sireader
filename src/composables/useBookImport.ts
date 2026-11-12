@@ -1,5 +1,5 @@
 import { computed, ref } from 'vue'
-import { buildBookMetadata, bookshelfManager, dataIdFromFingerprint, fileFingerprint, hasBookBulkPatch, type BookBulkPatch, type BookFormat, urlFingerprint } from '@/core/bookshelf'
+import { buildBookMetadata, bookshelfManager, dataIdFromFingerprint, fileFingerprint, hasBookBulkPatch, uploadCloudBook, type BookBulkPatch, type BookFormat, urlFingerprint } from '@/core/bookshelf'
 import { createLocalFileRef, filterSupportedBookFiles, materializeNativeFile, normalizeBookTitle, saveBookFile, saveCoverFile, toFileUrl } from '@/core/storage'
 import { kernelDownloadUrl } from '@/api'
 
@@ -31,6 +31,12 @@ export interface RemoteBookInfo {
   sourceName?: string
   fileSize?: string
   tags?: string[]
+}
+
+interface CloudDownloadDestination {
+  folder: string
+  token: string
+  keepWorkspaceCopy: boolean
 }
 
 export interface RemoteDownloadRequest {
@@ -180,8 +186,9 @@ const browserDownloadFile = async ({ url, fileName, headers = [], onProgress }: 
   return new File([buffer], fileName, { type: response.headers.get('content-type') || 'application/octet-stream' })
 }
 
-export const importRemoteBook = async (request: RemoteDownloadRequest) => {
+export const importRemoteBook = async (request: RemoteDownloadRequest, destination?: CloudDownloadDestination) => {
   if (!request.url) throw new Error('无效的下载链接')
+  if (destination && await bookshelfManager.getBook(request.url)) throw new Error('Book already exists in the shelf')
   request.onProgress?.('连接下载...')
   const file = await browserDownloadFile(request)
   const format = (request.bookInfo?.format || file.name.split('.').pop()?.toLowerCase() || 'epub') as BookFormat
@@ -191,9 +198,14 @@ export const importRemoteBook = async (request: RemoteDownloadRequest) => {
     ? new File([file], `${normalizeBookTitle(info.title) || 'book'}.${format}`, { type: file.type || 'application/octet-stream' })
     : file
   const fingerprint = await fileFingerprint(source), dataId = await dataIdFromFingerprint(fingerprint)
-  const path = await saveBookFile(source, request.url)
+  const path = destination && !destination.keepWorkspaceCopy
+    ? await uploadCloudBook(destination.folder, source, destination.token)
+    : await saveBookFile(source, request.url)
   const cover = await downloadCover(request.coverUrl, request.url)
   await bookshelfManager.addBook({ url: request.url, title: normalizeBookTitle(info?.title || source.name.replace(/\.[^.]+$/, '')) || info?.title || source.name, author: info?.author || '未知作者', cover, format, path, size: source.size, tags: importTags(info), metadata: remoteMetadata(info), dataId, fingerprint })
+  if (destination?.keepWorkspaceCopy) {
+    return (token: string) => uploadCloudBook(destination.folder, source, token)
+  }
 }
 
 export const addOnlineBookToShelf = async (info: OnlineBookImportInfo) => {
