@@ -582,6 +582,8 @@
   "clearGroupSearch": "Clear Group Search",
   "openBook": "Open Book",
   "bookDetails": "Book Details",
+  "openDataLocation": "Show data location",
+  "pdfMarkImageWithAnnotations": "Include the annotation in exported images",
   "selectBook": "Select This Book",
   "unselectBook": "Cancel Selection",
   "rate": "Rating",
@@ -630,7 +632,7 @@
   "copyLink": "Copy Link",
   "copyText": "Copy Text",
   "copyChapter": "Copy Chapter",
-  "pdfKeepTool": "Keep the selected tool active after drawing",
+  "pdfKeepTool": "Keep the tool active after drawing",
   "copyBacklink": "Copy Backlink",
   "redaction": "Redaction",
   "copyScreenshot": "Copy Screenshot",
@@ -774,7 +776,7 @@
   ,"copyBacklink": "Copy backlink"
   ,"sendTo": "Send to"
   ,"redaction": "Redaction"
-  ,"pdfKeepTool": "Keep the selected tool active after drawing"
+  ,"pdfKeepTool": "Keep the tool active after drawing"
   ,"copyImage": "Copy image"
   ,"exportImage": "Export image"
   ,"markImage": "Annotate image"

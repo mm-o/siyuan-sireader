@@ -1,0 +1,41 @@
+---
+title: 会员权益对照
+description: 按当前源码的功能门槛列出各会员等级可用能力，用于核对权益而不是替代购买页。
+appliesTo: ">=2.7.1"
+generated: true
+---
+
+> 本页由脚本自动生成，请勿手改。修改来源：`src/composables/useSetting.ts`、`src/core/license.ts`、`src/utils/keyboard.ts` 或 `CHANGELOG.md`；改完运行 `pnpm docs:gen`。
+
+等级由低到高：免费 → 体验会员 → 月付会员 → 年付会员 → 永久会员；更高等级包含较低等级能力。授予与有效期以小程序和插件内的权益界面为准。
+
+## 功能门槛
+
+| 功能 | 源码键 | 最低等级 |
+| --- | --- | --- |
+| 批量操作 | `batch-operation` | 体验会员 |
+| 书籍编辑 | `book-edit` | 体验会员 |
+| 高级词典 | `dict-advanced` | 体验会员 |
+| 离线词典 | `dict-offline` | 体验会员 |
+| 手动分组 | `folder-group` | 体验会员 |
+| 详细阅读统计 | `reader-stats` | 体验会员 |
+| 阅读主题与自定义主题 | `reader-theme` | 体验会员 |
+| 翻译 | `translate` | 体验会员 |
+| 朗读 | `tts` | 体验会员 |
+| 在线搜书 | `book-search` | 月付会员 |
+| 文档 assets 同步 | `doc-assets` | 月付会员 |
+| 思源同步 | `siyuan-sync` | 月付会员 |
+| 智能分组 | `smart-group` | 月付会员 |
+| 在线语音 | `tts-online` | 月付会员 |
+| 快速标注 | `quick-mark` | 年付会员 |
+| 快捷发送 | `quick-send` | 年付会员 |
+
+## 免费可用
+
+| 功能 | 源码键 | 等级 |
+| --- | --- | --- |
+| 基础阅读（EPUB/PDF/TXT/在线） | — | 免费 |
+| 普通标注与书签 | — | 免费 |
+| 有道、必应基础词典 | — | 免费 |
+
+购买与恢复流程见 [会员与账号](/docs/sireader/features-and-access/)。

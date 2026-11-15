@@ -1,4 +1,4 @@
-﻿// ===== 标注复制与同步 =====
+// ===== 标注复制与同步 =====
 
 type ExportCtx = {
   bookUrl: string
@@ -32,7 +32,7 @@ const resolveSettings = async (settings?: any) => {
   const globalSettings = await getGlobalSettings()
   return settings ? { ...(globalSettings || {}), ...settings } : globalSettings
 }
-const asClipboardCtx = (ctx: ExportCtx | any) => ({ ...ctx, settings: { ...(ctx.settings || {}), noteInsertTarget: 'clipboard' } })
+export const asClipboardCtx = (ctx: ExportCtx | any) => ({ ...ctx, settings: { ...(ctx.settings || {}), noteInsertTarget: 'clipboard' } })
 const shouldInsert = (settings: any) => settings?.noteInsertTarget && settings.noteInsertTarget !== 'clipboard'
 const shouldSyncOnAdd = async () => !!(await getGlobalSettings())?.annotationSyncOnAdd
 const shouldSyncOnDelete = async () => !!(await getGlobalSettings())?.annotationSyncOnDelete
@@ -98,27 +98,26 @@ const insertGeneratedNote = async (item: any, md: string, settings: any, meta: A
 
 const buildBookMarkdown = async (item: ExportItem, ctx: ExportCtx | any, meta?: Awaited<ReturnType<typeof resolveExportMeta>>) => {
   meta ||= await resolveExportMeta(ctx)
-  const fallback = item.text || item.chapter || ''
-  if (!ctx.bookUrl || !item.cfi) return fallback
+  if (!ctx.bookUrl) return item.text || item.chapter || ''
   const { formatBookLink } = await import('@/composables/useSetting')
   const { formatAuthor } = await import('@/core/MarkManager')
-  return formatBookLink(
+  const link = formatBookLink(
     ctx.bookUrl,
     meta.title,
     formatAuthor(meta.author),
-    item.chapter || item.text || '读书',
-    item.cfi,
+    item.chapter || item.text || '',
+    item.cfi || '',
     inlineLinkText(item.text || ''),
     meta.settings?.linkFormat || DEFAULT_LINK_FORMAT,
     item.note || '',
     item.image || '',
     item.id || '',
   )
+  return link || item.chapter || meta.title
 }
-
 export const exportBookLink = async (item: ExportItem, ctx: ExportCtx) => {
   const meta = await resolveExportMeta(ctx)
-  await writeExport(await buildBookMarkdown(item, ctx, meta), ctx, meta, !ctx.bookUrl || !item.cfi ? '仅复制文本' : '已复制')
+  await writeExport(await buildBookMarkdown(item, ctx, meta), ctx, meta, ctx.bookUrl ? '已复制' : '仅复制文本')
 }
 
 const markToExportItem = async (item: ExportItem | any, ctx: ExportCtx | any): Promise<ExportItem> => {

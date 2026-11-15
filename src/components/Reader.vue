@@ -164,6 +164,8 @@ const embedPdfPages = shallowRef<any>(null)
 const embedPdfMarks = ref<any[]>([])
 const currentView = ref<any>(null)
 let cleanupEmbedPdfEvents: (()=>void) | null = null
+// 回链点击时阅读器还没挂载完，定位目标先存下来，等 PDF 就绪后再执行。
+let pendingGoto: any = null
 const showSearch = ref(false)
 const showToc = ref(false)
 const showQuickMark = ref(false)
@@ -215,7 +217,7 @@ const imageEmbedPdfMark = async (item: any, contextKey?: string) => {
   if (item.image || (contextKey && embedPdfDocumentContext.value?.storageKey !== contextKey)) return item
   const annotation = latestPdfAnnotation(item)
   if (!isPdfImageAnnotation(annotation)) return item
-  return { ...item, annotation, image: await capturePdfAnnotationImage(currentView.value?.render, annotation) }
+  return { ...item, annotation, image: await capturePdfAnnotationImage(currentView.value?.render, annotation, !!currentSettings.value?.pdfMarkImageWithAnnotations) }
 }
 const pdfSyncQueues=new Map<string,Promise<void>>()
 const syncEmbedPdfEvent=(event:any)=>{
@@ -226,7 +228,7 @@ const syncEmbedPdfEvent=(event:any)=>{
   const task=previous.catch(()=>undefined).then(async()=>{
     try{
       const m=await import('@/utils/copy'),ctx={bookUrl:eventUrl,isPdf:true,marks:currentView.value?.marks}
-      const next=event?.type==='delete'?mark:await imageEmbedPdfMark(mark,eventKey)
+      const next=event?.type==='delete'?mark:await imageEmbedPdfMark(mark,eventKey).catch(()=>mark)
       if(event?.type==='delete')await m.syncMarkOnDelete(next)
       else{
         const durableMarks={updateMark:async(item:any,updates:any)=>{
@@ -287,8 +289,8 @@ const initEmbedPdfMode=async(loadSource:()=>Promise<File|string|null>)=>{
       imageMark: imageEmbedPdfMark,
     },
     goTo: (page: number, id?: string) => {
+      if (id && embedPdfReaderRef.value?.annotationActions?.focus) return embedPdfReaderRef.value.annotationActions.focus(id)
       embedPdfPages.value?.goToPage((Number(page) || 1) - 1)
-      if (id) embedPdfReaderRef.value?.annotationActions.select(id)
     },
     getCurrentPage: () => (embedPdfPages.value?.getCurrentPageIndex() ?? 0) + 1,
     cleanup: () => {
@@ -319,6 +321,7 @@ const handleEmbedPdfReady=(viewer:any,context:{documentId:string;bookUrl:string;
   cleanupEmbedPdfEvents?.()
   cleanupEmbedPdfEvents=stage.onPageChanged(emitPage)
   emitPage()
+  if(pendingGoto){const pending=pendingGoto;pendingGoto=null;setTimeout(()=>handleGoto({detail:pending} as any),250)}
   let textDocument: ReturnType<typeof openPdf> | undefined
   const pageText=new Map<number,Promise<string>>()
   currentView.value.getPageText=(page:number)=>{
@@ -516,7 +519,9 @@ const handleGoto=(e:CustomEvent)=>{
   if(bookUrl&&bookUrl!==currentBookUrl.value)return
   if(!cfi)return
   const pdfPage=pdfPageFromCfi(cfi)
-  if(isEmbedPdfMode.value&&pdfPage){
+  if(isEmbedPdfMode.value){
+    if(!currentView.value||!embedPdfPages.value){pendingGoto=e.detail;return}
+    if(!pdfPage)return
     currentView.value?.goTo?.(pdfPage,id)
     return
   }

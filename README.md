@@ -7,17 +7,50 @@
 Transform SiYuan Notes into a professional eBook reader  
 Professional eBook reader for EPUB/PDF/MOBI/TXT/online novels. PDFs support highlights, ink, shapes, forms, stamps, signatures, images, screenshots, search, printing, export, and backlinks, with annotation notes, dictionary, translation, themes, and bookshelf management.
 
-[![Version](https://img.shields.io/badge/version-2.7.0-blue.svg)](https://github.com/your-repo/siyuan-sireader)
+[![Version](https://img.shields.io/badge/version-2.7.1-blue.svg)](https://github.com/mm-o/siyuan-sireader)
 [![License](https://img.shields.io/badge/license-MIT%20%2B%20AGPL-green.svg)](LICENSE)
 [![SiYuan](https://img.shields.io/badge/SiYuan-3.0+-orange.svg)](https://github.com/siyuan-note/siyuan)
 
-[🌐 Website](https://sireader.745201.xyz) · [📖 Documentation](https://my.feishu.cn/wiki/C3ULw8pM6iY2qgk3aGVc5eManZe) · [🔌 Integration API](docs/integration-api.md) · Use the WeChat Mini Program “思源插件助手” to purchase · [👥 QQ Group](https://qm.qq.com/q/wpHDtsfxCw) · [📝 Changelog](https://my.feishu.cn/wiki/ZD81wv7fAiFnLckWWBycdmoTn7s)
+[🌐 Product Page](https://docs.745201.xyz/products/sireader/) · [📖 Documentation](https://docs.745201.xyz/docs/sireader/overview/) · [📝 Changelog](https://docs.745201.xyz/docs/changelog/sireader/) · [🔌 Integration API](https://docs.745201.xyz/docs/sireader/integration/) · Buy via the WeChat Mini Program “思源插件助手” · [👥 QQ Group](https://qm.qq.com/q/wpHDtsfxCw)
 
 </div>
 
 ---
 
 ## 📝 Latest Updates
+
+## v2.7.1 (2026-11-15)
+
+### Added
+
+- The bookshelf book menu now offers “Show data location”, which jumps straight to the book's data or original file.
+- The bookshelf book menu now offers “Copy link”, which copies a Markdown link (`[Book](sireader://resume?url=…)`) using the same “link format” template as annotation export; clicking it resumes at the saved position without an annotation anchor.
+
+### Fixed
+
+- Fixed deleting a PDF annotation not deleting the block already bound in the document: the binding was only written to metadata during a session, while deletion used the snapshot taken at creation time.
+- Fixed a PDF backlink only opening the book instead of jumping to the annotation on the first click: the target is now stashed until the reader is ready, then executed.
+- Fixed imprecise PDF annotation positioning: the annotation is now selected and its area scrolled slightly above the viewport center, instead of jumping to the top of the page and leaving the content in the lower third.
+- Fixed PDF reading progress jumping back to the cover after sleep or lock: a restored page was overwritten by the first layout, so it now re-jumps once and does not write progress while restoring.
+- Fixed shape annotations not showing their frame after being inserted into a document (which also hid other annotations inside the frame): added the “Include the annotation in exported images” switch, which exports the frame with the picture.
+- Fixed Chinese input in PDF comment and annotation note fields: Enter during IME composition is no longer treated as submit by upstream.
+- Fixed shape annotation “sync on add” not working: tool style defaults were passed to the engine worker as a reactive object, triggering DataCloneError so annotation events never flowed back.
+- Fixed “Show data location” reporting “no local file” for link-only or externally imported books: it now opens the link or locates the original `file://` file.
+- Fixed the PDF toolbar “delete redaction” command using a non-existent icon name and logging console warnings repeatedly.
+- Fixed SiYuan refresh/reload hanging after opening a PDF: upstream enables “confirm before leaving” by default, and any document judged to have unsaved changes blocks `beforeunload`; SiReader persists annotations itself, so the engine's document always looks unsaved and every reload was cancelled. The confirmation is now disabled.
+- Bounded the save and wait steps of plugin unload, so one stuck write can no longer keep SiYuan's refresh/reload hanging.
+- Fixed the PDF annotation “delete” button tooltip mixing in an English shortcut name.
+- Fixed exported shape annotation images carrying the annotation stroke; only page content is captured now.
+- Fixed the “keep tool after drawing” switch having no effect: turning it off now returns to the default tool after drawing; the switch appears on both the “annotate” and “shapes” toolbars and its state is saved.
+- Fixed large scanned pages looking blurry at some zoom levels: the base image budget `render.fullPage.maxWidth` was raised from 640 to 1280.
+- Fixed reaching the end of a page scrolling the outer page: upstream's new, default-on `stage.scrollChaining` is disabled.
+- Fixed PDFs in the SiYuan cloud drive (siyuan-cloud) failing with `is not an asset path`: plugin virtual paths are no longer handed to SiYuan's built-in PDF tab and always fall back to the plugin reader.
+- Clicking a cloud-drive file now prefers siyuan-cloud's new `data-reader-href` (`siyuan://plugins/siyuan-cloud/open?path=…`), matching links inserted or copied in documents.
+- Document exclusion path rules now also apply to that `data-reader-href` link shape.
+
+### Known Issues
+
+- Legacy GB-standard PDFs (no embedded CJK font and no character map, typically typeset with Founder or WPS in the 2000s) show Latin text and correct layout but leave every Chinese character blank. Re-checked on EmbedPDF 3.2.0: the official `engine.fallbackFonts` still trips a WASM out-of-bounds during rendering, and PDFium's native system-font interface has no effect in this wasm build, so neither glyph-fallback route is usable — it has to wait for an upstream fix, and this release ships no temporary font or build patch. Until then open these files in another reader, or OCR / re-export the PDF with embedded fonts. Scanned PDFs, forms, signatures and ordinary PDFs are unaffected.
 
 ## v2.7.0 (2026-11-12)
 
@@ -367,7 +400,7 @@ Professional eBook reader for EPUB/PDF/MOBI/TXT/online novels. PDFs support high
 ### Fixed
 
 - Fixed EPUB Auto (SiYuan) theme not following SiYuan dark-mode theme changes correctly and falling back to an overlay-like effect instead [#44](https://github.com/mm-o/siyuan-sireader/issues/44) [#45](https://github.com/mm-o/siyuan-sireader/issues/45).
-[View full changelog](https://my.feishu.cn/wiki/ZD81wv7fAiFnLckWWBycdmoTn7s)
+[View full changelog](https://docs.745201.xyz/docs/changelog/sireader/)
 
 ## 📋 Complete Feature List
 

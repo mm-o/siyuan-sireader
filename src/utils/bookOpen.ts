@@ -61,7 +61,8 @@ const normalizeNativePdfPath = (path: string) => {
   if (path.startsWith('public/')) return { kind: 'asset' as const, path }
   if (path.startsWith('/assets/')) return { kind: 'pdf' as const, path: path.replace(/^\/assets\//i, 'assets/') }
   if (path.startsWith('assets/')) return { kind: 'pdf' as const, path }
-  return { kind: 'pdf' as const, path: path.replace(/^asset:\/\//i, '') }
+  // 插件虚拟路径（/plugin/private/...）不是思源资产路径，交给思源原生 PDF 会报 "is not an asset path"
+  return null
 }
 
 export const getSiyuanPdfTarget = (book: Book, settings: OpenModeSettings): NativePdfTarget | null => {

@@ -1,0 +1,45 @@
+---
+title: 集成 API
+description: 给其他插件用的阅读生命周期接口与最近阅读组件。
+appliesTo: ">=2.7.0"
+---
+
+## 接口形状
+
+集成入口是 `window.sireader.integration`，调用前检查协议、版本与能力：
+
+```ts
+const api = window.sireader?.integration
+if (api?.protocol === 'sireader-integration' && api.version === 1
+    && api.capabilities.includes('session.query')) {
+  const { focusMs } = await api.getSessionFocus()
+}
+```
+
+当前能力：`lifecycle.events`、`session.query`。不要依赖没有公开稳定承诺的内部 Vue 对象。
+
+## 查询专注时长
+
+`getSessionFocus({ localDate: '2026-11-12' })` 查询指定本地日历日，省略参数表示今天，返回 `focusMs` 毫秒。只有阅读器持有文档焦点且宿主窗口可见时才计时，不是打开文件后的总经过时间。
+
+## 生命周期事件
+
+事件发送到 window，`detail` 为 `{ at: number }`，单位毫秒，不含书名或 URL：
+
+| 事件 | 含义 |
+| --- | --- |
+| `reader:open` | 阅读器已打开 |
+| `reader:focus` | 阅读器获得文档焦点 |
+| `reader:blur` | 失焦、切换页签或宿主窗口隐藏 |
+| `reader:close` | 阅读器已关闭 |
+
+思阅卸载时移除 `integration` 属性；接入方停用时应自行移除监听并处理接口暂时不存在的情况。
+
+## 最近阅读组件
+
+安装宿主插件“小驴雷切”时，思阅注册 `sireader-recent-books` 模块，显示最多 5 本最近阅读书籍与进度。续读链接格式为 `sireader://resume?url=编码后的书籍地址`，目标设备仍需能访问该书籍。
+
+## 相关
+
+- [速记、笔记本与统计](/docs/sireader/notes-and-stats/)
+- [数据、备份与隐私](/docs/sireader/data-and-privacy/)

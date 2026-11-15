@@ -73,10 +73,10 @@ export const pdfMarkFromAnnotation = (annotation: any, annotations: any[] = []) 
 }
 
 export const isPdfImageAnnotation = (annotation: any) => annotation?.rect && [4, 5, 6, 8, 15].includes(Number(annotation.type))
-export async function capturePdfAnnotationImage(render: any, annotation: any) {
+export async function capturePdfAnnotationImage(render: any, annotation: any, includeAnnotations = false) {
   if (!render || !isPdfImageAnnotation(annotation)) return null
   try {
-    const image = await render.renderPage(annotation.pageIndex, { rect: pdfBox(annotation.rect), scale: 2, format: 'png' })
+    const image = await render.renderPage(annotation.pageIndex, { rect: pdfBox(annotation.rect), scale: 2, format: 'png', includeAnnotations })
     return await image.blob()
   } catch {
     return null
@@ -119,6 +119,8 @@ export const pdfAnnotationColor = (value: unknown) => typeof value === 'string' 
 const blendModes = ['normal', 'multiply', 'screen', 'overlay', 'darken', 'lighten', 'color-dodge', 'color-burn', 'hard-light', 'soft-light', 'difference', 'exclusion', 'hue', 'saturation', 'color', 'luminosity']
 
 export function pdfAnnotationToolOptions(saved: Record<string, Record<string, any>> = {}) {
+  // 必须在切面之前转成纯数据：Vue 的响应式代理无法 postMessage 给引擎 worker（DataCloneError）。
+  saved = JSON.parse(JSON.stringify(saved ?? {}))
   return Object.entries(saved).flatMap(([id, defaults]) => {
     if (!defaults || typeof defaults !== 'object' || Array.isArray(defaults)) return []
     if (defaults.type === undefined) return [{ id, defaults }]

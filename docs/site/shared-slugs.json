@@ -1,0 +1,14 @@
+{
+  "_comment": "由文档站（MyLicense/docs-site）提供的公共页，思阅文档允许链接过去。新增共享页时同步这里。",
+  "slugs": [
+    "index",
+    "account/binding",
+    "account/payment",
+    "account/restore",
+    "getting-started/membership-purchase",
+    "getting-started/sireader-installation",
+    "troubleshooting/installation",
+    "troubleshooting/membership",
+    "troubleshooting/playback-reading"
+  ]
+}

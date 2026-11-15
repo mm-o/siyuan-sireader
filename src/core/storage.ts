@@ -234,9 +234,11 @@ export class StorageEngine {
       return outcome
     })
   }
-  async flush() {
+  async flush(maxRounds = 12) {
     const errors: unknown[] = []
-    while (this.queues.size) for (const result of await Promise.allSettled([...this.queues.values()])) if (result.status === 'rejected') errors.push(result.reason)
+    for (let round = 0; round < maxRounds && this.queues.size; round += 1)
+      for (const result of await Promise.allSettled([...this.queues.values()])) if (result.status === 'rejected') errors.push(result.reason)
+    if (this.queues.size) diagnosticLog('warn', 'storage.flush.timeout', { pending: this.queues.size })
     if (errors.length === 1) throw errors[0]
     if (errors.length) throw Object.assign(new Error(`Storage writes failed: ${errors.map(error => error instanceof Error ? error.message : String(error)).join('; ')}`), { errors })
   }
@@ -409,7 +411,12 @@ let recoveryTask: Promise<number> | null = null
 
 const pendingTasks = new Set<Promise<unknown>>()
 export const trackPending = <T>(task: Promise<T>) => { pendingTasks.add(task); task.then(() => pendingTasks.delete(task), () => pendingTasks.delete(task)); return task }
-export const drainPendingTasks = async () => { while (pendingTasks.size) await Promise.allSettled([...pendingTasks]) }
+// 关闭插件时不能让一个卡住的写入把思源的重载一起挂死：到点就走，剩下的只记日志。
+export const drainPendingTasks = async (timeoutMs = 1500) => {
+  const deadline = Date.now() + timeoutMs
+  while (pendingTasks.size && Date.now() < deadline) await Promise.allSettled([...pendingTasks])
+  if (pendingTasks.size) diagnosticLog('warn', 'storage.pending.timeout', { count: pendingTasks.size })
+}
 
 export const PUBLIC_ROOT = '/public/siyuan-sireader'
 export const SIYUAN_CLOUD_BASE = '/plugin/private/siyuan-cloud'

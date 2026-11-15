@@ -14,8 +14,8 @@ docs/*
 !docs/AGENTS.md
 !docs/embedpdf.md
 !docs/pdf-reflow-research.md
-!docs/feishu-doc-sync.md
-!docs/feishu-docs.json
+!docs/site/
+!docs/site/**
 !docs/离线词典使用说明.md
 src\components\backup
 .kiro

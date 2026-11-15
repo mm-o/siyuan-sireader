@@ -1,5 +1,5 @@
 /* eslint-disable node/prefer-global/process */
-import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs"
 import { copyFile, mkdir } from "node:fs/promises"
 import { createHash } from "node:crypto"
 import { dirname, resolve } from "node:path"
@@ -33,13 +33,18 @@ function buildKernelPlugin(outDir: string) {
 const EMBEDPDF_STAMP = resolve(__dirname, 'node_modules/.cache/siyuan-sireader/embedpdf-stamp.json')
 const EMBEDPDF_CACHE = resolve(__dirname, 'node_modules/.cache/siyuan-sireader/embedpdf')
 const embedpdfSignature = (outDir: string) => {
-  // 用内容哈希而不是 mtime：pnpm 每次调用都可能刷新 node_modules 里的文件时间
-  const parts = ['@embedpdf/engine/dist/index.js', '@embedpdf/viewer/dist/index.js'].map((file) => {
-    const path = resolve(__dirname, 'node_modules', file)
-    if (!existsSync(path)) return `${file}:missing`
-    return `${file}:${createHash('sha1').update(readFileSync(path)).digest('hex').slice(0, 12)}`
+  // 用内容哈希而不是 mtime：pnpm 每次调用都可能刷新 node_modules 里的文件时间。
+  // 覆盖整个 dist：worker/wasm 这类非入口文件变了也要重建，否则会命中旧缓存。
+  const files = ['@embedpdf/engine/dist', '@embedpdf/viewer/dist'].flatMap((dir) => {
+    const full = resolve(__dirname, 'node_modules', dir)
+    if (!existsSync(full)) return [`${dir}:missing`]
+    return readdirSync(full, { recursive: true })
+      .map(entry => String(entry).replace(/\\/g, '/'))
+      .filter(entry => /\.(js|mjs|cjs|wasm|json)$/.test(entry))
+      .sort()
+      .map(entry => `${dir}/${entry}:${createHash('sha1').update(readFileSync(resolve(full, entry))).digest('hex').slice(0, 12)}`)
   })
-  return JSON.stringify({ target: resolve(outDir, 'embedpdf'), parts })
+  return JSON.stringify({ target: resolve(outDir, 'embedpdf'), parts: files })
 }
 function buildPdfRuntime(outDir: string) {
   return {

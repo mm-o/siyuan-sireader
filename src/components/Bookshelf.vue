@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <DockShell class="sr-bookshelf" v-model:search-value="keyword" body-class="sr-books" :search-placeholder="tx('searchPlaceholder', 'Search books or groups...')" :toolbar-start-actions="toolbarStartActions" :toolbar-actions="toolbarActions" @click="closePopups" @toolbar-action="handleToolbarAction">
       <Transition name="fade">
         <div v-if="!displayItems.length" class="sr-empty">
@@ -177,6 +177,7 @@ import { bookInGroup, bookshelfManager, SORTS, STATUS_OPTIONS, RATING_OPTIONS, V
 import View from '@/components/bookshelf/View.vue'
 import DockShell from './ui/DockShell.vue'
 import { isMobile } from '@/utils/mobile'
+import { exportBookLink, asClipboardCtx } from '@/utils/copy'
 import { createDocInfo, searchDocs } from '@/composables/useSetting'
 import { useBookImport } from '@/composables/useBookImport'
 import { useLicense } from '@/core/license'
@@ -526,6 +527,41 @@ const confirmImport = async (mode: 'file' | 'link') => {
 }
 const toggleImportItem = (item: { selected: boolean; error: string; loading: boolean }) => { if (!item.error && !item.loading) item.selected = !item.selected }
 const openBookPanel = async (mode: 'detail' | 'edit', book: Book) => { closeMenu(); panelBook.value = await bookshelfManager.getBook(book.url) || book; if (mode === 'edit') { if (!can.value('book-edit')) return showUpgrade('书籍编辑'); editingBook.value = panelBook.value.url; resetEditForm(); assignEditForm(panelBook.value) } modalMode.value = mode }
+// 复制书籍的 Markdown 链接：无章节、无位置，模板自动收起章节位，链接落到 sireader://resume。
+const handleCopyBookLink = async (book: Book) => {
+  closeMenu()
+  try { await exportBookLink({}, asClipboardCtx({ bookUrl: book.url, i18n: props.i18n, showMsg: (msg, type) => showMessage(msg, 1800, type || 'info') })) }
+  catch (e) { showMessage(e instanceof Error ? e.message : tx('copyFailed', '复制失败'), 2000, 'error') }
+}
+// 只在桌面端可定位文件；链接导入的书退化为打开链接/复制路径。
+const revealBookFile = async (book: Book) => {
+  closeMenu()
+  const raw = String(book.path || book.url || '').split('?')[0]
+  if (!raw) return showMessage('该书没有可定位的位置', 2000, 'error')
+  const openExternal = (target: string) => {
+    const remote = (window as any).require?.('@electron/remote')
+    if (remote?.shell?.openExternal) return remote.shell.openExternal(target)
+    window.open(target, '_blank')
+  }
+  // 远程链接：直接用系统浏览器打开。
+  if (/^https?:\/\//i.test(raw) || raw.startsWith('siyuan://')) {
+    try { return openExternal(raw) } catch { return window.open(raw, '_blank') }
+  }
+  const workspace = String((window as any).siyuan?.config?.system?.workspaceDir || '').replace(/\\/g, '/').replace(/\/$/, '')
+  const filePath = raw.startsWith('file://')
+    ? decodeURIComponent(raw.replace(/^file:\/\//, '')).replace(/^\/([A-Za-z]:)/, '$1')
+    : raw.startsWith('/data/') ? raw : raw.startsWith('/public/') ? `/data/public/${raw.slice('/public/'.length)}` : `/data/${raw.replace(/^\/+/, '')}`
+  const absolute = raw.startsWith('file://') ? filePath : `${workspace}${filePath}`
+  try {
+    const remote = (window as any).require?.('@electron/remote')
+    if (remote?.shell?.showItemInFolder) return remote.shell.showItemInFolder(absolute)
+    await navigator.clipboard.writeText(absolute)
+    showMessage('已复制文件路径', 2000, 'info')
+  } catch {
+    await navigator.clipboard.writeText(absolute).catch(() => {})
+    showMessage('已复制文件路径', 2000, 'info')
+  }
+}
 const importBookAnnotations = async (book: Book) => {
   if (String(book.format || '').toLowerCase() !== 'pdf') return showMessage('批注导入暂仅支持 PDF', 2000, 'error')
   try {
@@ -551,7 +587,7 @@ const showContextMenu = (book: Book, e: MouseEvent) => {
   const clearMoveGroups = moveGroupKeyword.value ? { icon: 'iconClose', label: tx('clearGroupSearch', 'Clear Group Search'), click: () => { moveGroupKeyword.value = ''; closeMenu(); showContextMenu(book, e) } } : null
   const groupMenu = [searchMoveGroups, ...(clearMoveGroups ? [clearMoveGroups] : []), ...(book.groups.length ? [{ icon: 'iconFiles', label: tx('bookshelf', 'Bookshelf'), click: () => updateBookField(book, 'group', 'home', tx('bookshelf', 'Bookshelf')) }, ...(moveGroups.length ? [{ type: 'separator' }] : [])] : []), ...moveGroups.map(g => ({ icon: 'iconFolder', label: g.name, click: () => updateBookField(book, 'group', g.id, `${tx('moveTo', 'Move to')}: ${g.name}`) }))]
   const m = new Menu()
-  ;[{ icon: 'iconPlay', label: tx('openBook', 'Open Book'), click: () => readBook(book) }, { icon: 'iconInfo', label: tx('bookDetails', 'Book Details'), click: () => openBookPanel('detail', book) }, { icon: 'iconCheck', label: selectedBookUrls.value.includes(book.url) ? tx('unselectBook', 'Cancel Selection') : tx('selectBook', 'Select This Book'), click: () => toggleSelectBook(book) }, { icon: 'iconStar', label: tx('rate', 'Rating'), type: 'submenu', submenu: ratingMenu }, { icon: 'iconCheck', label: tx('markStatus', 'Mark Status'), type: 'submenu', submenu: statusItems(status => updateBookField(book, 'status', status, tx(status, status))) }, { icon: 'iconFolder', label: tx('moveTo', 'Move To'), type: 'submenu', submenu: groupMenu }, { icon: hasBinding ? 'iconLinkOff' : 'iconLink', label: hasBinding ? tx('unbindDocument', 'Unbind Document') : tx('bindDocument', 'Bind Document'), click: () => openBookPanel('edit', book) }, { icon: 'iconDownload', label: tx('importAnnotations', 'Import Annotations'), click: () => importBookAnnotations(book) }, { type: 'separator' }, { icon: 'iconEdit', label: tx('editInfo', 'Edit Information'), click: () => openBookPanel('edit', book) }, { icon: 'iconTrashcan', label: tx('removeBook', 'Remove'), click: () => { closeMenu(); confirmDelete.value = { type: 'book', id: book.url, item: book } } }].forEach(item => m.addItem(item as any))
+  ;[{ icon: 'iconPlay', label: tx('openBook', 'Open Book'), click: () => readBook(book) }, { icon: 'iconInfo', label: tx('bookDetails', 'Book Details'), click: () => openBookPanel('detail', book) }, { icon: 'iconFolder', label: tx('openDataLocation', '打开数据所在位置'), click: () => revealBookFile(book) }, { icon: 'iconCopy', label: tx('copyLink', 'Copy Link'), click: () => handleCopyBookLink(book) }, { icon: 'iconCheck', label: selectedBookUrls.value.includes(book.url) ? tx('unselectBook', 'Cancel Selection') : tx('selectBook', 'Select This Book'), click: () => toggleSelectBook(book) }, { icon: 'iconStar', label: tx('rate', 'Rating'), type: 'submenu', submenu: ratingMenu }, { icon: 'iconCheck', label: tx('markStatus', 'Mark Status'), type: 'submenu', submenu: statusItems(status => updateBookField(book, 'status', status, tx(status, status))) }, { icon: 'iconFolder', label: tx('moveTo', 'Move To'), type: 'submenu', submenu: groupMenu }, { icon: hasBinding ? 'iconLinkOff' : 'iconLink', label: hasBinding ? tx('unbindDocument', 'Unbind Document') : tx('bindDocument', 'Bind Document'), click: () => openBookPanel('edit', book) }, { icon: 'iconDownload', label: tx('importAnnotations', 'Import Annotations'), click: () => importBookAnnotations(book) }, { type: 'separator' }, { icon: 'iconEdit', label: tx('editInfo', 'Edit Information'), click: () => openBookPanel('edit', book) }, { icon: 'iconTrashcan', label: tx('removeBook', 'Remove'), click: () => { closeMenu(); confirmDelete.value = { type: 'book', id: book.url, item: book } } }].forEach(item => m.addItem(item as any))
   openMenu(m, e)
 }
 

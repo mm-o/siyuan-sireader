@@ -36,9 +36,11 @@ const host = ref<HTMLElement>()
 const status = ref('')
 const toolbarHidden = ref(false)
 const readOnly = ref(false)
+// 上游 afterCreate 是整份文档的设置；这里以本地状态为准，避免依赖它自己的激活链路。
+const keepTool = ref(!!props.settings?.pdfAnnotationKeepTool)
 const pdfImport = ref<HTMLInputElement>()
 const quickDocs = computed(() => (props.settings?.quickSendDocs || []).filter(doc => doc.id).slice(0, 5))
-const appState = () => ({ toolbarHidden: toolbarHidden.value, quickDocs: quickDocs.value, readOnly: readOnly.value })
+const appState = () => ({ toolbarHidden: toolbarHidden.value, quickDocs: quickDocs.value, readOnly: readOnly.value, keepTool: keepTool.value })
 const pdfFeatures = { snapshots: true, redaction: true, 'forms.building': true, measurement: true }
 const noteTooltip = ref<HTMLElement>()
 let pointer: PointerEvent | undefined
@@ -195,6 +197,16 @@ const annotationActions = {
     const annotation = annotationById(id)
     if (annotation) scoped('annotation').selection.select([annotation.ref])
   },
+  // 回链定位：选中标注并把它的矩形滚到视口偏上位置，避免只翻到页首、内容落在下三分之一。
+  focus: (id: string) => {
+    const annotation = annotationById(id)
+    if (!annotation) return
+    scoped('annotation')?.selection.select([annotation.ref])
+    const pageIndex = viewer.documents.getPageIndex(annotation.ref.page, documentId)
+    const rect = annotation.rect && { x: annotation.rect.origin.x, y: annotation.rect.origin.y, width: annotation.rect.size.width, height: annotation.rect.size.height }
+    if (rect) scoped('stage')?.reveal(pageIndex, { rect, align: { x: 'center', y: 0.3 } })
+    else scoped('stage')?.goToPage(pageIndex, { behavior: 'instant' })
+  },
   async update(id: string, updates: any) {
     if (readOnly.value) return
     const annotation = annotationById(id)
@@ -302,6 +314,14 @@ async function attachDocument(id: string, signal: AbortSignal, targetPage?: numb
   if (page && saved?.pageCoordinates) {
     stage.goToDestination({ kind: 'xyz', page: page.ref, ...saved.pageCoordinates, zoom: null }, { behavior: 'instant' })
   } else stage.goToPage(pageIndex, { behavior: 'instant' })
+  // 刚打开时 stage 还没完成布局，上面的跳页可能被首次布局覆盖，恢复的书页要再补一次。
+  let restoring: number | null = targetPage === undefined && pageIndex > 0 ? pageIndex : null
+  const applyRestore = (final = false) => {
+    if (restoring === null) return
+    stage.goToPage(restoring, { behavior: 'instant' })
+    if (final || stage.getCurrentPageIndex() === restoring) restoring = null
+  }
+  if (restoring !== null) { setTimeout(() => applyRestore(), 150); setTimeout(() => applyRestore(true), 700) }
   const save = createLatestSaver(async (index: number) => {
     const page = index + 1
     const count = stage.getPageCount()
@@ -350,7 +370,7 @@ async function attachDocument(id: string, signal: AbortSignal, targetPage?: numb
       noteTooltip.value.textContent = text
       showTooltip(noteTooltip.value, pointer.clientX + 12, pointer.clientY + 12)
     }),
-    stage.onPageChanged(() => save.schedule(stage.getCurrentPageIndex())),
+    stage.onPageChanged(() => { if (restoring === null) save.schedule(stage.getCurrentPageIndex()) }),
     stage.onZoomChanged(({ mode, level }: any) => {
       const value = mode === 'custom' ? level : mode
       if (value !== 'automatic' && value !== 'fit-page' && value !== 'fit-width' && typeof value !== 'number') return
@@ -358,12 +378,19 @@ async function attachDocument(id: string, signal: AbortSignal, targetPage?: numb
       zoomTimer = setTimeout(() => { if (value !== props.settings?.pdfZoomLevel) void settingsManager.patch({ pdfZoomLevel: value }) }, 400)
     }),
     annotation.onCreated(({ annotation: item }: any) => changed('create', item)),
+    // 上游 afterCreate.tool='default' 没有把工具切回去，这里按同一策略补上（文本框创建后要保留输入，不切）。
+    annotation.onCreated(({ annotation: item }: any) => {
+      if (keepTool.value || item?.subtype === 'free-text') return
+      scoped('interaction')?.activateDefaultTool?.()
+    }),
     annotation.onUpdated(({ annotation: item }: any) => changed('update', item)),
     annotation.onDeleted(({ refs }: any) => {
       for (const ref of refs) {
         const refKey = JSON.stringify(ref)
-        const record: any = recordsByRef.get(refKey)
+        const stored: any = recordsByRef.get(refKey)
         recordsByRef.delete(refKey)
+        // 绑定块等自定义字段只写在我们的元数据里，删除时取最新的一份，不能用创建时的快照。
+        const record: any = stored && { ...stored, custom: metadata.get(stored.id) ?? stored.custom }
         if (!key || !record || nativeIds.has(record.id)) continue
         const event = { type: 'delete', annotation: record, bookUrl, storageKey: key }
         queueSave(async () => {
@@ -467,7 +494,7 @@ function configuration() {
   const annotationImageMark = async () => {
     const item = selected()
     const record = item && recordOf(item)
-    return record ? { ...annotationMark(item, record), image: await capturePdfAnnotationImage(scoped('render'), record) } : null
+    return record ? { ...annotationMark(item, record), image: await capturePdfAnnotationImage(scoped('render'), record, !!props.settings?.pdfMarkImageWithAnnotations) } : null
   }
   const send = async (mark: any, id: string) => {
     if (!mark) return
@@ -548,11 +575,12 @@ function configuration() {
       labelParams: () => ({ action: toolbarHidden.value ? props.i18n?.showTopToolbar || 'Show top toolbar' : props.i18n?.hideTopToolbar || 'Hide top toolbar' }),
     },
     {
-      ...command('delete-redactions', props.i18n?.delete || 'Delete redactions', 'delete', () => {
+      ...command('delete-redactions', props.i18n?.delete || 'Delete redactions', 'trash', () => {
         if (redactionsSelected()) return viewer.commands.execute('annotation:delete')
       }),
       enabled: () => !readOnly.value && redactionsSelected(),
     },
+    { id: 'annotation:delete', shortcut: [] },
     command('capture-copy', props.i18n?.copyScreenshot || 'Copy screenshot', 'screenshot', async () => {
       const render = scoped('render')
       if (render?.getSnapshot()) return viewer.commands.execute('snapshot:copy')
@@ -561,12 +589,12 @@ function configuration() {
       copyNextSnapshot = (await viewer.commands.execute('tool:snapshot')).status === 'executed'
     }),
     {
-      ...command('lock-annotation-tool', props.i18n?.pdfKeepTool || 'Keep annotation tool active', 'lock', () => {
-        const annotation = scoped('annotation')
-        const tool = annotation.getSettings().afterCreate.tool
-        annotation.updateSettings({ afterCreate: { tool: tool === 'stay' ? 'default' : 'stay' } })
+      ...command('lock-annotation-tool', props.i18n?.pdfKeepTool || 'Keep the tool active after drawing', 'lock', () => {
+        keepTool.value = !keepTool.value
+        scoped('annotation')?.updateSettings?.({ afterCreate: { tool: keepTool.value ? 'stay' : 'default' } })
+        void settingsManager.patch({ pdfAnnotationKeepTool: keepTool.value }).catch(onFailure)
       }),
-      active: () => scoped('annotation')?.getSettings().afterCreate.tool === 'stay',
+      active: ({ appState }: any) => appState.keepTool,
     },
     {
       ...command('read-only', props.i18n?.pdfReadOnly || 'Read-only mode', 'lock', () => {
@@ -604,10 +632,11 @@ function configuration() {
     readOnly: readOnly.value,
     features: { ...pdfFeatures, 'documents.open': false },
     plugins: {
-      stage: { zoom: zoom(), scrollBehavior: scrollBehavior() },
-      render: { snapshot: { scale: 2 } },
+      stage: { zoom: zoom(), scrollBehavior: scrollBehavior(), scrollChaining: false },
+      // 底图预算 640 太小：大尺寸扫描页放大后全靠瓦片补锐，瓦片没覆盖到的地方会一直发虚。
+      render: { snapshot: { scale: 2 }, fullPage: { maxWidth: 1280 } },
       annotation: {
-        afterCreate: { tool: 'default' },
+        afterCreate: { tool: keepTool.value ? 'stay' : 'default' },
         tools: pdfAnnotationToolOptions(props.settings?.pdfAnnotationToolDefaults),
       },
     },
@@ -621,7 +650,9 @@ function configuration() {
         .add('sireader:notes', { to: 'pager' })
         .add('sireader:toggle-toolbar', { to: 'pager' })
         .add('sireader:capture-copy', { to: 'document' })
+        // afterCreate 是整份文档的绘制设置，注释条和形状条都放同一个开关，避免切模式才能改。
         .add('sireader:lock-annotation-tool', { to: 'annotate' })
+        .add('sireader:lock-annotation-tool', { to: 'shapes' })
       for (const id of ['read-only', 'import-annotations', 'export-annotations', 'import-layer', 'export-layer']) {
         result = result.add('sireader:' + id, { to: 'document' })
       }
@@ -656,6 +687,8 @@ watch([host, () => props.source], async ([target, source], _, onCleanup) => {
   try {
     const next = await initEmbedPdfViewer(target, {
       ...configuration(),
+      // 标注由思阅自己持久化，引擎里的文档始终“有未保存改动”；留着上游的离开确认会让思源刷新被拦。
+      warnBeforeLeaving: false,
       src: source,
       onReady: (ready: any) => {
         if (signal.aborted) return
@@ -695,6 +728,12 @@ watch([host, () => props.source], async ([target, source], _, onCleanup) => {
     else {
       element = next
       if (documentId) element.features = pdfFeatures
+      // 上游评论/笔记输入框不判断输入法组合态，回车确认候选词会被当成提交；组合期间拦在本层，不进上游。
+      const guardIme = (event: KeyboardEvent) => {
+        if (event.isComposing || event.keyCode === 229) event.stopPropagation()
+      }
+      ;(next.shadowRoot ?? next).addEventListener('keydown', guardIme, true)
+      onCleanup(() => (next.shadowRoot ?? next).removeEventListener('keydown', guardIme, true))
     }
   } catch (error: any) {
     if (!signal.aborted) status.value = error?.message || 'PDF load failed'

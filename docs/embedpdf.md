@@ -235,6 +235,23 @@ Do not build custom floating quick-send menus. EmbedPDF `selectionMenus` do not 
 
 PDF actions stay on EmbedPDF's command path, while customizable shortcuts are registered through SiYuan's native `Plugin.addCommand()` API. SiYuan command callbacks dispatch the command ID to the active `Reader.vue`; only the active PDF executes it through EmbedPDF. Keep command metadata in [`src/utils/keyboard.ts`](../src/utils/keyboard.ts), prefix displayed names with `PDF`, and do not add a plugin-settings shortcut editor or a PDF-owned `keydown` listener.
 
+EmbedPDF's tooltip renders the resolved `label` plus the command's first shortcut, and a shortcut is always the raw key name (`Delete`, `Mod+C`), so it never follows the locale. Shortcuts belong to SiYuan's command center (see above), so the built-in `annotation:delete` is left alone except for its shortcut, which the native field-level `commands` override blanks (`{ id: 'annotation:delete', shortcut: [] }`); its button tooltip is then just the localized label. Do not hide the tooltip `kbd` with shadow-root CSS, and do not clone the command to keep the key.
+
+Annotation images (`capturePdfAnnotationImage`) render the page with `includeAnnotations: false`. Upstream draws every annotation into `renderPage` output unless told otherwise, so a shape's own stroke otherwise ends up as a border framing the captured picture.
+
+The style panel's `subtype` row (square ↔ circle, highlight ↔ underline…) is upstream and stays upstream. Upstream lists sibling kinds in one hardcoded table and drops any patch whose only key is `subtype` (`checkedOpOf` returns `op: null`), because a PDF annotation cannot change its type in place; there is no convert API. Never rebuild shape conversion in SiReader.
+
+`plugins.annotation.afterCreate` is viewer-wide, so the "keep the drawing tool" command belongs on every drawing bar (`annotate` and `shapes`), not only on `annotate`; the layout accepts the same command id in more than one bar.
+
+Pass `warnBeforeLeaving: false` at init. Upstream installs a `beforeunload` guard whenever any document reports `hasUnsavedChanges` (default on), and SiReader persists annotations itself, so the engine's document always looks dirty; the guard then cancels every page reload, which shows up as "SiYuan cannot refresh after opening a PDF".
+
+Missing CJK glyphs in GB-standard PDFs (Type0 + `Identity-H`, no embedded font, no `ToUnicode`) are an open upstream problem — do not rebuild a fallback again without new upstream support. Verified on 2026-11-15 with a 94-page Adobe-GB1 sample (`tmp/gb.html` probe, headless Edge): the page renders ASCII only, and both mechanisms fail.
+
+- `localEngine({ fallbackFonts: [...] })` / `engine.fonts.register() + addFallback()` register fine, then `page.render.raw()` aborts with `memory access out of bounds`. It fails identically with the Noto Sans Hans OTF, with a TrueType (SimHei), with `data` instead of `url`, and with `defaultFallbackFonts: false`, so the crash is in the wasm glyph-substitution path, not in the font file.
+- Patching `FPDF_SYSFONTINFO` into the shipped worker does not work in this wasm build: `FPDF_SetSystemFontInfo` is exported and the struct (version 1 or 2, 36 bytes on wasm32) is written into the heap, but neither `EnumFonts` nor `MapFont` is ever called — PDFium draws the same ASCII-only page. `FPDF_SetSystemFontInfo` therefore has no effect here, and a patched worker only risks breaking the bundle.
+
+The engine worker hands the wasm runtime to JS as `{ mem, cb, fn }` (`mem.alloc/poke/writeBytes`, `cb.register(sig, handler)`, `fn.*`), not as an Emscripten flat module: `module._malloc`, `module.addFunction` and `module.setValue` are all `undefined` there, and `mem.poke` silently does nothing when the module lacks `setValue`. Any future wasm-side work must use `mem.writeBytes`.
+
 Screenshot copy uses EmbedPDF capture state:
 
 - the document menu gets a `复制截图` command

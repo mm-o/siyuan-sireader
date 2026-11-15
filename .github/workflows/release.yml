@@ -13,9 +13,28 @@ on:
       - '*.md'
       - 'preview.png'
       - '.github/workflows/release.yml'
+      - 'docs/site/**'
+      - 'scripts/docs-gen.mjs'
+      - 'scripts/docs-check.mjs'
 
 jobs:
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # 文档门禁不需要安装依赖：只读源码、i18n、CHANGELOG 与 docs/site。
+      - name: Docs gate
+        run: node scripts/docs-check.mjs --strict
+
   release:
+    needs: docs
     runs-on: ubuntu-latest
     permissions:
       contents: write

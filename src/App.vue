@@ -243,8 +243,8 @@ registerReaderTab('online_reader', tab => {
 
 // 链接打开书籍
 const getLinkTarget = (target: EventTarget | null) => {
-  const link = (target as HTMLElement | null)?.closest?.('a[href], [data-href], [data-url], span[data-type="a"]') as HTMLElement | null
-  const url = link?.getAttribute('data-href') || link?.getAttribute('href') || link?.getAttribute('data-url') || ''
+  const link = (target as HTMLElement | null)?.closest?.('a[href], [data-reader-href], [data-href], [data-url], span[data-type="a"]') as HTMLElement | null
+  const url = link?.getAttribute('data-reader-href') || link?.getAttribute('data-href') || link?.getAttribute('href') || link?.getAttribute('data-url') || ''
   return { link, url }
 }
 
@@ -307,7 +307,8 @@ const handleEbookLink = async (e: MouseEvent) => {
   const name = readUrl.split('/').pop()?.split('?')[0] || ''
   const title = (decodeURIComponent(name).replace(/\.[^.]+$/, '') || 'Reader')
   // 命中排除规则时仍可打开，但不写入书架、不记录阅读进度
-  if (isDocAssetExcluded(url, settings.value)) {
+  // siyuan://plugins/siyuan-cloud/open?path= 形式的入口按归一化后的插件路径再判一次
+  if (isDocAssetExcluded(url, settings.value) || isDocAssetExcluded(readUrl, settings.value)) {
     return openReaderTab(plugin, title, { url: readUrl, blockId, bookInfo: { title, url: readUrl, temporary: true } }, `${plugin.name}epub_reader`, settings.value)
   }
   const existing = await bookshelfManager.getBook(readUrl)

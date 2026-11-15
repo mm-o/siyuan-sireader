@@ -3,6 +3,7 @@ import type { RemoteBookInfo, RemoteDownloadRequest, OnlineBookImportInfo } from
 import { registerPrivateSources } from '@private-sources'
 import { registerWereadAgentSources } from '@/weread/agent'
 import { forwardProxy, kernelDownloadUrl } from '@/api'
+import { diagnosticLog } from '@/core/diagnostics'
 
 type HttpSourceType = 'anna' | 'gutenberg' | 'standardebooks' | 'custom' | (string & {})
 
@@ -88,7 +89,10 @@ const DEFAULT_SOURCES: HttpSourceConfig[] = [
     name: 'Anna Archive',
     type: 'anna',
     enabled: false,
-    domains: ['https://annas-archive.gl', 'https://annas-archive.pk', 'https://annas-archive.gd', 'https://annas-archive.se', 'https://annas-archive.li', 'https://annas-archive.org'],
+    // Anna 目前只剩 .gl 还能连上，其余 .pk/.gd/.se/.li/.org 全部失联；
+    // 而且搜索页被 DDoS-Guard 的 JS 挑战挡着，服务端直连拿不到结果，
+    // 需要在「来源管理」里给它挂一个干净的代理前缀（requestPrefix）才可能可用。
+    domains: ['https://annas-archive.gl'],
     currentDomain: 'https://annas-archive.gl',
     filters: { extensions: [] },
   },
@@ -158,6 +162,11 @@ const applyRequestPrefix = (url: string, prefix = '') => {
 }
 
 const textOf = (element: Element | null | undefined) => element?.textContent?.replace(/\s+/g, ' ').trim() || ''
+
+// DDoS-Guard / Cloudflare 的 JS 挑战页，服务端请求过不去，解析出来必然是空结果。
+const BOT_CHALLENGE_PATTERN = /ddos-guard|checking your browser|cf-browser-verification|challenge-platform|just a moment\.\.\./i
+const isBotChallenge = (html = '') => BOT_CHALLENGE_PATTERN.test(html)
+
 export class HttpSourceManager {
   private readonly KEY = 'http_sources'
   private sources: HttpSourceConfig[] = [...DEFAULT_SOURCES]
@@ -296,6 +305,10 @@ export class HttpSourceManager {
       try {
         const html = await this.request(`${domain}/search?q=${encodeURIComponent(keyword)}`, source, 8000)
         if (!html) return []
+        if (isBotChallenge(html)) {
+          diagnosticLog('warn', 'http-source.blocked', { source: source.id, domain, reason: 'bot-challenge' })
+          return []
+        }
         const doc = new DOMParser().parseFromString(html, 'text/html')
         const oldItems = Array.from(doc.querySelectorAll('[class*="search-result"]'))
         return oldItems.length ? this.parseAnnaLegacyResults(oldItems, domain, source) : this.parseAnnaMd5Results(doc, domain, source)

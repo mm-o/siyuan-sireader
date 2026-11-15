@@ -580,6 +580,8 @@
   "clearGroupSearch": "清除分组搜索",
   "openBook": "打开阅读",
   "bookDetails": "书籍详情",
+  "openDataLocation": "打开数据所在位置",
+  "pdfMarkImageWithAnnotations": "标注图片包含标注样式",
   "selectBook": "选择此书",
   "unselectBook": "取消选择",
   "rate": "评分",
@@ -628,7 +630,7 @@
   "copyLink": "复制链接",
   "copyText": "复制文本",
   "copyChapter": "复制章节",
-  "pdfKeepTool": "绘制后保持当前工具",
+  "pdfKeepTool": "绘制后保持工具",
   "copyBacklink": "复制回链",
   "redaction": "遮蔽",
   "copyScreenshot": "复制截图",
@@ -772,7 +774,7 @@
   ,"copyBacklink": "复制回链"
   ,"sendTo": "发送至"
   ,"redaction": "选区挖空"
-  ,"pdfKeepTool": "绘制后保持当前工具"
+  ,"pdfKeepTool": "绘制后保持工具"
   ,"copyImage": "复制图片"
   ,"exportImage": "导出图片"
   ,"markImage": "标注图片"

@@ -114,6 +114,7 @@ const docAssetExcludeFields = computed(() => {
 const noteFields = computed(() => [
   checkboxField('annotationSyncOnAdd', props.i18n.annotationSyncOnAdd || '添加时同步', settings.value.annotationSyncOnAdd, value => (settings.value.annotationSyncOnAdd = value, save()), true, props.i18n.annotationSyncOnAddDesc || '新增标注时自动同步到已绑定文档'),
   checkboxField('annotationSyncOnDelete', props.i18n.annotationSyncOnDelete || '删除时同步', settings.value.annotationSyncOnDelete, value => (settings.value.annotationSyncOnDelete = value, save()), true, props.i18n.annotationSyncOnDeleteDesc || '删除标注时同步删除已绑定块'),
+  checkboxField('pdfMarkImageWithAnnotations', props.i18n.pdfMarkImageWithAnnotations || '标注图片包含标注样式', !!settings.value.pdfMarkImageWithAnnotations, value => (settings.value.pdfMarkImageWithAnnotations = value, save()), true, '形状标注导出图片时是否把标注框本身也带上'),
   selectField('noteInsertTarget', props.i18n.noteInsertTarget || '插入位置', settings.value.noteInsertTarget, NOTE_TARGET_OPTIONS.map(value => ({ value, label: props.i18n[`noteInsertTarget${value.charAt(0).toUpperCase()}${value.slice(1)}`] || value })), value => (settings.value.noteInsertTarget = value as any, save())),
   selectField('noteInsertMode', props.i18n.noteInsertMode || '插入方式', settings.value.noteInsertMode, NOTE_MODE_OPTIONS.map(value => ({ value, label: props.i18n[NOTE_MODE_LABELS[value]] || value })), value => (settings.value.noteInsertMode = value as any, save()), settings.value.noteInsertTarget === 'current'),
   selectField('notebookId', props.i18n.notebookId || props.i18n.notebook || '笔记本', settings.value.notebookId || '', notebooks.value.map((nb:any) => ({ value: nb.id, label: nb.name })), value => (settings.value.notebookId = value, save()), ['notebook', 'dailynote'].includes(settings.value.noteInsertTarget), props.i18n.notSelected || '未选择'),
@@ -351,8 +352,10 @@ const setFont = (f?:FontFileInfo) => (settings.value.textSettings.fontFamily=f?'
 const pickFont = (f:FontFileInfo) => { loadFont(f); setFont(f) }
 const saveTheme = () => { if (!can.value('reader-theme')) return settings.value.theme='default', showUpgrade('主题配色'); save() }
 const openPage = (url:string) => window.open(url,'_blank')
-const dictHelpUrl = `https://github.com/mm-o/siyuan-sireader/blob/main/docs/${encodeURIComponent('离线词典使用说明.md')}`
-const openMembershipInfo = () => openPage('https://sireader.745201.xyz')
+// 帮助与会员说明的文档地址（docs/site 下的工具页与会员页，静态站要求尾斜杠）
+const DOCS = 'https://docs.745201.xyz/docs/sireader'
+const dictHelpUrl = `${DOCS}/tools/`
+const openMembershipInfo = () => openPage(`${DOCS}/features-and-access/`)
 
 // 打开授权面板
 ;(window as any)._openLicenseContent = () => {

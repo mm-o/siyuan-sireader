@@ -7,17 +7,50 @@
 让思源笔记变身专业阅读器，支持 EPUB/PDF/TXT/在线小说  
 专业电子书阅读器，支持 EPUB/PDF/MOBI/TXT/在线小说；PDF 支持高亮、墨迹、形状、表单、印章、签名、图片、截图、搜索、打印、导出和回链，并提供标注笔记、词典、翻译、主题与书架管理
 
-[![Version](https://img.shields.io/badge/version-2.7.0-blue.svg)](https://github.com/your-repo/siyuan-sireader)
+[![Version](https://img.shields.io/badge/version-2.7.1-blue.svg)](https://github.com/mm-o/siyuan-sireader)
 [![License](https://img.shields.io/badge/license-MIT%20%2B%20AGPL-green.svg)](LICENSE)
 [![SiYuan](https://img.shields.io/badge/SiYuan-3.0+-orange.svg)](https://github.com/siyuan-note/siyuan)
 
-[🌐 官网](https://sireader.745201.xyz) · [📖 使用文档](https://my.feishu.cn/wiki/IzvVwQEhriAIIok57SQcYmfhnwm) · [🔌 集成 API 文档](docs/integration-api.md) · 用微信小程序“思源插件助手”购买 · [👥 QQ群](https://qm.qq.com/q/wpHDtsfxCw) · [📝 更新日志](https://my.feishu.cn/wiki/LhITwVPHWiu7UMkqPUCcE84FnGh)
+[🌐 产品页](https://docs.745201.xyz/products/sireader/) · [📖 使用文档](https://docs.745201.xyz/docs/sireader/overview/) · [📝 更新日志](https://docs.745201.xyz/docs/changelog/sireader/) · [🔌 集成 API](https://docs.745201.xyz/docs/sireader/integration/) · 用微信小程序“思源插件助手”购买 · [👥 QQ群](https://qm.qq.com/q/wpHDtsfxCw)
 
 </div>
 
 ---
 
 ## 📝 最新更新
+
+## v2.7.1 (2026-11-15)
+
+### 新增
+
+- 书架书籍菜单增加「打开数据所在位置」，直接跳到书籍数据或原文件所在位置。
+- 书架书籍菜单增加「复制链接」，复制的是 Markdown 链接（`[书名](sireader://resume?url=…)`），模板与导出标注共用「链接格式」；点击按阅读进度续读，不带标注定位。
+
+### 修复
+
+- 修复 PDF 标注删除后没有同步删除文档中已绑定块的问题：同一次会话内绑定块信息只写进元数据，删除时却用了创建时的旧快照。
+- 修复 PDF 回链首次点击只打开书籍、不跳转标注的问题：阅读器还没就绪时先暂存定位目标，就绪后再执行。
+- 修复 PDF 标注定位不准：改为选中标注并把标注区域滚到视口偏上位置，不再只翻到页首导致内容落在下三分之一。
+- 修复锁屏／休眠回来后 PDF 阅读进度跳回封面：恢复页会被首次布局覆盖，现在会补跳一次，并在恢复期间不写入进度。
+- 修复形状标注插入文档后不显示标注框（框内其他标注也随之不可见）：新增「标注图片包含标注样式」开关，打开后导出的图片带标注框。
+- 修复 PDF 评论和标注笔记输入框打不出中文：输入法组合期间的回车不再被上游当成提交。
+- 修复形状标注「添加时同步」不生效：工具样式默认值以响应式对象传给引擎 worker，触发 DataCloneError，标注事件因此不回流。
+- 修复书架「打开数据所在位置」对链接／外部导入书籍提示“没有本地文件”：现在按链接打开或定位到 `file://` 原文件。
+- 修复 PDF 工具栏「删除遮盖」命令用了不存在的图标名，控制台反复告警。
+- 修复打开 PDF 后思源刷新／重载卡住：上游默认开启「离开前确认」，文档只要被判定有未保存改动就会拦截 `beforeunload`，而标注由思阅自己持久化、引擎里始终是“未保存”，刷新因此被拦住；现已关闭该确认。
+- 给插件卸载流程的保存与等待加上限：某个写入卡住时不再让思源的刷新／重载一直挂着。
+- 修复 PDF 批注「删除」按钮提示混入英文快捷键名的问题。
+- 修复形状标注导出的图片带标注描边，现在只截取页面内容。
+- 修复「绘制后保持工具」开关不生效：关闭后绘制完成会回到默认工具；该开关同时出现在「注释」和「形状」工具栏，状态会保存。
+- 修复大尺寸扫描页在部分缩放下发虚：底图预算 `render.fullPage.maxWidth` 由 640 提高到 1280。
+- 修复滚到页尾会带动外层页面滚动：关闭上游新增、默认开启的 `stage.scrollChaining`。
+- 修复思盘（siyuan-cloud）网盘里的 PDF 报 `is not an asset path` 无法打开：插件虚拟路径不再交给思源内置 PDF 标签页，统一回落插件阅读器。
+- 点击思盘文件时优先使用思盘新增的 `data-reader-href`（`siyuan://plugins/siyuan-cloud/open?path=…`），与文档内插入、复制的链接同源。
+- 文档排除路径规则对 `data-reader-href` 形态的思盘链接同样生效。
+
+### 已知问题
+
+- 国标类老 PDF（未嵌入中文字体、也没有字符映射表，2000 年代方正／WPS 排版居多）打开后英文、数字与版式正常，中文整段空白。已在 EmbedPDF 3.2.0 上复核：官方 `engine.fallbackFonts` 仍触发 WASM 渲染内存越界，PDFium 原生的系统字体接口在这个 wasm 构建里不生效，两条补字路线都不可用，只能等上游修复；因此本版不带临时字体、也不打产物补丁。在此期间请用其他阅读器打开这类文件，或先 OCR／重新导出带字体的 PDF。扫描版、表单、签名与普通 PDF 不受影响。
 
 ## v2.7.0 (2026-11-12)
 
@@ -374,7 +407,7 @@
 ### 修复
 
 - 修复 EPUB“跟随思源”主题在暗黑模式下未随思源主题切换、只叠加遮罩的问题，暗黑主题色与思源主题切换保持一致 [#44](https://github.com/mm-o/siyuan-sireader/issues/44) [#45](https://github.com/mm-o/siyuan-sireader/issues/45)。
-[查看全部更新日志](https://my.feishu.cn/wiki/LhITwVPHWiu7UMkqPUCcE84FnGh)
+[查看全部更新日志](https://docs.745201.xyz/docs/changelog/sireader/)
 
 ## 📖 EPUB 与 PDF 排版
 

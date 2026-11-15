@@ -1,4 +1,4 @@
-﻿import { Plugin } from 'siyuan'
+import { Plugin } from 'siyuan'
 import { createApp } from 'vue'
 import App from './App.vue'
 import { initDictModule } from '@/utils/dictionary'
@@ -64,15 +64,20 @@ export async function destroy() {
   if (!plugin) return
   diagnosticLog('info', 'plugin.destroy.start', { plugin: plugin.name })
   const errors: unknown[] = []
+  // 每个等待都要有上限：PDF 阅读器的保存/写入一旦卡住，不能让 onunload 永不返回（会卡死思源的刷新/重载）。
+  const deadline = async (task: Promise<unknown>, ms: number, label: string) => {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const timeout = new Promise<void>(resolve => { timer = setTimeout(() => { diagnosticLog('warn', 'plugin.destroy.timeout', { step: label, ms }); resolve() }, ms) })
+    try { await Promise.race([task.catch(error => errors.push(error)), timeout]) } finally { if (timer) clearTimeout(timer) }
+  }
   for (const callback of cleanupCallbacks) trackPending(Promise.resolve().then(callback))
   cleanupCallbacks = []
-  await drainPendingTasks().catch(error => errors.push(error))
+  await deadline(drainPendingTasks(1500), 2500, 'drain-before-unmount')
   app?.unmount()
-  await drainPendingTasks().catch(error => errors.push(error))
-  await flushStorage().catch(error => errors.push(error))
-  await drainPendingTasks().catch(error => errors.push(error))
-  await flushStorage().catch(error => errors.push(error))
+  // 卸载后再关写入口：卸载过程中产生的最终保存仍能完成，之后不再排新任务。
   storageEngine.stopAccepting()
+  await deadline(drainPendingTasks(1200), 2000, 'drain-after-unmount')
+  await deadline(flushStorage(), 2500, 'flush')
   document.getElementById(plugin.name)?.remove()
   plugin = null
   diagnosticLog('info', 'plugin.destroy.done', { errors: errors.length })
