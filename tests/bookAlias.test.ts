@@ -5,7 +5,7 @@ import {
   vi,
 } from 'vitest'
 
-import { matchLegacyBook } from '@/core/bookshelf'
+import { isSameOpenedTab, matchLegacyBook } from '@/core/bookshelf'
 
 vi.mock('@/main', () => ({ usePlugin: vi.fn() }))
 vi.mock('@/api', () => ({
@@ -68,5 +68,26 @@ describe('legacy book url matching', () => {
 
   it('returns null when nothing matches', () => {
     expect(matchLegacyBook('pdf://不存在的书_123', shelfBooks)).toBeNull()
+  })
+})
+
+describe('reader tab identity', () => {
+  const cloud = '/plugin/private/siyuan-cloud/p/WebDAV/Books/一句顶一万句'
+
+  it('separates same-title different-format books by url', () => {
+    expect(isSameOpenedTab({ bookInfo: { url: `${cloud}.epub` } }, '一句顶一万句', { title: '一句顶一万句', url: `${cloud}.pdf` })).toBe(false)
+    expect(isSameOpenedTab({ bookInfo: { url: `${cloud}.epub` } }, '一句顶一万句', { title: '一句顶一万句', url: `${cloud}.epub` })).toBe(true)
+  })
+
+  it('reads url from top-level data and falls back to title', () => {
+    expect(isSameOpenedTab({ url: 'https://a/book' }, '在线书', { title: '在线书', url: 'https://a/book' })).toBe(true)
+    expect(isSameOpenedTab(null, '某书', { title: '某书', url: 'epub://某书_1' })).toBe(true)
+    expect(isSameOpenedTab(null, '某书二', { title: '某书', url: 'epub://某书_1' })).toBe(false)
+    expect(isSameOpenedTab(null, '某书', '某书')).toBe(true)
+  })
+
+  it('treats percent-encoded and plain cloud urls as the same book', () => {
+    const encoded = '/plugin/private/siyuan-cloud/p/WebDAV/Books/%E4%B8%80%E5%8F%A5%E9%A1%B6%E4%B8%80%E4%B8%87%E5%8F%A5.pdf'
+    expect(isSameOpenedTab({ bookInfo: { url: encoded } }, '一句顶一万句', { title: '一句顶一万句', url: `${cloud}.pdf` })).toBe(true)
   })
 })

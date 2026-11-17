@@ -1,6 +1,7 @@
 import { getFrontend, openTab, openWindow } from 'siyuan'
+import * as siyuanApi from 'siyuan'
 import type { Plugin, Tab } from 'siyuan'
-import { bookshelfManager, type Book } from '@/core/bookshelf'
+import { bookshelfManager, isSameOpenedTab, type Book, type OpenedTabKey } from '@/core/bookshelf'
 import type { ReaderSettings } from '@/composables/useSetting'
 import { isMobile } from '@/utils/mobile'
 import { wereadBookIdOf } from '@/weread/agent'
@@ -13,13 +14,14 @@ type OpenModeSettings = Pick<ReaderSettings, 'openMode' | 'openDocAssets'>
 type ReaderTabData = { file?: File; url?: string; blockId?: string | null; bookInfo?: any; context?: any }
 const BOOK_RE = /\.(epub|pdf|mobi|azw3|azw|fb2|cbz|txt)(?:[?#].*)?$/i
 
-// 查找已打开的阅读器标签页
-export const findOpenedTab = (bookName: string, pluginName: string, tabType = 'custom_tab_book_reader') => {
+// 查找已打开的阅读器标签页：按书 url 判等，同名不同格式不会互相抢占；覆盖左右下所有布局
+export const findOpenedTab = (target: OpenedTabKey, pluginName: string, tabType = 'custom_tab_book_reader') => {
   const type = `${pluginName}${tabType}`
-  const find = (o: any, id: string): any => o?.id === id ? o : o?.children?.reduce((r: any, c: any) => r || find(c, id), null)
-  for (const el of document.querySelectorAll<HTMLElement>('.layout-tab-bar .item[data-id]')) {
-    if ((el.getAttribute('data-title') || el.querySelector('.item__text')?.textContent) !== bookName) continue
-    if (find((window as any).siyuan?.layout?.centerLayout, el.getAttribute('data-id')!)?.model?.type === type) return el
+  const tabs = ((siyuanApi as any).getAllTabs?.() || []) as any[]
+  for (const tab of tabs) {
+    if (tab?.model?.type !== type) continue
+    const title = (tab.headElement?.getAttribute('data-title') || tab.headElement?.querySelector('.item__text')?.textContent || '').trim()
+    if (isSameOpenedTab(tab.model?.data, title, target)) return tab.headElement as HTMLElement
   }
   return null
 }
@@ -51,7 +53,7 @@ const activateOpenedTab = (tab: HTMLElement | null, onReady?: () => void) => {
 export const openOnlineReaderTab = (plugin: Plugin, title: string, url: string, settings?: Pick<ReaderSettings, 'openMode'>, onReady?: () => void, context?: any) =>
   (plugin as any).isBrowser && /^https:\/\/weread\.qq\.com\/web\/reader\//i.test(url)
     ? (window.open(url, '_blank', 'noopener,noreferrer'), onReady?.(), true)
-    : activateOpenedTab(findOpenedTab(title, plugin.name, 'online_reader'), onReady)
+    : activateOpenedTab(findOpenedTab({ url, title }, plugin.name, 'online_reader'), onReady)
       || openReaderTab(plugin, title, { url, bookInfo: { title }, context }, `${plugin.name}online_reader`, settings, onReady)
 
 const normalizeNativePdfPath = (path: string) => {
@@ -118,6 +120,6 @@ export const openOrActivateBook = async (plugin: Plugin, book: Book, settings: R
 
   if (openWithSiyuanPdf(plugin, book, settings, onReady)) return
   
-  if (activateOpenedTab(findOpenedTab(book.title, plugin.name), onReady)) return
+  if (activateOpenedTab(findOpenedTab(book, plugin.name), onReady)) return
   openReaderTab(plugin, book.title, { bookInfo: book }, `${plugin.name}custom_tab_book_reader`, settings, onReady)
 }

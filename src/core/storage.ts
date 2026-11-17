@@ -475,11 +475,15 @@ const normalizeStoragePath = (storageName = '') => {
 const getPluginStoragePath = (key: string) => `${PLUGIN_STORAGE_ROOT}/${getPlugin().name}/${normalizeStoragePath(key)}`
 
 const pathKind = (path = '') => path.startsWith(SIYUAN_CLOUD_BASE + '/') ? 'siyuan-cloud' : path.startsWith('/public/') || path.startsWith('/data/public/') ? 'public' : /^https?:\/\//i.test(path) ? 'http' : 'storage'
-const fileReadTarget = (path: string) => {
-  const target = path.startsWith('/public/') ? publicToDataPath(path) : path
-  return target.startsWith(`${SIYUAN_CLOUD_BASE}/p/`) ? target.replace(`${SIYUAN_CLOUD_BASE}/p/`, `${SIYUAN_CLOUD_BASE}/d/`) : target
-}
+const fileReadTarget = (path: string) => path.startsWith('/public/') ? publicToDataPath(path) : path
 const fileReadError = (path: string) => path.startsWith(`${SIYUAN_CLOUD_BASE}/`) ? '思源云盘文件读取失败（可能无权限或文件已失效）' : '文件加载失败'
+// 云盘读取：/d 优先、失败回退 /p；非云盘路径返回 null
+const cloudReadTargets = (path: string): string[] | null => {
+  const base = `${SIYUAN_CLOUD_BASE}/`
+  if (!path.startsWith(base) || !/^[pd]\//.test(path.slice(base.length))) return null
+  const rest = path.slice(base.length + 2)
+  return [`${base}d/${rest}`, `${base}p/${rest}`]
+}
 const bodyPreview = (bytes?: Uint8Array | null) => {
   if (!bytes?.byteLength) return ''
   const text = new TextDecoder().decode(bytes).trim()
@@ -497,10 +501,9 @@ const parseApiErrorPayload = (bytes?: Uint8Array | null) => {
   } catch { return null }
 }
 
-const readFileResponse = async (path: string) => {
-  if (!path) return null
-  const target = fileReadTarget(path)
-  if (path.startsWith(`${SIYUAN_CLOUD_BASE}/p/`)) return fetch(target)
+const readFileResponse = async (target: string) => {
+  if (!target) return null
+  if (target.startsWith(`${SIYUAN_CLOUD_BASE}/`)) return fetch(target)
   return fetch('/api/file/getFile', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -549,18 +552,29 @@ export const normalizeSiyuanCloudUrl = (value = '') => {
   return encodeCloudOpenPath(value.slice(i))
 }
 
-export const readFileBlob = async (path: string) => {
+// 响应头缺 Content-Encoding 的 gzip 体按魔数兜底（.gz 文件除外）
+const maybeGunzip = async (bytes: Uint8Array, path: string) => {
+  if (bytes[0] !== 0x1f || bytes[1] !== 0x8b || /\.(?:gz|tgz|gzip)$/i.test(path.split(/[?#]/)[0])) return bytes
+  if (typeof DecompressionStream === 'undefined') return bytes
+  try {
+    const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'))
+    return new Uint8Array(await new Response(stream).arrayBuffer())
+  } catch (error) {
+    diagnosticLog('warn', 'file.read.gunzip.failed', { path, error })
+    return bytes
+  }
+}
+
+const readFileOnce = async (target: string, kind: string) => {
   const startedAt = Date.now()
-  const target = fileReadTarget(path)
-  const kind = pathKind(path)
   diagnosticLog('debug', 'file.read.start', { path: target, kind })
   try {
-    const res = await readFileResponse(path)
+    const res = await readFileResponse(target)
     if (!res) {
       diagnosticLog('warn', 'file.read.failed', { path: target, kind, reason: 'empty-response', durationMs: Date.now() - startedAt })
       return null
     }
-    const bytes = new Uint8Array(await res.arrayBuffer())
+    const bytes = await maybeGunzip(new Uint8Array(await res.arrayBuffer()), target)
     const apiError = parseApiErrorPayload(bytes)
     const contentType = res.headers.get('content-type') || ''
     const base = { path: target, kind, status: res.status, ok: res.ok, contentType, contentLength: bytes.byteLength, durationMs: Date.now() - startedAt }
@@ -574,6 +588,15 @@ export const readFileBlob = async (path: string) => {
     diagnosticLog('error', 'file.read.failed', { path: target, kind, reason: 'network-or-read-error', durationMs: Date.now() - startedAt, error })
     return null
   }
+}
+
+export const readFileBlob = async (path: string) => {
+  const kind = pathKind(path)
+  for (const target of cloudReadTargets(path) ?? [fileReadTarget(path)]) {
+    const blob = await readFileOnce(target, kind)
+    if (blob) return blob
+  }
+  return null
 }
 
 export const readManagedFile = async (path: string, fallbackName?: string) => {
@@ -831,7 +854,19 @@ export const saveCoverFile = async (blob: Blob, url: string) => {
 
 export const saveOptionalCover = async (blob: Blob | undefined, url: string) => blob ? saveCoverFile(blob, url) : undefined
 
-// 统一读取入口，避免上层重复判断 http / file / public / data 路径。
+// 取到的字节不是书时给出字节数与文件头，替代解析器的 "File type not supported"
+const assertBookBytes = async (file: File, path: string) => {
+  const ext = path.split(/[?#]/)[0].split('.').pop()?.toLowerCase()
+  const magic = ext === 'epub' ? [0x50, 0x4b] : ext === 'pdf' ? [0x25, 0x50, 0x44, 0x46] : []
+  if (!magic.length) return file
+  const head = new Uint8Array(await file.slice(0, magic.length).arrayBuffer())
+  if (magic.every((byte, index) => head[index] === byte)) return file
+  const text = (await file.slice(0, 200).text()).replace(/\s+/g, ' ').trim().slice(0, 120)
+  const detail = /^[\x20-\x7e\s]*$/.test(text) && text ? text : `0x${Array.from(head).map(byte => byte.toString(16).padStart(2, '0')).join(' ')}`
+  throw new Error(`下载内容不是有效 ${String(ext).toUpperCase()}（${file.size} 字节，头部=${detail}）`)
+}
+
+// 统一读取入口，避免上层重复判断 http / file / public / data 路径
 export const loadBookFile = async (path: string): Promise<File> => {
   path = normalizeSiyuanCloudUrl(path)
   if (path.startsWith('http://') || path.startsWith('https://')) {
@@ -867,7 +902,7 @@ export const loadBookFile = async (path: string): Promise<File> => {
   }
   const blob = await readFileBlob(path)
   if (!blob) throw new Error(fileReadError(path))
-  return new File([blob], path.split(/[/\\]/).pop() || 'book', { type: blob.type || 'application/octet-stream' })
+  return await assertBookBytes(new File([blob], path.split(/[/\\]/).pop() || 'book', { type: blob.type || 'application/octet-stream' }), path)
 }
 
 export const clearStoredPluginData = async (books: StoredBookRef[] = []) => {

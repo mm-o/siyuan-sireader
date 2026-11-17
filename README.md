@@ -19,6 +19,16 @@ Professional eBook reader for EPUB/PDF/MOBI/TXT/online novels. PDFs support high
 
 ## 📝 Latest Updates
 
+## v2.7.3 (2026-11-17)
+
+### Fixed
+
+- Cloud books from Siyuan Cloud now fall back between routes: when the `/d/` download route fails, SiReader retries through the `/p/` preview route instead of returning an error page, which previously surfaced as `File type not supported` for EPUB.
+- If upstream returns a gzip body without a `Content-Encoding` header, SiReader decompresses it from the magic bytes before parsing (`.gz` files themselves are excluded).
+- When the fetched content is not a real EPUB/PDF, the error now reports the byte size and the file header (hex when not printable), so you can tell whether the file or the transfer is at fault.
+- Fixed books that share a title but differ in format (for example the EPUB and the PDF of the same book) being treated as one tab: the "already open" check now compares the book url and uses the title for display only. Legacy tabs without a recorded url still fall back to the title so the same book never opens twice.
+- Fixed one book opening duplicate tabs: the tab lookup now scans every layout (right and bottom docks included) and compares urls through the candidate normalization, so differently encoded addresses of the same file still match.
+
 ## v2.7.2 (2026-11-17)
 
 ### Added
@@ -598,6 +608,9 @@ Professional eBook reader for EPUB/PDF/MOBI/TXT/online novels. PDFs support high
 
 **Q: Can't open EPUB file?**  
 A: Check if the file format is standard EPUB and not corrupted
+
+**Q: A book from Siyuan Cloud fails with `File type not supported`?**  
+A: That message comes from the EPUB parser and means the bytes are not a zip. SiReader self-heals in three steps: it prefers the `/d/` download route and falls back to the `/p/` preview route; if the response lacks `Content-Encoding` but starts with `1f 8b`, it decompresses it; and if the content still is not a valid EPUB/PDF, the error reports the byte size and file header so you can tell whether the file or the transfer is at fault. Also upgrade Siyuan Cloud to 0.8.3+, which pins `Accept-Encoding: identity` so upstream never gzips the file in the first place.
 
 **Q: Annotations not saved?**  
 A: Check if notebook or parent document is correctly configured in annotation settings

@@ -1,13 +1,23 @@
 ---
 title: 思阅更新日志
 description: 思阅各版本的公开变化，随 CHANGELOG.md 自动生成。
-appliesTo: ">=2.7.2"
+appliesTo: ">=2.7.3"
 generated: true
 ---
 
 > 本页由脚本自动生成，请勿手改。修改来源：`src/composables/useSetting.ts`、`src/core/license.ts`、`src/utils/keyboard.ts` 或 `CHANGELOG.md`；改完运行 `pnpm docs:gen`。
 
 按版本倒序记录思阅的公开变化。安装步骤见 [安装思阅](/docs/getting-started/sireader-installation/)，升级注意事项见 [第一次阅读](/docs/sireader/usage/)。
+
+## v2.7.3 (2026-11-17)
+
+### 修复
+
+- 思盘（siyuan-cloud）云盘书籍读取增加路由回退：`/d/` 下载路由失败时自动改用 `/p/` 预览路由重取，避免直链跳转丢掉认证后拿回错误页、导致 EPUB 报 `File type not supported`。
+- 上游返回 gzip 压缩体但响应头缺少 `Content-Encoding` 时，按魔数自动解压后再交给阅读器，解决「文件是完整的、却被当成不支持的格式」的问题（`.gz` 文件本身除外）。
+- 取到的内容不是真正的 EPUB/PDF 时，错误信息直接给出字节数与文件头内容，便于判断是文件本身还是读取链路的问题。
+- 修复同名不同格式的书（例如同一本书的 EPUB 与 PDF）被当成同一本、点击只切换标签而不新开的问题：已打开标签的判定从「标题」改为「书籍 url」，标题只用于显示；老标签页没有记录 url 时仍按标题回退，不会重复开同一本书。
+- 修复同一本书重复打开标签页：已打开标签的查找改为覆盖所有布局（右侧、底部），并对 url 做候选归一化比较，同一文件的不同编码地址也能识别。
 
 ## v2.7.2 (2026-11-17)
 
@@ -162,17 +172,6 @@ generated: true
 - 优化会员绑定与权益校验：及时呈现绑定服务错误，网络暂时不可用时保留仍有效的缓存权益，并在服务端确认权益失效后清除旧缓存。
 - 使用思源官方 `insertContent` API 实现插入到光标处，清理旧的编辑器定位与内部插入逻辑，并补齐中英文错误提示。
 
-## v2.5.6 (2026-10-14)
-
-### 新增
-
-- 新增本机字体选择，可使用系统已安装的字体替换书籍字体。
-
-### 修复
-
-- 修复部分书籍的脚注点击后无法弹出脚注窗口的问题。
-- 修复部分书籍开启字体覆盖后仍无法替换字体的问题。
-
 ## 更早版本
 
-更早的 35 个版本见 [GitHub Releases](https://github.com/mm-o/siyuan-sireader/releases)。
+更早的 36 个版本见 [GitHub Releases](https://github.com/mm-o/siyuan-sireader/releases)。

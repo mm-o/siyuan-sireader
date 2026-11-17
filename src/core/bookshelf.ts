@@ -135,6 +135,16 @@ const safeDecode = (url = '') => { try { return decodeURI(url) } catch { return 
 const safeEncode = (url = '') => { try { return encodeURI(safeDecode(url)) } catch { return url } }
 export const bookUrlCandidates = (url = '') => Array.from(new Set([url, normalizeSiyuanCloudUrl(url), safeDecode(url), safeEncode(url)].filter(Boolean)))
 export const sameBookUrl = (a = '', b = '') => { const set = new Set(bookUrlCandidates(b)); return bookUrlCandidates(a).some(url => set.has(url)) }
+
+// 标签页身份：按书 url 判等，标题仅用于显示（同名不同格式不会互相抢占）
+export type OpenedTabKey = string | { url?: string; path?: string; title?: string }
+export const isSameOpenedTab = (data: any, title = '', target: OpenedTabKey) => {
+  const identity = String(data?.bookInfo?.url || data?.bookInfo?.path || data?.url || '')
+  const wanted = typeof target === 'string' ? '' : String(target?.url || target?.path || '')
+  const wantedTitle = typeof target === 'string' ? target : target?.title || ''
+  // 字符串目标（在线书源）与没有 url 的老标签页只能按标题判等；url 走候选归一化，兼容编码差异
+  return wanted && identity ? sameBookUrl(identity, wanted) : title === wantedTitle
+}
 // 旧链接 `pdf://标题_大小`（书被重新导入成 file:// 后书架键对不上）按「标题+大小」归一化匹配回现有书目。
 const titleKey = (title = '') => normalizeBookTitle(String(title || '')).toLowerCase().replace(/[\s_\-—–·.]+/g, '')
 export const matchLegacyBook = (url: string, books: any[] = []) => {
@@ -188,7 +198,7 @@ export class BookshelfManager {
       if (notify) this.notify();
       return true;
     }, fallback);
-  
+
   private prepareLocalBook = async (file: File, parsedMeta?: any) => { const format = this.getFormat(file.name), name = file.name.replace(/\.[^.]+$/, ''); const source = materializeNativeFile(file); const meta = parsedMeta || await this.extractMeta(source, format, name), title = normalizeBookTitle(meta.title || name) || name; return { file: source, format, name, meta, title } }
   private downloadCover = async (coverUrl: string | undefined, url: string) => {
     if (!coverUrl) return '';
@@ -236,7 +246,7 @@ export class BookshelfManager {
     return url
   }
   private saveCover = (blob: Blob | undefined, url: string) => blob ? Promise.race([saveOptionalCover(blob, url), new Promise<undefined>(resolve => setTimeout(resolve, 8000))]).catch(() => undefined) : undefined
-  
+
   async init() { if (this.ready) return; await getDatabase(); this.ready = true; }
   async getBooks() { return this.useDb(db => db.getBooks()); }
   async getRecentBooks(limit = 5) { return this.useDb(db => db.getRecentBooks(limit)); }
@@ -262,7 +272,7 @@ export class BookshelfManager {
   async recordSessionFocus(date: string, durationMs: number) { await this.useDb(db => db.saveSessionFocus(date, durationMs)); }
   async getSessionFocus(date: string) { return this.useDb(db => db.getSessionFocus(date)); }
   hasBook = async (url: string) => !!(await this.getBook(url))
-  
+
   async addBook(info: any) {
     diagnosticLog('info', 'bookshelf.add.start', { format: info?.format, size: Number(info?.size || 0), hasPath: !!info?.path, hasDataId: !!info?.dataId });
     try {
@@ -281,11 +291,11 @@ export class BookshelfManager {
       await Promise.all([removeManagedFile(book.path), removeManagedFile(book.cover)]);
       this.notify();
       return true;
-    }, false); 
+    }, false);
   }
-  
+
   removeBooks = async (urls: string[], deleteData = false) => this.batch(urls, url => this.removeBook(url, deleteData));
-  
+
   async filterBooks(opt: FilterOptions = {}) {
     const { query, groups, ...dbOpt } = opt;
     let books = await this.useDb(db => db.filterBooks(dbOpt));
@@ -306,11 +316,11 @@ export class BookshelfManager {
     const counts = Object.fromEntries(groups.map(group => [group.id, source.filter(book => this.matchGroup(book, group)).length]))
     return { books, groups, counts, tags: await db.getAllTags(source), stats: await db.getStats(source, false) }
   }
-  
+
   async getStats(books?: Book[]): Promise<BookStats> { return this.useDb(db => db.getStats(books)); }
   async getTodayReading() { return this.useDb(db => db.getTodayReading()); }
   async getDailyReading(year: number, month?: number) { return this.useDb(db => db.getDailyReading(year, month)); }
-  
+
   // ===== 进度管理 =====
   // 更新阅读进度
   async updateProgress(url:string,progress:number,chapter?:number,cfi?:string,pdf?:{key:string;totalPages:number}){
@@ -318,14 +328,14 @@ export class BookshelfManager {
     if (changed) this.notify()
     return changed
   }
-  
+
   // 自动更新进度（防抖）
   async updateProgressAuto(url:string,reader?:any,view?:any){
     const loc=reader?.getLocation?.()??view?.lastLocation
     if(!loc||loc.fraction===undefined)return false
     return this.updateProgress(url,Math.round(loc.fraction*100),loc.index,loc.cfi)
   }
-  
+
   // 恢复阅读进度
   async restoreProgress(url:string,reader?:any){
     try{
@@ -335,14 +345,14 @@ export class BookshelfManager {
       if(chapter!==undefined)await reader.goTo(chapter)
     }catch{}
   }
-  
+
   // 清理资源
   cleanup(){}
-  
+
   updateRating=async(url:string,rating:number)=>this.updateBook(url,{rating:rating?Math.max(1,Math.min(5,rating)):undefined}); // 更新评分(1-5星)
   updateStatus=async(url:string,status:BookStatus)=>this.updateBook(url,{status,...(status==='finished'&&{finished:Date.now(),progress:100})}); // 更新状态(未读/在读/已读)
   updateReadTime=async(url:string,seconds:number)=>this.useDb(db=>db.incrementBook(url,'time',seconds)); // 累加阅读时长
-  
+
   // ===== 标签管理 =====
   manageTags = async (url: string, action: 'add' | 'remove' | 'set', data: string | string[]) => {
     return this.mutateBook(url, book => {
@@ -352,10 +362,10 @@ export class BookshelfManager {
       return { tags: tags.filter((t: string) => t !== data) };
     });
   };
-  
+
   getAllTags = async () => this.useDb(db => db.getAllTags());
   getSettings = async () => this.useDb(db => db.getSettings());
-  
+
   // ===== 分组管理 =====
   private sortGroups = (groups: GroupConfig[]) => groups.map((group, i) => ({ ...group, order: Number.isFinite(group.order) ? group.order : i })).sort((a, b) => a.order - b.order)
   private writeGroups = async (groups: GroupConfig[]) => { await this.useDb(db => db.saveGroups(groups.map((group, order) => ({ ...group, order })))); this.notify() }
@@ -381,9 +391,9 @@ export class BookshelfManager {
     await this.writeGroups([...groups, newGroup])
     return newGroup
   };
-  
+
   deleteGroup = async (gid: string) => { await this.useDb(db => db.deleteGroup(gid)); this.notify(); return true };
-  
+
   manageGroup = async (url: string, gid: string, action: 'add' | 'remove') => {
     return this.mutateBook(url, book => {
       const groups = book.groups || [];
@@ -391,7 +401,7 @@ export class BookshelfManager {
       return { groups: groups.filter((group: string) => group !== gid) };
     });
   };
-  
+
   addBooksToGroup = async (urls: string[], gid: string) => this.batch(urls, url => this.manageGroup(url, gid, 'add'));
   private getResolvedGroup = async (gid: string) => (await this.getGroups()).find(g => g.id === gid)
   getGroupBooks = async (gid: string) => { const group = await this.getResolvedGroup(gid); return group ? (await this.getBooks()).filter(book => this.matchGroup(book, group)) : [] };
@@ -401,10 +411,10 @@ export class BookshelfManager {
     groups.forEach(group => counts[group.id] = books.filter(book => this.matchGroup(book, group)).length)
     return { groups, counts }
   }
-  
+
   // 批量操作
   private batch = async <T>(items: T[], op: (item: T) => Promise<boolean>) => { const results = await Promise.allSettled(items.map(op)), success = results.filter(r => r.status === 'fulfilled' && r.value).length; return { success, failed: items.length - success } };
-  
+
   batchUpdateRating=async(urls:string[],rating:number)=>this.batch(urls,url=>this.updateRating(url,rating));
   batchUpdateStatus=async(urls:string[],status:BookStatus)=>this.batch(urls,url=>this.updateStatus(url,status));
   applyBookPatch = async (url: string, patch: BookBulkPatch, notify = true) => this.mutateBook(url, book => {
@@ -466,7 +476,7 @@ export class BookshelfManager {
     diagnosticLog('info', 'bookshelf.completion.done', result)
     return result
   }
-  
+
   // ===== Assets PDF 同步 =====
   async syncAssetsPDF() {
     await this.init()
@@ -480,12 +490,12 @@ export class BookshelfManager {
     this.notify()
     return{added:add,removed:del,total:assets.size}
   }
-  
+
   private notify = () => typeof window !== 'undefined' && window.dispatchEvent(new Event('sireader:bookshelf-updated'));
-  
+
   // ===== UI辅助 =====
   getBookColor(title: string) { const colors = ['#fef3c7', '#dbeafe', '#fce7f3', '#e0e7ff', '#d1fae5', '#fed7aa', '#fae8ff', '#f3e8ff', '#fecaca', '#fbcfe8']; let hash = 0; for (let i = 0; i < title.length; i++) hash = title.charCodeAt(i) + ((hash << 5) - hash); return colors[Math.abs(hash) % colors.length] }
-  
+
   getCoverUrl(bookOrCover: any) {
     const raw = typeof bookOrCover === 'string' ? bookOrCover : bookOrCover?.cover
     const cover = typeof raw === 'string' ? raw.trim() : ''
@@ -496,10 +506,10 @@ export class BookshelfManager {
     const separator = path.includes('?') ? '&' : '?'
     return `${path}${separator}v=${this.coverRevision}`
   }
-  
+
   // ===== 书籍操作 =====
   async updateBookField(url: string, field: 'rating' | 'status' | 'group', value: any) { return field === 'rating' ? this.updateRating(url, value) : field === 'status' ? this.updateStatus(url, value) : this.updateBook(url, { groups: value === 'home' ? [] : [value] }) }
-  
+
   async updateBookInfo(url: string, formData: { title: string; author: string; tags: string; rating: number; status: BookStatus; cover: string; groups: string[]; bindDocId?: string; bindDocName?: string }) {
     const book = await this.getBook(url)
     if (!book || !formData.title.trim()) return { success: false, error: '书名不能为空' }
@@ -507,13 +517,13 @@ export class BookshelfManager {
     await this.updateBook(url, { title: formData.title.trim(), author: formData.author.trim(), tags, rating: formData.rating || undefined, status: formData.status, cover: formData.cover.trim() || '', groups: formData.groups, bindDocId: formData.bindDocId || '', bindDocName: formData.bindDocName || '' })
     return { success: true }
   }
-  
+
   async uploadBooks(files: File[]) {
     const r={success:0,failed:0}
     for(const f of files){try{await this.addLocalBook(f);r.success++}catch{r.failed++}}
     return r
   }
-  
+
   async addLocalBook(file: File, parsedMeta?: any) {
     await this.init()
     const { file: source, format, meta, title } = await this.prepareLocalBook(file, parsedMeta)
@@ -534,11 +544,11 @@ export class BookshelfManager {
     const cover = await this.saveCover(meta.coverBlob, url)
     return this.savePreparedBook({ url, path: url, format, size: source.size, meta, name: title, cover, dataId, fingerprint })
   }
-  
+
   async addUrlBook(url: string, coverUrl?: string, bookInfo?: { title?: string; author?: string }, parsedMeta?: any) {
     await this.init()
     const bookUrl = normalizeSiyuanCloudUrl(url)
-    
+
     // HTTP书源快速通道：跳过文件下载和元数据提取
     if (bookInfo?.title) {
       const fingerprint = urlFingerprint(bookUrl), dataId = await dataIdFromFingerprint(fingerprint)
@@ -547,7 +557,7 @@ export class BookshelfManager {
       await this.addBook({ url: bookUrl, title: normalizeBookTitle(bookInfo.title) || bookInfo.title, author: bookInfo.author || '未知作者', cover, format, path: bookUrl, size: 0, metadata: {}, dataId, fingerprint })
       return bookUrl
     }
-    
+
     // 常规路径：预览阶段可能已临时读取文件，但入库时保留链接本身，不托管远端正文。
     const { filePath, name, format, meta, file } = parsedMeta
       ? { filePath: bookUrl, name: parsedMeta.title || this.fileBaseName(bookUrl), format: this.getFormat(bookUrl), meta: parsedMeta, file: null }
@@ -570,30 +580,30 @@ export class BookshelfManager {
     const { format, meta, title } = await this.prepareLocalBook(file)
     return { ...meta, format, title, cover: meta.coverBlob ? URL.createObjectURL(meta.coverBlob) : '' }
   }
-  
+
   private async parseUrlBook(url: string) {
     const isHttp = /^https?:\/\//.test(url), isAbsolute = /^[a-zA-Z]:[\\\/]/.test(url) || url.startsWith('/')
     if (!isHttp && !isAbsolute && !url.includes('/') && !url.includes('\\')) throw new Error('请输入有效的链接或文件路径')
-    
+
     url = normalizeSiyuanCloudUrl(url)
     const filePath = url.startsWith(SIYUAN_CLOUD_BASE) ? url : isAbsolute && !url.startsWith('file://') ? toFileUrl(url) : url
     const name = this.fileBaseName(url), format = this.getFormat(url)
     const file = await loadBookFile(filePath)
     const meta = await this.extractMeta(file, format, name)
-    
+
     return { filePath, name, format, meta, file }
   }
-  
+
   async addAssetBook(assetPath: string, file: File) {
     await this.init()
     const format = this.getFormat(file.name), name = file.name.replace(/\.[^.]+$/, ''), url = `asset://${assetPath}`, meta = await this.extractMeta(file, format, name)
     const fingerprint = urlFingerprint(url), dataId = await dataIdFromFingerprint(fingerprint)
     return this.savePreparedBook({ url, path: assetPath, format, meta, name, cover: await this.saveCover(meta.coverBlob, url), dataId, fingerprint })
   }
-  
+
   // 对阅读器保留统一入口，底层实现已下沉到 storage。
   async loadFile(path: string): Promise<File> { return loadBookFile(path) }
-  
+
   private buildMetadata = buildBookMetadata
   private getFormat = (path: string): BookFormat => { const ext = this.cleanPath(path).split('.').pop()?.toLowerCase() || ''; return ({ epub: 'epub', pdf: 'pdf', mobi: 'mobi', azw3: 'azw3', azw: 'azw3', txt: 'txt' } as Record<string, BookFormat>)[ext] || 'epub' }
   private metaDef = (defaultName: string) => ({ title: defaultName, author: '未知作者', publisher: undefined, published: undefined, language: undefined, identifier: undefined, intro: undefined, subjects: [], series: undefined, coverBlob: undefined, subtitle: undefined })
