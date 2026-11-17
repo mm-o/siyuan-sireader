@@ -7,7 +7,7 @@
 Transform SiYuan Notes into a professional eBook reader  
 Professional eBook reader for EPUB/PDF/MOBI/TXT/online novels. PDFs support highlights, ink, shapes, forms, stamps, signatures, images, screenshots, search, printing, export, and backlinks, with annotation notes, dictionary, translation, themes, and bookshelf management.
 
-[![Version](https://img.shields.io/badge/version-2.7.1-blue.svg)](https://github.com/mm-o/siyuan-sireader)
+[![Version](https://img.shields.io/badge/version-2.8.0-blue.svg)](https://github.com/mm-o/siyuan-sireader)
 [![License](https://img.shields.io/badge/license-MIT%20%2B%20AGPL-green.svg)](LICENSE)
 [![SiYuan](https://img.shields.io/badge/SiYuan-3.0+-orange.svg)](https://github.com/siyuan-note/siyuan)
 
@@ -18,6 +18,22 @@ Professional eBook reader for EPUB/PDF/MOBI/TXT/online novels. PDFs support high
 ---
 
 ## 📝 Latest Updates
+
+## v2.8.0 (2026-11-17)
+
+### Added
+
+- Full-screen button for EPUB and other non-PDF readers: one button to enter and leave full screen, with the icon following the state (PDF keeps its built-in full screen).
+- The translation window is wider (720px, up to 92vw), the source and translation boxes size to their content and can be dragged taller, and the engine picker plus "Add as annotation" stay pinned so the dialog itself never scrolls.
+- New "Page sharpness (scans)" setting for the PDF base image width (1280 / 1920 / 2560 / 3200, default 1920). High-resolution scans such as 291 ppi look soft at normal zoom; raising it sharpens them at the cost of per-page bitmap memory, and it applies after reopening the PDF.
+
+### Fixed
+
+- Fixed membership features needing a SiYuan restart after "Recover entitlement": the license state is now shared across the app, so it takes effect immediately.
+- Fixed bookshelf search inside a group only finding that group: any keyword now searches the whole shelf, and group names, author, status, tags, file names and paths all match (space-separated words, all must match).
+- Fixed blurry exported images for shape annotations: exports render at 4 px/pt (~288 dpi) with a 600 px floor for small marks, and polygons (type 7) are included.
+- Fixed annotation backlinks opening at the last reading position instead of the target page: the jump target now goes through a single-slot handoff consumed once the reader is ready, with "restore last position" cancelled, covering the not-open, already-open and cross-book cases (the timer-based retry polling is gone).
+- Fixed a horizontal scrollbar (the grey bar) appearing under a settings row on hover: the settings list now scrolls vertically only, and the "Note insertion" group uses the same flat row structure as the other groups.
 
 ## v2.7.3 (2026-11-17)
 

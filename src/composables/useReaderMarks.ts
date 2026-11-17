@@ -5,7 +5,7 @@ import { useReaderState } from '@/core/epub/state'
 import { bookshelfManager } from '@/core/bookshelf'
 import { pdfMarkFromAnnotation } from '@/utils/embedPdfActions'
 import { copyMark as copyMarkUtil, hideFloat, openBlock, showFloat } from '@/utils/copy'
-import { jump, markTarget } from '@/utils/jump'
+import { jump, markTarget, requestLinkJump } from '@/utils/jump'
 import { collectMarkTagGroups, formatMarkTags, getMarkTags, parseMarkTags, toggleMarkTags } from '@/core/MarkManager'
 
 type MarkSort = 'time' | 'date' | 'chapter' | 'page' | 'name' | 'custom'
@@ -367,7 +367,8 @@ export const useReaderMarks = (i18n?: any, context?: any) => {
     const book = await bookshelfManager.getBook(item.bookUrl)
     if (!book) return showMsg(tx('bookNotFound', 'Book not found'), 'error')
     const [{ openOrActivateBook }, { settingsManager }, { usePlugin }] = await Promise.all([import('@/utils/bookOpen'), import('@/composables/useSetting'), import('@/main')])
-    await openOrActivateBook(usePlugin(), book, await settingsManager.get(), () => window.dispatchEvent(new CustomEvent('sireader:goto', { detail: { cfi: markTarget(item), id: item.id, bookUrl: item.bookUrl } })))
+    requestLinkJump({ cfi: markTarget(item), id: item.id, bookUrl: item.bookUrl })
+    await openOrActivateBook(usePlugin(), book, await settingsManager.get())
   }
   const showMark = (item: any) => goTo(item)
   const onBlockEnter = (event: MouseEvent, id: string) => showFloat(id, event.target as HTMLElement)

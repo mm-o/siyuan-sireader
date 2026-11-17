@@ -115,6 +115,7 @@ const noteFields = computed(() => [
   checkboxField('annotationSyncOnAdd', props.i18n.annotationSyncOnAdd || '添加时同步', settings.value.annotationSyncOnAdd, value => (settings.value.annotationSyncOnAdd = value, save()), true, props.i18n.annotationSyncOnAddDesc || '新增标注时自动同步到已绑定文档'),
   checkboxField('annotationSyncOnDelete', props.i18n.annotationSyncOnDelete || '删除时同步', settings.value.annotationSyncOnDelete, value => (settings.value.annotationSyncOnDelete = value, save()), true, props.i18n.annotationSyncOnDeleteDesc || '删除标注时同步删除已绑定块'),
   selectField('pdfSidebarPanel', props.i18n.pdfSidebarPanel || '默认侧栏', settings.value.pdfSidebarPanel || 'thumbnails', [{ value: 'thumbnails', label: props.i18n.sidebarThumbnails || '缩略图' }, { value: 'outline', label: props.i18n.sidebarOutline || '书签' }], value => (settings.value.pdfSidebarPanel = value as any, save())),
+  selectField('pdfRenderMaxWidth', props.i18n.pdfRenderMaxWidth || '页面清晰度（扫描件）', String(settings.value.pdfRenderMaxWidth || 1920), [{ value: '1280', label: '1280' }, { value: '1920', label: '1920' }, { value: '2560', label: '2560' }, { value: '3200', label: '3200' }], value => (settings.value.pdfRenderMaxWidth = Number(value) || 1920, save()), true, props.i18n.pdfRenderMaxWidthDesc || '底图宽度：越大扫描件越清晰，内存占用也越高；默认 1920，重新打开 PDF 后生效'),
   checkboxField('pdfMarkImageWithAnnotations', props.i18n.pdfMarkImageWithAnnotations || '标注图片包含标注样式', !!settings.value.pdfMarkImageWithAnnotations, value => (settings.value.pdfMarkImageWithAnnotations = value, save()), true, '形状标注导出图片时是否把标注框本身也带上'),
   selectField('noteInsertTarget', props.i18n.noteInsertTarget || '插入位置', settings.value.noteInsertTarget, NOTE_TARGET_OPTIONS.map(value => ({ value, label: props.i18n[`noteInsertTarget${value.charAt(0).toUpperCase()}${value.slice(1)}`] || value })), value => (settings.value.noteInsertTarget = value as any, save())),
   selectField('noteInsertMode', props.i18n.noteInsertMode || '插入方式', settings.value.noteInsertMode, NOTE_MODE_OPTIONS.map(value => ({ value, label: props.i18n[NOTE_MODE_LABELS[value]] || value })), value => (settings.value.noteInsertMode = value as any, save()), settings.value.noteInsertTarget === 'current'),
@@ -534,28 +535,32 @@ onUnmounted(() => window.removeEventListener('sireaderSettingsUpdated', syncAnno
         </SettingSection>
 
         <SettingSection :title="i18n.noteInsert || '笔记插入'" :icon="settingSectionIcon('root', 'other')" :open="isOpen('other')" @toggle="toggleAccordion('other')">
-            <li v-for="field in noteFields" :key="field.key" class="b3-list-item b3-list-item--hide-action">
-              <span class="b3-list-item__toggle fn__hidden"></span>
-              <div class="fn__flex-1">
-                <div class="fn__flex">
-                  <span class="b3-list-item__text ariaLabel" :aria-label="field.hint || ''">{{ field.label }}</span>
-                  <span class="fn__space"></span>
-                  <select v-if="field.type === 'select'" :value="field.value" class="b3-select sr-control" @change="field.set(($event.target as HTMLSelectElement).value)">
-                    <option v-if="field.empty" value="">{{ field.empty }}</option>
-                    <option v-for="opt in (field.options || [])" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
-                  </select>
-                  <label v-else-if="field.type === 'checkbox'" class="fn__flex-center"><input :checked="field.value" type="checkbox" class="b3-switch" @change="field.set(($event.target as HTMLInputElement).checked)"></label>
+            <template v-for="field in noteFields" :key="field.key">
+              <li v-if="field.type === 'search'" class="b3-list-item b3-list-item--hide-action sr-note-search">
+                <span class="b3-list-item__toggle fn__hidden"></span>
+                <SettingRows v-if="field.docs?.length" :rows="docRows(field)" :i18n="i18n" />
+                <div>
+                  <input :value="field.input" class="b3-text-field" :placeholder="i18n?.searchDocPlaceholder || '搜索文档'" @input="field.setInput(($event.target as HTMLInputElement).value); ($event.target as HTMLInputElement).value.trim() && field.search()" @keyup.enter="field.search()">
+                  <SettingRows v-if="field.results?.length" :rows="docResultRows(field)" :i18n="i18n" />
                 </div>
-                <textarea v-if="field.type === 'textarea'" :value="field.value" class="b3-text-field sr-textarea-control" :rows="field.rows || 4" :placeholder="field.placeholder || ''" @input="field.set(($event.target as HTMLTextAreaElement).value)"></textarea>
-                <template v-if="field.type === 'search'">
-                  <SettingRows v-if="field.docs?.length" :rows="docRows(field)" :i18n="i18n" />
-                  <div>
-                    <input :value="field.input" class="b3-text-field" :placeholder="i18n?.searchDocPlaceholder || '搜索文档'" @input="field.setInput(($event.target as HTMLInputElement).value); ($event.target as HTMLInputElement).value.trim() && field.search()" @keyup.enter="field.search()">
-                    <SettingRows v-if="field.results?.length" :rows="docResultRows(field)" :i18n="i18n" />
-                  </div>
-                </template>
-              </div>
-            </li>
+              </li>
+              <li v-else-if="field.type === 'textarea'" class="b3-list-item b3-list-item--hide-action sr-note-textarea">
+                <span class="b3-list-item__toggle fn__hidden"></span>
+                <span class="b3-list-item__text" :class="{ ariaLabel: !!field.hint }" :aria-label="field.hint || undefined">{{ field.label }}</span>
+                <span class="fn__space"></span>
+                <textarea :value="field.value" class="b3-text-field sr-textarea-control" :rows="field.rows || 4" :placeholder="field.placeholder || ''" @input="field.set(($event.target as HTMLTextAreaElement).value)"></textarea>
+              </li>
+              <li v-else class="b3-list-item b3-list-item--hide-action">
+                <span class="b3-list-item__toggle fn__hidden"></span>
+                <span class="b3-list-item__text" :class="{ ariaLabel: !!field.hint }" :aria-label="field.hint || undefined">{{ field.label }}</span>
+                <span class="fn__space"></span>
+                <select v-if="field.type === 'select'" :value="field.value" class="b3-select sr-control" @change="field.set(($event.target as HTMLSelectElement).value)">
+                  <option v-if="field.empty" value="">{{ field.empty }}</option>
+                  <option v-for="opt in (field.options || [])" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+                </select>
+                <label v-else class="fn__flex-center"><input :checked="field.value" type="checkbox" class="b3-switch" @change="field.set(($event.target as HTMLInputElement).checked)"></label>
+              </li>
+            </template>
         </SettingSection>
 
         <SettingSection :title="i18n.ttsSettings || '语音朗读'" :icon="settingSectionIcon('root', 'tts')" :open="isOpen('tts')" @toggle="toggleAccordion('tts')">
@@ -601,7 +606,7 @@ onUnmounted(() => window.removeEventListener('sireaderSettingsUpdated', syncAnno
 <style scoped lang="scss">
 .bs-view{min-height:0;height:100%;padding:0;box-sizing:border-box}
 .bs-tree{overflow:hidden;--bs-tree-border:color-mix(in srgb,var(--b3-theme-on-surface-light) 30%,transparent);--b3-list-hover:color-mix(in srgb,var(--b3-theme-primary) 12%,transparent)}
-.bs-tree__scroll{display:flex;flex-direction:column;gap:6px;min-height:0;overflow:auto;scrollbar-gutter:stable;padding:8px 0 8px 8px;box-sizing:border-box}
+.bs-tree__scroll{display:flex;flex-direction:column;gap:6px;min-height:0;overflow-y:auto;overflow-x:hidden;scrollbar-gutter:stable;padding:8px 0 8px 8px;box-sizing:border-box}
 .bs-tree :deep(ul){padding:0;list-style:none}
 .bs-tree :deep(.b3-list){margin:0;background:transparent}
 .bs-tree :deep(.b3-list-item){overflow:visible}
@@ -622,6 +627,10 @@ onUnmounted(() => window.removeEventListener('sireaderSettingsUpdated', syncAnno
 .bs-tree :deep(.sr-section-title > svg.b3-list-item__graphic){width:14px;height:14px;flex:0 0 14px;color:var(--b3-theme-on-surface);opacity:.86;stroke-width:1.8;shape-rendering:geometricPrecision}
 .bs-tree :deep(.sr-section-title:hover > svg.b3-list-item__graphic){color:inherit;opacity:1}
 .sr-control{width:80px}
+/* 笔记插入里的多行行：控件另起一行，整行不再横向溢出（和 SettingItem 的行内结构保持一致） */
+.bs-tree :deep(.sr-note-textarea),.bs-tree :deep(.sr-note-search){flex-wrap:wrap}
+.bs-tree :deep(.sr-note-textarea .sr-textarea-control),.bs-tree :deep(.sr-note-search > div){flex:1 1 100%}
+.bs-tree :deep(.sr-note-search .b3-text-field){width:100%;box-sizing:border-box}
 .sr-settings-actions{display:flex;justify-content:center;align-items:center;gap:8px;padding:8px 0 0}
 .sr-license-actions{align-self:center;gap:4px;flex-wrap:wrap;justify-content:flex-end}
 .sr-license-card{display:flex;flex-direction:column;align-items:stretch;gap:10px}

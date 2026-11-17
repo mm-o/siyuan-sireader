@@ -29,6 +29,7 @@ import Weread from '@/weread/Weread.vue'
 import { getTTSController } from '@/services/TTSPlayer'
 import { bookshelfManager } from '@/core/bookshelf'
 import { getOrAddAssetBook, openOnlineReaderTab, openOrActivateBook, openReaderTab } from '@/utils/bookOpen'
+import { requestLinkJump } from '@/utils/jump'
 import { normalizeSiyuanCloudUrl } from '@/core/storage'
 import { installLifecycleIntegration, resolveLocalDate } from '@/integrations/lifecycle'
 import { registerRecentBooksWidget } from '@/integrations/recentBooksWidget'
@@ -271,9 +272,8 @@ const handleEbookLink = async (e: MouseEvent) => {
     if (await openWereadReaderLink(parsed.bookUrl, parsed.cfi, parsed.id)) return
     const book = await bookshelfManager.getBook(parsed.bookUrl)
     if (!book) return showMessage(plugin.i18n?.bookNotFound || 'Book not found', 3000, 'error')
-    return openOrActivateBook(plugin, book, settings.value, () =>
-      window.dispatchEvent(new CustomEvent('sireader:goto', { detail: { cfi: parsed.cfi, id: parsed.id, bookUrl: book.url } }))
-    )
+    requestLinkJump({ cfi: parsed.cfi, id: parsed.id, bookUrl: book.url })
+    return openOrActivateBook(plugin, book, settings.value)
   }
 
   const wereadBookUrl = normalizeWereadReaderUrl(url)

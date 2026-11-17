@@ -263,16 +263,22 @@ const groupedBook = (book: Book) => groups.value.some(g => g.type === 'folder' &
 const matchBook = (book: Book, kw = keyword.value.toLowerCase()) => {
   const tokens = kw.split(/\s+/).filter(Boolean)
   if (!tokens.length) return true
-  const haystack = [book.title, book.author || '', book.path || '', book.url || '', ...(book.tags || [])].join('\n').toLowerCase()
+  const groupNames = (book.groups || []).map(id => groups.value.find(group => group.id === id)?.name || '')
+  const haystack = [book.title, book.author || '', book.path || '', book.url || '', book.status || '', ...(book.tags || []), ...groupNames].join('\n').toLowerCase()
   return tokens.every(token => haystack.includes(token))
 }
 
 const displayItems = computed(() => {
   const kw = keyword.value.toLowerCase()
-  if (currentGroup.value) return books.value.filter(b => matchBook(b, kw)).map(b => ({ type: 'book', data: b }))
+  if (currentGroup.value && !kw) return books.value.filter(b => matchBook(b, kw)).map(b => ({ type: 'book', data: b }))
   const rootBooks = (kw || viewMode.value === 'compact' ? books.value : books.value.filter(b => !groupedBook(b)))
+  const tokens = kw.split(/\s+/).filter(Boolean)
+  const matchGroup = (name: string) => {
+    const lower = String(name || '').toLowerCase()
+    return tokens.every(token => lower.includes(token))
+  }
   const items = [
-    ...(keyword.value ? groups.value.filter(g => g.name.toLowerCase().includes(kw)) : groups.value).map(g => ({ type: 'group', data: g })),
+    ...(keyword.value ? groups.value.filter(g => matchGroup(g.name)) : groups.value).map(g => ({ type: 'group', data: g })),
     ...rootBooks.filter(b => matchBook(b, kw)).map(b => ({ type: 'book', data: b })),
   ]
   return items.sort((a, b) => {
@@ -368,7 +374,9 @@ const syncSelection = () => {
 }
 const refreshGroups = async () => { const { groups: nextGroups, counts } = await bookshelfManager.getGroupDisplayState(); groups.value = nextGroups; groupCounts.value = counts }
 const readBooks = async (group = currentGroup.value) => {
-  const state = await bookshelfManager.getBookshelfState({ currentGroup: group, keyword: keyword.value, sortBy: sortType.value, reverse: sortReverse.value, status: filterStatus.value, rating: filterRating.value, formats: filterFormats.value, tags: filterTags.value })
+  // 有关键词就搜全库：分组内的搜索不再只搜组内
+  const scope = keyword.value.trim() ? null : group
+  const state = await bookshelfManager.getBookshelfState({ currentGroup: scope, keyword: keyword.value, sortBy: sortType.value, reverse: sortReverse.value, status: filterStatus.value, rating: filterRating.value, formats: filterFormats.value, tags: filterTags.value })
   books.value = state.books
   stats.value = state.stats
   groups.value = state.groups
@@ -708,6 +716,11 @@ onMounted(async () => {
 })
 onUnmounted(() => { closeMenu(); document.removeEventListener('pointerdown', dismissMenu, true); window.removeEventListener('sireader:bookshelf-updated', handleBookshelfUpdated); window.removeEventListener('sireader:storage-changed', handleStorageChanged); document.removeEventListener('visibilitychange', handleVisibilityChange); settingTimers.forEach(timer => clearTimeout(timer)); settingTimers.clear() })
 watch([filterStatus, filterRating, filterFormats, filterTags, sortType, sortReverse], () => settingsLoaded && reloadStorage(), { deep: true })
+// 进入/退出搜索时重载：搜索要全库数据，退出后回到当前分组
+watch(() => keyword.value.trim(), (value, previous) => {
+  if (!settingsLoaded || !!value === !!previous) return
+  void loadBooks()
+})
 watch(sortType, v => settingsLoaded && saveUiSetting('bookshelf_sortType', v))
 watch(sortReverse, v => settingsLoaded && saveUiSetting('bookshelf_sortReverse', v))
 watch(viewMode, v => settingsLoaded && saveUiSetting('bookshelf_viewMode', v))

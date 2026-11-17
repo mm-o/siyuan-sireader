@@ -467,7 +467,7 @@ export class MarkManager{
   }
   
   async goTo(m:Mark){
-    const d={cfi:m.cfi||`section-${m.section}`,id:m.id}
+    const d={cfi:m.cfi||`section-${m.section}`,id:m.id,bookUrl:(this as any).bookUrl}
     window.dispatchEvent(new CustomEvent('sireader:goto',{detail:d}))
   }
 

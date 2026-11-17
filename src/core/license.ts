@@ -400,9 +400,11 @@ export class LicenseManager {
 
 }
 
+// 授权状态全局共享：绑定/恢复授权后所有组件立刻拿到新权益，不用重启思源。
+const license = ref<LicenseInfo | null>(null)
+const userAvatar = ref<string | null>(null)
+
 export function useLicense(_i18n?: any) {
-  const license = ref<LicenseInfo | null>(null)
-  const userAvatar = ref<string | null>(null)
   const qr = ref<{ data: string; expiresAt: string } | null>(null)
   const loading = ref(false)
   const processing = ref(false)

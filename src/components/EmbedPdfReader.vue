@@ -63,6 +63,16 @@ let detachDocument = () => {}
 let persistence = Promise.resolve()
 let zoomTimer: ReturnType<typeof setTimeout> | undefined
 let switching = false
+let restoring: number | null = null
+let restoreCancelled = false
+const restoreTimers = new Set<number>()
+// 外部链接（回链/标注跳转）优先于“恢复上次位置”，调用后本次打开不再回拉。
+const stopRestore = () => {
+  restoreCancelled = true
+  restoring = null
+  for (const timer of restoreTimers) clearTimeout(timer)
+  restoreTimers.clear()
+}
 let reflow: (ReflowDocument & { url: string; name: string; original: Uint8Array; sourcePageCount: number }) | undefined
 let inReflow = false
 
@@ -152,8 +162,8 @@ function openTranslation(text: string, onAddToAnnotation?: (translation: string)
   let app: ReturnType<typeof createApp>
   const dialog = new Dialog({
     title: props.i18n?.translate || 'Translate',
-    content: '<div class="b3-dialog__content sireader-pdf-translate"></div>',
-    width: '520px',
+    content: '<div class="b3-dialog__content sireader-pdf-translate" style="display:flex;flex-direction:column;max-height:min(82vh,780px);overflow:hidden"></div>',
+    width: 'min(720px, 92vw)',
     destroyCallback: () => app?.unmount(),
   })
   app = createApp(Translate, { text, onAddToAnnotation, i18n: props.i18n })
@@ -204,15 +214,16 @@ const annotationActions = {
     if (annotation) scoped('annotation').selection.select([annotation.ref])
   },
   // 回链定位：选中标注并把它的矩形滚到视口偏上位置，避免只翻到页首、内容落在下三分之一。
-  focus: (id: string) => {
+  focus: (id: string): boolean => {
     const annotation = annotationById(id)
-    if (!annotation) return
+    if (!annotation) return false
     scoped('annotation')?.selection.select([annotation.ref])
     const pageIndex = viewer.documents.getPageIndex(annotation.ref.page, documentId)
     const rect = annotation.rect && pdfBox(annotation.rect)
     // 书签只有 1×1 占位矩形，reveal 会顺手改缩放；那种情况只滚到页，保持当前比例。
     if (rect && rect.width > 2 && rect.height > 2) scoped('stage')?.reveal(pageIndex, { rect, align: { x: 'center', y: 0.3 } })
     else scoped('stage')?.goToPage(pageIndex, { behavior: 'instant' })
+    return true
   },
   async update(id: string, updates: any) {
     if (readOnly.value) return
@@ -322,13 +333,15 @@ async function attachDocument(id: string, signal: AbortSignal, targetPage?: numb
     stage.goToDestination({ kind: 'xyz', page: page.ref, ...saved.pageCoordinates, zoom: null }, { behavior: 'instant' })
   } else stage.goToPage(pageIndex, { behavior: 'instant' })
   // 刚打开时 stage 还没完成布局，上面的跳页可能被首次布局覆盖，恢复的书页要再补一次。
-  let restoring: number | null = targetPage === undefined && pageIndex > 0 ? pageIndex : null
+  restoring = targetPage === undefined && !restoreCancelled && pageIndex > 0 ? pageIndex : null
   const applyRestore = (final = false) => {
     if (restoring === null) return
     stage.goToPage(restoring, { behavior: 'instant' })
     if (final || stage.getCurrentPageIndex() === restoring) restoring = null
   }
-  if (restoring !== null) { setTimeout(() => applyRestore(), 150); setTimeout(() => applyRestore(true), 700) }
+  if (restoring !== null) {
+    for (const delay of [150, 700]) restoreTimers.add(window.setTimeout(() => applyRestore(delay === 700), delay))
+  }
   const save = createLatestSaver(async (index: number) => {
     const page = index + 1
     const count = stage.getPageCount()
@@ -687,7 +700,7 @@ function configuration() {
     plugins: {
       stage: { zoom: zoom(), scrollBehavior: scrollBehavior(), scrollChaining: false },
       // 底图预算 640 太小：大尺寸扫描页放大后全靠瓦片补锐，瓦片没覆盖到的地方会一直发虚。
-      render: { snapshot: { scale: 2 }, fullPage: { maxWidth: 1280 } },
+      render: { snapshot: { scale: 2 }, fullPage: { maxWidth: Number(props.settings?.pdfRenderMaxWidth) || 1920 } },
       annotation: {
         afterCreate: { tool: keepTool.value ? 'stay' : 'default' },
         tools: pdfAnnotationToolOptions(props.settings?.pdfAnnotationToolDefaults),
@@ -727,6 +740,7 @@ function configuration() {
 
 watch([host, () => props.source], async ([target, source], _, onCleanup) => {
   if (!target || !source) return
+  restoreCancelled = false
   const controller = new AbortController()
   session = controller
   const { signal } = controller
@@ -735,6 +749,8 @@ watch([host, () => props.source], async ([target, source], _, onCleanup) => {
     detachDocument()
     detachDocument = () => {}
     clearTimeout(zoomTimer)
+    for (const timer of restoreTimers) clearTimeout(timer)
+    restoreTimers.clear()
     element?.remove()
     element = viewer = undefined
     documentId = ''
@@ -803,7 +819,7 @@ watch(() => [props.theme, props.customTheme], () => { if (element) element.theme
 watch(appState, value => { if (element) element.appState = value }, { deep: true })
 watch(scrollBehavior, value => scoped('stage')?.updateSettings({ scrollBehavior: value }))
 onBeforeUnmount(() => session?.abort())
-defineExpose({ flushAnnotations, annotationActions, executeCommand })
+defineExpose({ flushAnnotations, annotationActions, executeCommand, stopRestore })
 </script>
 
 <style scoped>

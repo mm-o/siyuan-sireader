@@ -1,5 +1,19 @@
 export const pdfPageFromCfi = (cfi?: string) => Number(String(cfi || '').match(/^(?:#page-)?(\d+)$/)?.[1] || 0)
 
+// 打开阅读器是异步的：目标先放进单槽队列，阅读器就绪后取走；事件只是“可以取了”的提醒。
+type LinkJump = { cfi?: string; id?: string; bookUrl?: string }
+let pendingLinkJump: LinkJump | null = null
+export const requestLinkJump = (detail: LinkJump) => {
+  pendingLinkJump = detail
+  window.dispatchEvent(new CustomEvent('sireader:jump'))
+}
+export const takeLinkJump = (bookUrl?: string) => {
+  const detail = pendingLinkJump
+  if (!detail || (detail.bookUrl && bookUrl && detail.bookUrl !== bookUrl)) return null
+  pendingLinkJump = null
+  return detail
+}
+
 const flashEPUB = (view: any, cfi: string, resolved?: any) => {
   try {
     const { index, anchor } = resolved || view?.resolveCFI?.(cfi) || {}

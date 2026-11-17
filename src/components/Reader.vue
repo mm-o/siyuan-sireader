@@ -48,6 +48,7 @@
           <span class="mark-indicator" :style="{background:COLORS[quickMarkColor].bg}"></span>
         </button>
         <button v-if="ttsEnabled" class="toolbar-btn ariaLabel" data-position="north" data-tooltip-encoding="none" :class="{active:ttsPlaying}" @click.stop="toggleTTS" :aria-label="ttsPlaying?(i18n.ttsPause||'暂停朗读'):(i18n.ttsPlay||'开始朗读')"><svg><use :xlink:href="ttsPlaying?'#iconPause':'#iconPlay'"/></svg></button>
+        <button class="toolbar-btn ariaLabel" data-position="north" data-tooltip-encoding="none" @click.stop="toggleFullscreen" :aria-label="isFullscreen ? (i18n.exitFullscreen || '退出全屏') : (i18n.fullscreen || '全屏')"><svg><use :xlink:href="isFullscreen ? '#iconFullscreenExit' : '#iconFullscreen'"/></svg></button>
         <button v-if="isMobile()" class="toolbar-btn ariaLabel" data-position="north" data-tooltip-encoding="none" @click.stop="handleClose" aria-label="Close"><svg><use xlink:href="#iconClose"/></svg></button>
       </div>
     </div>
@@ -72,7 +73,7 @@ import ReaderMarks from './ReaderMarks.vue'
 import Settings from './Settings.vue'
 import ReaderSplash from './ui/ReaderSplash.vue'
 import DockShell from './ui/DockShell.vue'
-import { gotoEPUB, pdfPageFromCfi } from '@/utils/jump'
+import { gotoEPUB, pdfPageFromCfi, requestLinkJump, takeLinkJump } from '@/utils/jump'
 import { copyMark as copyMarkUtil } from '@/utils/copy'
 import { capturePdfAnnotationImage, isPdfImageAnnotation, openPdf } from '@/utils/embedPdfActions'
 import { cloneStorageValue } from '@/core/storage'
@@ -165,11 +166,16 @@ const embedPdfMarks = ref<any[]>([])
 const currentView = ref<any>(null)
 let cleanupEmbedPdfEvents: (()=>void) | null = null
 // 回链点击时阅读器还没挂载完，定位目标先存下来，等 PDF 就绪后再执行。
-let pendingGoto: any = null
 const showSearch = ref(false)
 const showToc = ref(false)
 const showQuickMark = ref(false)
 const mobileToolbarVisible = ref(false)
+const isFullscreen = ref(false)
+const toggleFullscreen = async () => {
+  if (document.fullscreenElement) return void await document.exitFullscreen().catch(() => {})
+  const target = (containerRef.value?.closest('.protyle') as HTMLElement | null) || containerRef.value
+  await target?.requestFullscreen?.().catch(() => {})
+}
 const toolbarVisible = computed(() => mobileToolbarVisible.value || showSearch.value || showToc.value || showQuickMark.value)
 const quickMarkMode = ref(false)
 const quickMarkColor = ref(0)
@@ -289,7 +295,8 @@ const initEmbedPdfMode=async(loadSource:()=>Promise<File|string|null>)=>{
       imageMark: imageEmbedPdfMark,
     },
     goTo: (page: number, id?: string) => {
-      if (id && embedPdfReaderRef.value?.annotationActions?.focus) return embedPdfReaderRef.value.annotationActions.focus(id)
+      // 有 id 先聚焦标注；标注不在当前文档时退回翻页，保证链接总能落到对的位置。
+      if (id && embedPdfReaderRef.value?.annotationActions?.focus?.(id)) return
       embedPdfPages.value?.goToPage((Number(page) || 1) - 1)
     },
     getCurrentPage: () => (embedPdfPages.value?.getCurrentPageIndex() ?? 0) + 1,
@@ -321,7 +328,7 @@ const handleEmbedPdfReady=(viewer:any,context:{documentId:string;bookUrl:string;
   cleanupEmbedPdfEvents?.()
   cleanupEmbedPdfEvents=stage.onPageChanged(emitPage)
   emitPage()
-  if(pendingGoto){const pending=pendingGoto;pendingGoto=null;setTimeout(()=>handleGoto({detail:pending} as any),250)}
+  flushJump()
   let textDocument: ReturnType<typeof openPdf> | undefined
   const pageText=new Map<number,Promise<string>>()
   currentView.value.getPageText=(page:number)=>{
@@ -449,6 +456,7 @@ const init=async()=>{
         distance=>isEpubScrollMode()?reader?.next(distance):reader?.goRight()
       )
       currentView.value=view
+      flushJump()
       syncReadingProgress()
       setActiveReader(view,reader,getSettings(),getBookUrl())
       props.onReaderReady?.(reader)
@@ -514,27 +522,18 @@ const openQuickNotes=()=>window.dispatchEvent(new Event('sireader:open-quick-not
 const handleClose=()=>{savePosition();window.dispatchEvent(new CustomEvent('reader:mobile-close'))}
 const isThisActiveReader=()=>!(window as any).__sireader_active_view||(window as any).__sireader_active_view===currentView.value
 const activeOnly=<T extends any[]>(fn:(...args:T)=>any)=>(...args:T)=>isThisActiveReader()?fn(...args):undefined
-let pdfGotoRetry=0
-const gotoPdf=(detail:any)=>{
-  const{cfi,id}=detail, pdfPage=pdfPageFromCfi(cfi)
-  if(!pdfPage)return
-  if(!currentView.value||!embedPdfPages.value){pendingGoto=detail;return}
-  // 标注还没进当前文档（刚打开/切回来时 documentId 还是空的）：等文档挂上再聚焦，最多 12 次。
-  if(id&&embedPdfReaderRef.value?.annotationActions?.get&&!embedPdfReaderRef.value.annotationActions.get(id)&&pdfGotoRetry<12){
-    pdfGotoRetry+=1
-    pendingGoto=detail
-    window.setTimeout(()=>{const next=pendingGoto;if(!next)return;pendingGoto=null;gotoPdf(next)},250)
-    return
-  }
-  pdfGotoRetry=0
-  currentView.value.goTo?.(pdfPage,id)
+// 跳转只有一个执行点：文档就绪后从队列取目标，PDF 取消“恢复上次位置”再跳，EPUB 走 gotoEPUB。
+const jumpTo=(detail:any)=>{
+  if(!isEmbedPdfMode.value)return void gotoEPUB(detail.cfi,detail.id,reader,markManager.value)
+  const page=pdfPageFromCfi(detail.cfi)
+  if(!page)return
+  embedPdfReaderRef.value?.stopRestore?.()
+  currentView.value?.goTo?.(page,detail.id)
 }
-const handleGoto=(e:CustomEvent)=>{
-  const{cfi,id,bookUrl}=e.detail
-  if(bookUrl&&bookUrl!==currentBookUrl.value)return
-  if(!cfi)return
-  if(isEmbedPdfMode.value)return gotoPdf(e.detail)
-  void gotoEPUB(cfi,id,reader,markManager.value)
+const flushJump=()=>{
+  if(!(isEmbedPdfMode.value?embedPdfPages.value:currentView.value))return
+  const queued=takeLinkJump(getBookUrl())
+  if(queued)jumpTo(queued)
 }
 const handleUndo=()=>markManager.value?.undo?.()
 const getScrollStep=()=>{
@@ -547,7 +546,9 @@ const handleKeydown=(e:KeyboardEvent)=>shouldHandleReaderKeydown(isEmbedPdfMode.
 const events=[
   ['tts:start-reader',()=>{if(isEmbedPdfMode.value||!isThisActiveReader()||ttsController.isActive.value)return;toggleTTS()}],
   ['sireaderSettingsUpdated',handleSettingsUpdate],
-  ['sireader:goto',handleGoto],
+  ['sireader:jump',flushJump],
+  // 兼容其它模块仍在派发的 sireader:goto
+  ['sireader:goto',(e:CustomEvent)=>{requestLinkJump(e.detail);flushJump()}],
   ['sireader:marks-updated',refreshEmbedPdfMarks],
   ['sireader:close-reader-panels',closePanels],
   ['sireader:togglePdfToc',activeOnly(openToc)],
@@ -563,7 +564,10 @@ const resize=()=>{
   reader?.resize?.()
 }
 defineExpose({ resize })
-onMounted(()=>{init();if(!isPdfBook.value){footerTimer=window.setInterval(syncReadingProgress,60000);const getBattery=(navigator as any).getBattery;if(typeof getBattery==='function')void getBattery.call(navigator).then((value:any)=>{battery.value=value;syncReadingProgress()}).catch(()=>{})}containerRef.value?.focus();events.forEach(([e,h])=>window.addEventListener(e,h as any));window.addEventListener('keydown',handleKeydown);window.addEventListener('unhandledrejection',suppressError);window.addEventListener('blur',handleWindowBlur);window.addEventListener('focus',handleWindowFocus);document.addEventListener('visibilitychange',handleVisibilityChange);setupTabObserver();const c=containerRef.value;c&&(c.addEventListener('focusin',handleFocusIn),c.addEventListener('focusout',handleFocusOut));bindTouchPaging(c);bindTouchPaging(viewerContainerRef.value);dispatchReaderLifecycle('open',getBookUrl());syncReaderFocus(true)})
+onMounted(()=>{init();
+  const onFullscreenChange=()=>{isFullscreen.value=!!document.fullscreenElement}
+  document.addEventListener('fullscreenchange',onFullscreenChange)
+  onUnmounted(()=>document.removeEventListener('fullscreenchange',onFullscreenChange));if(!isPdfBook.value){footerTimer=window.setInterval(syncReadingProgress,60000);const getBattery=(navigator as any).getBattery;if(typeof getBattery==='function')void getBattery.call(navigator).then((value:any)=>{battery.value=value;syncReadingProgress()}).catch(()=>{})}containerRef.value?.focus();events.forEach(([e,h])=>window.addEventListener(e,h as any));window.addEventListener('keydown',handleKeydown);window.addEventListener('unhandledrejection',suppressError);window.addEventListener('blur',handleWindowBlur);window.addEventListener('focus',handleWindowFocus);document.addEventListener('visibilitychange',handleVisibilityChange);setupTabObserver();const c=containerRef.value;c&&(c.addEventListener('focusin',handleFocusIn),c.addEventListener('focusout',handleFocusOut));bindTouchPaging(c);bindTouchPaging(viewerContainerRef.value);dispatchReaderLifecycle('open',getBookUrl());syncReaderFocus(true)})
 onBeforeUnmount(()=>{
   if(footerTimer)window.clearInterval(footerTimer)
   if (isThisActiveReader()) ttsController.destroy()
