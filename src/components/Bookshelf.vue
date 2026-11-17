@@ -217,8 +217,21 @@ const { items: importItems, draft: importDraft, parsing: importParsing, importin
 
 let settingsLoaded = false, activeMenu: any = null
 const settingTimers = new Map<string, number>()
-const closeMenu = () => { activeMenu?.close?.(); activeMenu = null }
-const openMenu = (menu: any, e: MouseEvent) => { closeMenu(); activeMenu = menu; menu.open({ x: e.clientX, y: e.clientY }) }
+// 菜单只用思源 Menu：打开前关掉上一个，点到菜单外就自己清理，第二次右键照样能开。
+const closeMenu = () => {
+  const menu = activeMenu
+  activeMenu = null
+  try { menu?.close?.() } catch {}
+}
+const openMenu = (menu: any, e: MouseEvent) => {
+  closeMenu()
+  activeMenu = menu
+  menu.open({ x: e.clientX, y: e.clientY })
+}
+const dismissMenu = (event: Event) => {
+  if (!activeMenu || (event.target as HTMLElement | null)?.closest?.('.b3-menu')) return
+  closeMenu()
+}
 const saveUiSetting = (key: string, value: any, delay = 180) => {
   const prev = settingTimers.get(key)
   if (prev) clearTimeout(prev)
@@ -247,7 +260,12 @@ const getSortKey = (item: any, type: string) => item.type === 'group'
   ? (type === 'name' ? item.data.name : type === 'time' ? (item.data as any).created || 0 : item.data.order)
   : bookshelfSortValue(item.data, type)
 const groupedBook = (book: Book) => groups.value.some(g => g.type === 'folder' && bookInGroup(book, g))
-const matchBook = (book: Book, kw = keyword.value.toLowerCase()) => !kw || book.title.toLowerCase().includes(kw) || book.author?.toLowerCase().includes(kw) || book.tags.some(t => t.toLowerCase().includes(kw))
+const matchBook = (book: Book, kw = keyword.value.toLowerCase()) => {
+  const tokens = kw.split(/\s+/).filter(Boolean)
+  if (!tokens.length) return true
+  const haystack = [book.title, book.author || '', book.path || '', book.url || '', ...(book.tags || [])].join('\n').toLowerCase()
+  return tokens.every(token => haystack.includes(token))
+}
 
 const displayItems = computed(() => {
   const kw = keyword.value.toLowerCase()
@@ -533,34 +551,40 @@ const handleCopyBookLink = async (book: Book) => {
   try { await exportBookLink({}, asClipboardCtx({ bookUrl: book.url, i18n: props.i18n, showMsg: (msg, type) => showMessage(msg, 1800, type || 'info') })) }
   catch (e) { showMessage(e instanceof Error ? e.message : tx('copyFailed', '复制失败'), 2000, 'error') }
 }
-// 只在桌面端可定位文件；链接导入的书退化为打开链接/复制路径。
+// 定位书籍原件：能解析到本地就打开所在位置，只有链接的退化为打开链接/复制路径。
 const revealBookFile = async (book: Book) => {
   closeMenu()
   const raw = String(book.path || book.url || '').split('?')[0]
   if (!raw) return showMessage('该书没有可定位的位置', 2000, 'error')
+  const remote = () => (window as any).require?.('@electron/remote')
   const openExternal = (target: string) => {
-    const remote = (window as any).require?.('@electron/remote')
-    if (remote?.shell?.openExternal) return remote.shell.openExternal(target)
+    if (remote()?.shell?.openExternal) return remote().shell.openExternal(target)
     window.open(target, '_blank')
   }
-  // 远程链接：直接用系统浏览器打开。
   if (/^https?:\/\//i.test(raw) || raw.startsWith('siyuan://')) {
     try { return openExternal(raw) } catch { return window.open(raw, '_blank') }
   }
   const workspace = String((window as any).siyuan?.config?.system?.workspaceDir || '').replace(/\\/g, '/').replace(/\/$/, '')
-  const filePath = raw.startsWith('file://')
+  const local = raw.startsWith('file://')
     ? decodeURIComponent(raw.replace(/^file:\/\//, '')).replace(/^\/([A-Za-z]:)/, '$1')
-    : raw.startsWith('/data/') ? raw : raw.startsWith('/public/') ? `/data/public/${raw.slice('/public/'.length)}` : `/data/${raw.replace(/^\/+/, '')}`
-  const absolute = raw.startsWith('file://') ? filePath : `${workspace}${filePath}`
-  try {
-    const remote = (window as any).require?.('@electron/remote')
-    if (remote?.shell?.showItemInFolder) return remote.shell.showItemInFolder(absolute)
-    await navigator.clipboard.writeText(absolute)
-    showMessage('已复制文件路径', 2000, 'info')
-  } catch {
-    await navigator.clipboard.writeText(absolute).catch(() => {})
-    showMessage('已复制文件路径', 2000, 'info')
+    : raw.startsWith('/data/') ? `${workspace}${raw}`
+      : raw.startsWith('/public/') ? `${workspace}/data/public/${raw.slice('/public/'.length)}`
+        : raw.startsWith('/assets/') ? `${workspace}/data${raw}`
+          : `${workspace}/${raw.replace(/^\/+/, '')}`
+  // 原件可能已被清理或还在网盘：先确认存在，再谈能不能打开。
+  const exists = (target: string) => {
+    try { const nodeFs = (window as any).require?.('fs'); return nodeFs ? nodeFs.existsSync(target) : true } catch { return true }
   }
+  if (!exists(local)) {
+    if (/^https?:\/\//i.test(String(book.url || ''))) return openExternal(String(book.url))
+    await navigator.clipboard.writeText(local).catch(() => {})
+    return showMessage('原件不在本地（可能在网盘或已移动），已复制路径', 2600, 'info')
+  }
+  try {
+    if (remote()?.shell?.showItemInFolder) return remote().shell.showItemInFolder(local)
+  } catch {}
+  await navigator.clipboard.writeText(local).catch(() => {})
+  showMessage('已复制文件路径', 2000, 'info')
 }
 const importBookAnnotations = async (book: Book) => {
   if (String(book.format || '').toLowerCase() !== 'pdf') return showMessage('批注导入暂仅支持 PDF', 2000, 'error')
@@ -668,6 +692,7 @@ const handleBookshelfUpdated = () => { void reloadStorage() }
 const handleStorageChanged = () => { void reloadStorage() }
 const handleVisibilityChange = () => { if (!document.hidden) void reloadStorage() }
 onMounted(async () => {
+  document.addEventListener('pointerdown', dismissMenu, true)
   window.addEventListener('sireader:bookshelf-updated', handleBookshelfUpdated)
   window.addEventListener('sireader:storage-changed', handleStorageChanged)
   document.addEventListener('visibilitychange', handleVisibilityChange)
@@ -681,7 +706,7 @@ onMounted(async () => {
   settingsLoaded = true
   await reloadStorage()
 })
-onUnmounted(() => { closeMenu(); window.removeEventListener('sireader:bookshelf-updated', handleBookshelfUpdated); window.removeEventListener('sireader:storage-changed', handleStorageChanged); document.removeEventListener('visibilitychange', handleVisibilityChange); settingTimers.forEach(timer => clearTimeout(timer)); settingTimers.clear() })
+onUnmounted(() => { closeMenu(); document.removeEventListener('pointerdown', dismissMenu, true); window.removeEventListener('sireader:bookshelf-updated', handleBookshelfUpdated); window.removeEventListener('sireader:storage-changed', handleStorageChanged); document.removeEventListener('visibilitychange', handleVisibilityChange); settingTimers.forEach(timer => clearTimeout(timer)); settingTimers.clear() })
 watch([filterStatus, filterRating, filterFormats, filterTags, sortType, sortReverse], () => settingsLoaded && reloadStorage(), { deep: true })
 watch(sortType, v => settingsLoaded && saveUiSetting('bookshelf_sortType', v))
 watch(sortReverse, v => settingsLoaded && saveUiSetting('bookshelf_sortReverse', v))

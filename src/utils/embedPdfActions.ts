@@ -72,11 +72,19 @@ export const pdfMarkFromAnnotation = (annotation: any, annotations: any[] = []) 
   return { id: annotation.id, type: 'note', format: 'pdf', page, cfi: `#page-${page}`, chapter: `Page ${page}`, text: inlineLinkText(annotation.custom?.text || ''), note }
 }
 
-export const isPdfImageAnnotation = (annotation: any) => annotation?.rect && [4, 5, 6, 8, 15].includes(Number(annotation.type))
+// 4/5/6/7/8/15：直线、方框、圆、多边形、折线、墨迹
+export const isPdfImageAnnotation = (annotation: any) => annotation?.rect && [4, 5, 6, 7, 8, 15].includes(Number(annotation.type))
 export async function capturePdfAnnotationImage(render: any, annotation: any, includeAnnotations = false) {
   if (!render || !isPdfImageAnnotation(annotation)) return null
   try {
-    const image = await render.renderPage(annotation.pageIndex, { rect: pdfBox(annotation.rect), scale: 2, format: 'png', includeAnnotations })
+    // 按 4 px/pt（≈288dpi）出图，小标注保底 600px 宽，避免插进笔记后被放大糊掉。
+    const box = pdfBox(annotation.rect)
+    const image = await render.renderPage(annotation.pageIndex, {
+      rect: box,
+      width: Math.min(2000, Math.max(600, Math.round(box.width * 4))),
+      format: 'png',
+      includeAnnotations,
+    })
     return await image.blob()
   } catch {
     return null
@@ -95,12 +103,11 @@ const annotationSubtypes: Record<number, string> = {
 }
 export const pdfAnnotationSubtype = (type: number) => annotationSubtypes[type]
 
-const pdfBox = (rect: any) => ({
-  x: rect.origin.x, y: rect.origin.y, width: rect.size.width, height: rect.size.height,
-})
-const recordBox = ({ x, y, width, height }: { x: number; y: number; width: number; height: number }) => ({
-  origin: { x, y }, size: { width, height },
-})
+// 3.x 的注解 rect 是 {origin,size}，导入/旧数据可能是 {x,y,width,height}；两种都认。
+export const pdfBox = (rect: any) => rect.origin
+  ? { x: rect.origin.x, y: rect.origin.y, width: rect.size.width, height: rect.size.height }
+  : { x: rect.x, y: rect.y, width: rect.width, height: rect.height }
+const recordBox = (box: any) => box.origin ? box : { origin: { x: box.x, y: box.y }, size: { width: box.width, height: box.height } }
 const quad = ({ x, y, width, height }: ReturnType<typeof pdfBox>) => ({
   upperLeft: { x, y }, upperRight: { x: x + width, y },
   lowerLeft: { x, y: y + height }, lowerRight: { x: x + width, y: y + height },

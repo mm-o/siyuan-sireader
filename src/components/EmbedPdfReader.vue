@@ -22,7 +22,7 @@ import { buildEmbedPdfTheme } from '@/utils/embedPdfTheme'
 import { copyMark } from '@/utils/copy'
 import { embedPdfLocale } from '@/utils/embedPdfLocale'
 import { isMobile } from '@/utils/mobile'
-import { capturePdfAnnotationImage, initEmbedPdfViewer, legacyPdfDraft, makePdfSelectionMark, openPdf, pdfAnnotationColor, pdfAnnotationRecord, pdfAnnotationResource, pdfAnnotationSubtype, pdfAnnotationToolOptions, pdfAnnotationTransfer, pdfMarkFromAnnotation, sendPdfMarkToDoc } from '@/utils/embedPdfActions'
+import { capturePdfAnnotationImage, initEmbedPdfViewer, legacyPdfDraft, makePdfSelectionMark, openPdf, pdfAnnotationColor, pdfAnnotationRecord, pdfAnnotationResource, pdfAnnotationSubtype, pdfAnnotationToolOptions, pdfAnnotationTransfer, pdfMarkFromAnnotation, pdfBox, sendPdfMarkToDoc } from '@/utils/embedPdfActions'
 import { settingsManager, type ReaderSettings, type ReadTheme } from '@/composables/useSetting'
 import { readerIconPaths } from '@/utils/icon'
 import { createPdfReflowSession, synchronizeReflowAnnotation } from '@/services/pdfReflow'
@@ -80,6 +80,10 @@ const recordOf = (annotation: any) => {
   return record
 }
 const selected = () => scoped('annotation')?.selection.getSelected()[0]
+const selectedBlockId = () => {
+  const item = selected()
+  return item ? metadata.get(annotationId(item))?.blockId || '' : ''
+}
 const noteText = (annotation: any, item: any) => {
   const thread = annotation.comments.getThread(item.ref)
   const root = thread?.root ?? item
@@ -185,6 +189,8 @@ async function changeMetadata(annotation: any, updates: any) {
   window.dispatchEvent(new Event('sireader:marks-updated'))
 }
 
+// 标注上挂的链接如果指向思源块（siyuan://blocks/<id> 或裸块 id），就当成本地绑定，卡片可打开块、悬停预览。
+const blockIdOf = (target: any) => /^(?:siyuan:\/\/blocks\/)?(\d{14}-[0-9a-z]{7})$/i.exec(String(target?.uri || '').trim())?.[1]
 const nativeMarks = () => ownsActiveDocument() ? (scoped('annotation')?.list() || []).map(recordOf).filter(Boolean) : []
 const annotationById = (id: string) => scoped('annotation')?.list().find((item: any) => annotationId(item) === id)
 const annotationActions = {
@@ -203,8 +209,9 @@ const annotationActions = {
     if (!annotation) return
     scoped('annotation')?.selection.select([annotation.ref])
     const pageIndex = viewer.documents.getPageIndex(annotation.ref.page, documentId)
-    const rect = annotation.rect && { x: annotation.rect.origin.x, y: annotation.rect.origin.y, width: annotation.rect.size.width, height: annotation.rect.size.height }
-    if (rect) scoped('stage')?.reveal(pageIndex, { rect, align: { x: 'center', y: 0.3 } })
+    const rect = annotation.rect && pdfBox(annotation.rect)
+    // 书签只有 1×1 占位矩形，reveal 会顺手改缩放；那种情况只滚到页，保持当前比例。
+    if (rect && rect.width > 2 && rect.height > 2) scoped('stage')?.reveal(pageIndex, { rect, align: { x: 'center', y: 0.3 } })
     else scoped('stage')?.goToPage(pageIndex, { behavior: 'instant' })
   },
   async update(id: string, updates: any) {
@@ -335,9 +342,17 @@ async function attachDocument(id: string, signal: AbortSignal, targetPage?: numb
       await bookshelfManager.updateProgress(bookUrl, Math.round(page / count * 100), page, '#page-' + page, { key, totalPages: count })
     }
   }, 500)
+  // 3.x 的注解不再带选区文字（2.x 有 annotation.text）；侧栏和复制模板读 custom.text，创建时补一次刚才的选区。
+  const quoteSubtypes = ['highlight', 'underline', 'squiggly', 'strikeout', 'text']
+  let quoted = ''
+  const rememberSelection = () => { void scoped('selection')?.readText?.().then(text => { quoted = text || quoted }, () => {}) }
   const recordsByRef = new Map(annotation.list().map((item: any) => [JSON.stringify(item.ref), recordOf(item)]))
   const changed = (type: 'create' | 'update', native: any) => {
     const record = recordOf(native)
+    if (record && type === 'create' && quoted && !record.custom?.text && quoteSubtypes.includes(native.subtype)) {
+      metadata.set(record.id, record.custom = { ...record.custom, text: quoted })
+      quoted = ''
+    }
     recordsByRef.set(JSON.stringify(native.ref), record)
     if (!key || !record || nativeIds.has(record.id)) return
     const event = { type, annotation: record, bookUrl, storageKey: key }
@@ -404,13 +419,47 @@ async function attachDocument(id: string, signal: AbortSignal, targetPage?: numb
     annotation.tools.onDefaultsChanged(({ toolId, defaults }: any) => {
       void settingsManager.patch({ pdfAnnotationToolDefaults: { ...props.settings?.pdfAnnotationToolDefaults, [toolId]: defaults } }).catch(onFailure)
     }),
-  ]
+    scoped('selection')?.onCommitted?.(rememberSelection),
+    // 上游只放行 http/https/mailto/tel；思源块链接（siyuan://blocks/… 或裸块 id）由这里接管，打开并定位到块。
+    scoped('link')?.registerUriOpener?.((uri: string) => {
+      const blockId = blockIdOf(uri)
+      if (blockId) { window.open(`siyuan://blocks/${blockId}`); return true }
+      if (!/^(https?|mailto|tel):/i.test(uri)) return false
+      window.open(uri, '_blank', 'noopener,noreferrer')
+      return true
+    }),
+  ].filter(Boolean)
   detachDocument = () => {
     copyNextSnapshot = false
     clearHover()
     subscriptions.forEach(off => off())
     void trackPending(save.flush()).catch(onFailure)
   }
+  // 手动填进「链接」的块 id 会被上游当成可点链接，抢掉“点标注打开浮条”的点击：
+  // 这里把它转成绑定（写 custom.blockId），再移除这条链接子项，标注就恢复可点。
+  const adoptBlockLinks = async () => {
+    const link = scoped('link')
+    if (!link?.listLinks) return
+    const pages = new Map<number, any>()
+    for (const item of annotation.list()) pages.set(item.ref.page.objectNumber, item.ref.page)
+    for (const page of pages.values()) {
+      await link.ensureLoaded?.(page)?.catch(() => {})
+      for (const item of link.listLinks(page)) {
+        const blockId = item.attached && item.ref ? blockIdOf(item.target) : ''
+        if (!blockId) continue
+        const parent = annotationById(String(item.id).split('#')[0])
+        if (parent) {
+          const custom = metadata.get(annotationId(parent)) || {}
+          await changeMetadata(parent, { blockId, blockIds: [...new Set([...(custom.blockIds || []), blockId])] }).catch(() => {})
+        }
+        await annotation.delete(item.ref).catch(() => {})
+      }
+    }
+    window.dispatchEvent(new Event('sireader:marks-updated'))
+  }
+  void adoptBlockLinks().catch(() => {})
+  const offLinkLoaded = scoped('link')?.onLoaded?.(() => { void adoptBlockLinks() })
+  if (offLinkLoaded) subscriptions.push(offLinkLoaded)
   emit('read-only', readOnly.value || !ownsActiveDocument())
   emit('ready', viewer, { documentId: id, bookUrl, storageKey: key })
 }
@@ -565,6 +614,10 @@ function configuration() {
         await copyMark(mark, { bookUrl: inReflow ? reflow?.url : props.bookUrl, isPdf: true, settings: { ...props.settings, noteInsertTarget: 'clipboard' }, showMsg: (text: string) => showMessage(text) } as any)
       }
     }),
+    {
+      ...command('open-block', props.i18n?.openBlock || '打开块', 'ref', () => { const id = selectedBlockId(); if (id) window.open(`siyuan://blocks/${id}`) }),
+      visible: ({ documentId }: any) => ownsActiveDocument(documentId) && !!selectedBlockId(),
+    },
     command('notes', props.i18n?.quickNotes || 'Notebook', 'notebook-pen', () => window.dispatchEvent(new Event('sireader:open-quick-notes'))),
     command('toc', props.i18n?.sidebarToc || 'Table of contents', 'listTree', () => window.dispatchEvent(new Event('sireader:togglePdfToc'))),
     {
@@ -656,9 +709,15 @@ function configuration() {
       for (const id of ['read-only', 'import-annotations', 'export-annotations', 'import-layer', 'export-layer']) {
         result = result.add('sireader:' + id, { to: 'document' })
       }
+      // 侧栏：默认打开哪个面板由设置决定；另外两个面板做成顶栏按钮，和标签并排显示（不再只藏在标题下拉里）。
+      const sidebar = props.settings?.pdfSidebarPanel === 'outline' ? 'outline' : 'thumbnails'
+      for (const panel of ['thumbnails', 'outline', 'attachments']) {
+        result = result.panel(panel, { open: panel === sidebar })
+        for (const other of ['thumbnails', 'outline', 'attachments']) if (other !== panel) result = result.add('panel:' + other, { to: panel })
+      }
       if (isMobile()) result = result.add('sireader:close', { to: 'pager' })
       for (const id of ['dict-selection', 'translate-selection', 'create-hole']) result = result.add('sireader:' + id, { to: 'selection' })
-      for (const id of ['copy-annotation-link', 'dict-annotation', 'translate-annotation']) result = result.add('sireader:' + id, { to: 'annotation' })
+      for (const id of ['open-block', 'copy-annotation-link', 'dict-annotation', 'translate-annotation']) result = result.add('sireader:' + id, { to: 'annotation' })
       return quickMenus.reduce((layout, { kind, menu, items }) => layout
         .addMenu(menu, [items.map(item => item.id)])
         .add(`sireader:send-${kind}-menu`, { to: kind }), result)

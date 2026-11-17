@@ -1,6 +1,11 @@
 ﻿import type { Plugin } from 'siyuan'
 export const READER_ICON_ID = 'siyuan-reader-icon'
 export const readerIconPaths = {
+  "ref": [
+    "M9 19a3 3 0 1 1-6 0 3 3 0 0 1 6 0",
+    "M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15",
+    "M21 5a3 3 0 1 1-6 0 3 3 0 0 1 6 0"
+  ],
   "notebook-pen": [
     "M13.4 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7.4",
     "M2 6h4M2 10h4M2 14h4M2 18h4",

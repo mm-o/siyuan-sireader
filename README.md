@@ -19,6 +19,26 @@ Professional eBook reader for EPUB/PDF/MOBI/TXT/online novels. PDFs support high
 
 ## 📝 Latest Updates
 
+## v2.7.2 (2026-11-17)
+
+### Added
+
+- PDF annotations can be bound to a SiYuan block and opened from the annotation toolbar: importing, sync-on-add, and sending to a document record the block automatically, and a `siyuan://blocks/<id>` or bare block id link becomes that binding.
+- Bookshelf search splits on spaces: `guangdong 2026` requires every word to match, and file names, paths, and links are searched too.
+- The PDF sidebar can start on thumbnails or bookmarks, and the other panels get top-bar buttons side by side, so switching no longer needs the title dropdown.
+
+### Fixed
+
+- Fixed PDF annotations not showing their quoted text in the sidebar: the 3.x engine no longer stores the selected text on the annotation, so it is written into `custom.text` when the annotation is created, which the sidebar, backlink copy, and send-to-document paths all read.
+- Fixed `Cannot read properties of undefined (reading 'x')` when jumping to an annotation from the sidebar: annotation rectangles now accept both `{origin,size}` and `{x,y,width,height}`, with the same normalization used by annotation image cropping and record writes.
+- Fixed shape annotations reading as the generic "Annotation" in the sidebar: they now read "Shape annotation", apart from text annotations.
+- Fixed a PDF bookmark jump changing the zoom level: a bookmark only has a placeholder rect, so it now scrolls to the page and keeps the current zoom.
+- Fixed an empty tooltip bar appearing when hovering a setting that has no description.
+- Fixed "Show data location" reporting unsupported for books on the cloud drive or moved away: it now resolves the local file when possible, otherwise opens the link or explains and copies the path.
+- Fixed the bookshelf context menu not reopening after a click elsewhere, and a drag cursor showing up on right-click.
+- Fixed annotation backlinks doing nothing while the PDF tab was open but not ready yet: the jump now waits for the document and retries before focusing the annotation.
+- Fixed the missing-file error not naming the file: it now includes the missing path so the link works again once the file is back.
+
 ## v2.7.1 (2026-11-15)
 
 ### Added

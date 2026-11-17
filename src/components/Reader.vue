@@ -199,12 +199,12 @@ const hasSearchResults=computed(()=>searchResults.value.length>0)
 const searchCount=computed(()=>searchResults.value.length?`${searchResults.value.length}`:'0')
 const browserSource=(path='')=>path.startsWith('/data/public/')?path.replace('/data/public/','/public/'):path.startsWith('/public/')||path.startsWith('/assets/')||/^https?:\/\//.test(path)?path:path.startsWith('public/')||path.startsWith('assets/')?`/${path}`:''
 const PDF_MARKUP_TYPES:Record<string,number>={highlight:9,underline:10,squiggly:11,strikeout:12}
-const PDF_REDACT_TYPE=28
+const PDF_REDACT_TYPE=28,PDF_SHAPE_TYPES=[4,5,6,7,8]
 const embedPdfColor=(color?:string|null)=>(COLORS.find(item=>item.color===color)?.bg||color||'').toLowerCase()
 const embedPdfStyle=(type:number,custom?:any)=>type===PDF_REDACT_TYPE?'redaction':custom?.style||Object.entries(PDF_MARKUP_TYPES).find(([,value])=>value===type)?.[0]||'highlight'
 const embedPdfMark=(item:any)=>{
   const a=item?.annotation||item, page=(a.pageIndex??0)+1, bookmark=a.custom?.type==='bookmark', redaction=a.type===PDF_REDACT_TYPE
-  const text=a.custom?.title||a.custom?.text||a.contents||(redaction?i18n.value.redaction||'Redaction':i18n.value.annotation||i18n.value.mark||'Annotation')
+  const text=a.custom?.title||a.custom?.text||a.contents||(redaction?i18n.value.redaction||'Redaction':PDF_SHAPE_TYPES.includes(a.type)?i18n.value.shapeAnnotation||'形状标注':i18n.value.annotation||i18n.value.mark||'Annotation')
   const color=[a.strokeColor,a.color,a.fontColor,a.backgroundColor].map(embedPdfColor).find(c=>c&&c!=='transparent')||'#ffcd45'
   return Object.assign(item,{id:a.id,type:bookmark?'bookmark':redaction?'redaction':a.type===1||a.type===3?'note':'highlight',format:'pdf',readOnly:a.flags?.includes('readOnly'),page,cfi:`#page-${page}`,title:bookmark?text:a.custom?.title,text:bookmark?text:a.custom?.text||a.contents||text,note:bookmark||redaction?'':a.custom?.note||a.contents||'',tags:a.custom?.tags||[],blockId:a.custom?.blockId,blockIds:a.custom?.blockIds,color,style:embedPdfStyle(a.type,a.custom),timestamp:new Date(a.created||a.modified||Date.now()).getTime(),chapter:bookmark?'':a.custom?.chapter||`${i18n.value.page||'Page '}${page}${i18n.value.pageSuffix||''}`,customOrder:a.custom?.customOrder})
 }
@@ -272,7 +272,7 @@ const toggleEmbedPdfBookmark=async(loc:any,title?:string)=>{
 }
 const initEmbedPdfMode=async(loadSource:()=>Promise<File|string|null>)=>{
   const file=await loadSource()
-  if(!file)throw new Error(i18n.value.pdfFileMissing || 'PDF file is missing')
+  if(!file)throw new Error((i18n.value.pdfFileMissing || 'PDF file is missing') + (props.bookInfo?.path ? `（${props.bookInfo.path}）` : ''))
   embedPdfDocumentContext.value=null
   embedPdfSource.value=file
   embedPdfMarks.value=[]
@@ -514,17 +514,26 @@ const openQuickNotes=()=>window.dispatchEvent(new Event('sireader:open-quick-not
 const handleClose=()=>{savePosition();window.dispatchEvent(new CustomEvent('reader:mobile-close'))}
 const isThisActiveReader=()=>!(window as any).__sireader_active_view||(window as any).__sireader_active_view===currentView.value
 const activeOnly=<T extends any[]>(fn:(...args:T)=>any)=>(...args:T)=>isThisActiveReader()?fn(...args):undefined
+let pdfGotoRetry=0
+const gotoPdf=(detail:any)=>{
+  const{cfi,id}=detail, pdfPage=pdfPageFromCfi(cfi)
+  if(!pdfPage)return
+  if(!currentView.value||!embedPdfPages.value){pendingGoto=detail;return}
+  // 标注还没进当前文档（刚打开/切回来时 documentId 还是空的）：等文档挂上再聚焦，最多 12 次。
+  if(id&&embedPdfReaderRef.value?.annotationActions?.get&&!embedPdfReaderRef.value.annotationActions.get(id)&&pdfGotoRetry<12){
+    pdfGotoRetry+=1
+    pendingGoto=detail
+    window.setTimeout(()=>{const next=pendingGoto;if(!next)return;pendingGoto=null;gotoPdf(next)},250)
+    return
+  }
+  pdfGotoRetry=0
+  currentView.value.goTo?.(pdfPage,id)
+}
 const handleGoto=(e:CustomEvent)=>{
   const{cfi,id,bookUrl}=e.detail
   if(bookUrl&&bookUrl!==currentBookUrl.value)return
   if(!cfi)return
-  const pdfPage=pdfPageFromCfi(cfi)
-  if(isEmbedPdfMode.value){
-    if(!currentView.value||!embedPdfPages.value){pendingGoto=e.detail;return}
-    if(!pdfPage)return
-    currentView.value?.goTo?.(pdfPage,id)
-    return
-  }
+  if(isEmbedPdfMode.value)return gotoPdf(e.detail)
   void gotoEPUB(cfi,id,reader,markManager.value)
 }
 const handleUndo=()=>markManager.value?.undo?.()
