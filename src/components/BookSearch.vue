@@ -147,13 +147,48 @@
               <span class="ft__secondary">{{ i18n.intro || 'Introduction' }}</span>
               <span class="sr-intro-full">{{ detailBook.intro }}</span>
             </label>
+            <div v-if="canChooseDestination && hasDownloadUrl(detailBook)" class="sr-edit-group">
+              <label class="sr-field">
+                {{ i18n.downloadDestination || 'Download location' }}
+                <select v-model="downloadMode" class="b3-select" :disabled="!!importingState(detailBook, 'download')" @change="onDownloadModeChange">
+                  <option value="workspace">{{ i18n.downloadWorkspace || 'SiYuan workspace' }}</option>
+                  <option value="cloud">{{ i18n.downloadCloud || 'SiYuan Cloud' }}</option>
+                  <option value="both">{{ i18n.downloadBoth || 'Workspace and SiYuan Cloud' }}</option>
+                </select>
+              </label>
+              <template v-if="downloadMode !== 'workspace'">
+                <label class="sr-field">
+                  {{ i18n.downloadCloudToken || 'SiYuan Cloud API token (if required)' }}
+                  <input v-model.trim="cloudToken" type="password" autocomplete="off" class="b3-text-field"
+                    :disabled="cloudLoading || !!importingState(detailBook, 'download')" @input="resetCloudFolder" @keydown.enter.prevent="browseCloudFolder(cloudFolder)">
+                </label>
+                <div class="sr-actions-full">
+                  <button class="sr-text-btn" :disabled="cloudLoading" @click="browseCloudFolder(cloudFolder)">
+                    {{ i18n.downloadBrowseFolders || 'Browse folders' }}
+                  </button>
+                  <button v-if="cloudFolder !== '/'" class="sr-text-btn" :disabled="cloudLoading" @click="browseCloudFolder(cloudFolder.slice(0, cloudFolder.lastIndexOf('/')) || '/')">
+                    {{ i18n.downloadParentFolder || 'Parent folder' }}
+                  </button>
+                </div>
+                <div class="ft__secondary" aria-live="polite">{{ cloudLoading ? TEXT.searching : cloudError || cloudFolder }}</div>
+                <div v-if="cloudFolders.length" class="sr-folder-list">
+                  <button v-for="folder in cloudFolders" :key="folder.path" class="sr-text-btn" :disabled="cloudLoading" @click="browseCloudFolder(folder.path)">
+                    {{ folder.name }}
+                  </button>
+                </div>
+              </template>
+            </div>
             <div class="sr-actions-full">
               <button v-if="detailBook.readUrl" class="sr-btn-primary" @click="openReadOnline(detailBook)"><svg><use xlink:href="#lucide-eye"/></svg>{{ TEXT.readOnline }}</button>
               <button v-if="detailBook.readUrl" class="sr-btn-primary" :class="{ active: isLinkInShelf(detailBook) || importingState(detailBook, 'link') }" @click="addLinkBook(detailBook)">
                 <svg><use :xlink:href="isLinkInShelf(detailBook) ? '#iconCheck' : '#iconLink'"/></svg>{{ importingState(detailBook, 'link') || (isLinkInShelf(detailBook) ? TEXT.inShelf : (i18n.addToShelf || 'Add to Shelf')) }}
               </button>
-              <button v-if="hasDownloadUrl(detailBook)" class="sr-btn-primary" :class="{ active: isDownloadInShelf(detailBook) || importingState(detailBook, 'download') }" @click="addDownloadBook(detailBook)">
+              <button v-if="hasDownloadUrl(detailBook)" class="sr-btn-primary" :class="{ active: isDownloadInShelf(detailBook) || importingState(detailBook, 'download') }" :disabled="!!importingState(detailBook, 'download') || (downloadMode !== 'workspace' && (cloudLoading || !cloudWritable))" @click="addDownloadBook(detailBook)">
                 <svg><use :xlink:href="isDownloadInShelf(detailBook) ? '#iconCheck' : '#iconDownload'"/></svg>{{ importingState(detailBook, 'download') || (isDownloadInShelf(detailBook) ? TEXT.inShelf : (i18n.downloadAddToShelf || 'Download to Shelf')) }}
+              </button>
+              <button v-if="pendingCloudUploads.has(detailBook.bookUrl || detailBook.name)" class="sr-text-btn"
+                :disabled="!!importingState(detailBook, 'download')" @click="retryCloudUpload(detailBook)">
+                {{ i18n.downloadRetryCloud || 'Retry cloud upload' }}
               </button>
               <button v-if="!detailBook.readUrl" class="sr-btn-primary" @click="openLink(detailBook.bookUrl)"><svg><use xlink:href="#iconLink"/></svg>{{ i18n.openLink || TEXT.openLink }}</button>
             </div>
@@ -167,9 +202,9 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { showMessage } from 'siyuan'
-import { bookshelfManager } from '@/core/bookshelf'
+import { bookshelfManager, listCloudDownloadFolders, type SiyuanCloudNode } from '@/core/bookshelf'
 import { addOnlineBookToShelf, importRemoteBook } from '@/composables/useBookImport'
-import { useLicense } from '@/core/license'
+import { LicenseManager, useLicense } from '@/core/license'
 import { httpSourceManager, type HttpSourceConfig } from '@/utils/HttpSources'
 import { loadWereadHttpBookDetail, toWereadHttpBook } from '@/weread/agent'
 import { createWereadContextFromSource } from '@/weread/context'
@@ -191,6 +226,43 @@ Object.assign(TEXT, {
 })
 const { can, showUpgrade } = useLicense(i18n.value)
 const keyword = ref(''), selectedSource = ref(''), showSourceMenu = ref(false), showManagePanel = ref(false), searching = ref(false), results = ref<any[]>([]), allSources = ref<HttpSourceConfig[]>([]), detailBook = ref<any>(null), editingSource = ref<HttpSourceConfig | null>(null), shelfBooks = ref(new Set<string>()), failedCovers = new Set<string>(), importing = ref<Record<string, string>>({}), form = reactive({ ...FORM_DEFAULTS })
+const canChooseDestination = ref(false)
+const downloadMode = ref<'workspace' | 'cloud' | 'both'>('workspace')
+const cloudToken = ref('')
+const cloudFolder = ref('/')
+const cloudFolders = ref<SiyuanCloudNode[]>([])
+const cloudWritable = ref(false)
+const cloudLoading = ref(false)
+const cloudError = ref('')
+const pendingCloudUploads = reactive(new Map<string, (token: string) => Promise<string>>())
+
+const resetCloudFolder = () => {
+  cloudFolder.value = '/'
+  cloudFolders.value = []
+  cloudWritable.value = false
+  cloudError.value = ''
+}
+const browseCloudFolder = async (path: string) => {
+  if (cloudLoading.value) return
+  cloudLoading.value = true
+  cloudWritable.value = false
+  cloudError.value = ''
+  try {
+    const result = await listCloudDownloadFolders(path, cloudToken.value)
+    cloudFolder.value = path
+    cloudFolders.value = result.folders
+    cloudWritable.value = result.writable
+    if (path === '/' && !result.folders.length) cloudError.value = i18n.value.downloadNoMounts || 'No mounted folders found'
+  } catch (error: any) {
+    cloudError.value = error.message || 'SiYuan Cloud request failed'
+  } finally {
+    cloudLoading.value = false
+  }
+}
+const onDownloadModeChange = () => {
+  if (downloadMode.value !== 'workspace' && !cloudWritable.value) void browseCloudFolder(cloudFolder.value)
+}
+
 const enabledSources = computed(() => allSources.value.filter(source => source.enabled))
 const privateSearchAccess = createPrivateSearchAccess({ reload: () => loadHttpSources() })
 const visibleSources = computed(() => allSources.value.filter(source => privateSearchAccess.isSourceVisible(source)))
@@ -276,6 +348,14 @@ const checkInShelf = async (book: any) => {
 }
 const normalizeDetailBook = (book: any) => book?.sourceId === 'weread-agent' ? toWereadHttpBook(book.privateData?.raw || book, { id: book.sourceId, name: book.sourceName, url: book.sourceUrl }) || book : book
 const showBook = async (book: any) => {
+  void LicenseManager.getUser().then(user => {
+    canChooseDestination.value = !!user
+    if (!user) {
+      downloadMode.value = 'workspace'
+      cloudToken.value = ''
+      resetCloudFolder()
+    }
+  })
   detailBook.value = normalizeDetailBook(book)
   if (book?.sourceId === 'weread-agent') detailBook.value = await loadWereadHttpBookDetail(detailBook.value, httpSourceManager.getSource('weread-agent'))
 }
@@ -348,19 +428,50 @@ const addLinkBook = async (book: any) => {
     setImportingState(book, 'link')
   }
 }
+const retryCloudUpload = async (book: any, token = cloudToken.value) => {
+  const key = book.bookUrl || book.name
+  const upload = pendingCloudUploads.get(key)
+  if (!upload || importingState(book, 'download')) return
+  try {
+    setImportingState(book, 'download', i18n.value.downloadUploading || 'Uploading to SiYuan Cloud...')
+    if (!await LicenseManager.getUser()) throw new Error(i18n.value.downloadSignIn || 'Sign in to SiYuan first')
+    await upload(token)
+    pendingCloudUploads.delete(key)
+    showMessage(i18n.value.downloadUploaded || 'Uploaded to SiYuan Cloud', 2000, 'info')
+  } catch (error: any) {
+    showMessage(`${i18n.value.downloadPartial || 'Workspace copy saved. Cloud upload failed.'} ${error.message || ''}`, 5000, 'error')
+  } finally {
+    setImportingState(book, 'download')
+  }
+}
+
 const addDownloadBook = async (book: any) => {
+  if (importingState(book, 'download')) return
+  const mode = downloadMode.value
+  if (mode !== 'workspace' && (cloudLoading.value || !cloudWritable.value)) return
+  const destination = mode === 'workspace' ? undefined : {
+    folder: cloudFolder.value,
+    token: cloudToken.value,
+    keepWorkspaceCopy: mode === 'both',
+  }
+  let upload: ((token: string) => Promise<string>) | undefined
   try {
     setImportingState(book, 'download', '下载中...')
     await httpSourceManager.init()
+    if (destination && !await LicenseManager.getUser()) throw new Error(i18n.value.downloadSignIn || 'Sign in to SiYuan first')
     const plan = await httpSourceManager.getDownloadPlan(book, message => setImportingState(book, 'download', message))
-    await importRemoteBook({ ...plan, onProgress: message => setImportingState(book, 'download', message) })
+    upload = await importRemoteBook({ ...plan, onProgress: message => setImportingState(book, 'download', message) }, destination)
     downloadShelfKeys(book).forEach(key => shelfBooks.value.add(key))
     shelfBooks.value.add(plan.url)
-    showMessage(`《${book.name}》已添加到书架`, 2000, 'info')
+    if (!upload) showMessage(`《${book.name}》已添加到书架`, 2000, 'info')
   } catch (error: any) {
     showMessage(error.message || TEXT.addError, 3000, 'error')
   } finally {
     setImportingState(book, 'download')
+  }
+  if (upload) {
+    pendingCloudUploads.set(book.bookUrl || book.name, upload)
+    await retryCloudUpload(book, destination?.token)
   }
 }
 
@@ -374,6 +485,7 @@ onUnmounted(() => {
 </script>
 
 <style scoped lang="scss">
+.sr-folder-list{display:flex;flex-wrap:wrap;gap:4px;max-height:120px;overflow:auto}
 .sr-search{position:relative;display:flex;flex-direction:column;height:100%;overflow:hidden;background:var(--b3-theme-background)}
 .sr-btn-icon{display:inline-flex;align-items:center;justify-content:center;width:28px;min-width:28px;max-width:28px;height:28px;min-height:28px;max-height:28px;flex:0 0 28px;padding:0!important;line-height:1;background:transparent;color:var(--b3-theme-on-surface);opacity:.5;border-radius:4px;border:none;box-sizing:border-box;cursor:pointer;overflow:hidden;
   svg{width:14px;height:14px;flex:0 0 14px}
