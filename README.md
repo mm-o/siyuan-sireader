@@ -7,7 +7,7 @@
 Transform SiYuan Notes into a professional eBook reader  
 Professional eBook reader for EPUB/PDF/MOBI/TXT/online novels. PDFs support highlights, ink, shapes, forms, stamps, signatures, images, screenshots, search, printing, export, and backlinks, with annotation notes, dictionary, translation, themes, and bookshelf management.
 
-[![Version](https://img.shields.io/badge/version-2.8.0-blue.svg)](https://github.com/mm-o/siyuan-sireader)
+[![Version](https://img.shields.io/badge/version-2.8.1-blue.svg)](https://github.com/mm-o/siyuan-sireader)
 [![License](https://img.shields.io/badge/license-MIT%20%2B%20AGPL-green.svg)](LICENSE)
 [![SiYuan](https://img.shields.io/badge/SiYuan-3.0+-orange.svg)](https://github.com/siyuan-note/siyuan)
 
@@ -19,13 +19,19 @@ Professional eBook reader for EPUB/PDF/MOBI/TXT/online novels. PDFs support high
 
 ## 📝 Latest Updates
 
+## v2.8.1 (2026-11-19)
+
+### Fixed
+
+- Fixed the reader's table-of-contents button doing nothing and every jump/settings-sync event being dead
+
 ## v2.8.0 (2026-11-17)
 
 ### Added
 
 - Full-screen button for EPUB and other non-PDF readers: one button to enter and leave full screen, with the icon following the state (PDF keeps its built-in full screen).
 - The translation window is wider (720px, up to 92vw), the source and translation boxes size to their content and can be dragged taller, and the engine picker plus "Add as annotation" stay pinned so the dialog itself never scrolls.
-- New "Page sharpness (scans)" setting for the PDF base image width (1280 / 1920 / 2560 / 3200, default 1920). High-resolution scans such as 291 ppi look soft at normal zoom; raising it sharpens them at the cost of per-page bitmap memory, and it applies after reopening the PDF.
+- New "Page sharpness (scans)" setting for the PDF base image width (five stops: 640 / 1280 / 1920 / 2560 / 3200, default 640, the upstream default). High-resolution scans such as 291 ppi look soft at normal zoom; raising it sharpens them at the cost of per-page bitmap memory, and it applies after reopening the PDF.
 
 ### Fixed
 
@@ -51,7 +57,6 @@ Professional eBook reader for EPUB/PDF/MOBI/TXT/online novels. PDFs support high
 
 - PDF annotations can be bound to a SiYuan block and opened from the annotation toolbar: importing, sync-on-add, and sending to a document record the block automatically, and a `siyuan://blocks/<id>` or bare block id link becomes that binding.
 - Bookshelf search splits on spaces: `guangdong 2026` requires every word to match, and file names, paths, and links are searched too.
-- The PDF sidebar can start on thumbnails or bookmarks, and the other panels get top-bar buttons side by side, so switching no longer needs the title dropdown.
 
 ### Fixed
 

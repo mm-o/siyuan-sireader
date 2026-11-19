@@ -583,13 +583,10 @@
   "bookDetails": "书籍详情",
   "openDataLocation": "打开数据所在位置",
   "pdfMarkImageWithAnnotations": "标注图片包含标注样式",
-  "pdfSidebarPanel": "默认侧栏",
   "pdfRenderMaxWidth": "页面清晰度（扫描件）",
-  "pdfRenderMaxWidthDesc": "底图宽度：越大扫描件越清晰，内存占用也越高；默认 1920，重新打开 PDF 后生效",
+  "pdfRenderMaxWidthDesc": "底图宽度：越大扫描件越清晰、打开越慢；默认 640（官方默认），觉得扫描件发虚再往上调，重新打开 PDF 后生效",
   "fullscreen": "全屏",
   "exitFullscreen": "退出全屏",
-  "sidebarThumbnails": "缩略图",
-  "sidebarOutline": "书签",
   "selectBook": "选择此书",
   "unselectBook": "取消选择",
   "rate": "评分",
@@ -870,3 +867,4 @@
   ,"continueReading": "继续阅读最近打开的书籍"
   ,"legacyDbRestored": "已从旧版数据库补齐书架与标注"
 }
+

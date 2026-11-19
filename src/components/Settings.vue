@@ -114,8 +114,7 @@ const docAssetExcludeFields = computed(() => {
 const noteFields = computed(() => [
   checkboxField('annotationSyncOnAdd', props.i18n.annotationSyncOnAdd || '添加时同步', settings.value.annotationSyncOnAdd, value => (settings.value.annotationSyncOnAdd = value, save()), true, props.i18n.annotationSyncOnAddDesc || '新增标注时自动同步到已绑定文档'),
   checkboxField('annotationSyncOnDelete', props.i18n.annotationSyncOnDelete || '删除时同步', settings.value.annotationSyncOnDelete, value => (settings.value.annotationSyncOnDelete = value, save()), true, props.i18n.annotationSyncOnDeleteDesc || '删除标注时同步删除已绑定块'),
-  selectField('pdfSidebarPanel', props.i18n.pdfSidebarPanel || '默认侧栏', settings.value.pdfSidebarPanel || 'thumbnails', [{ value: 'thumbnails', label: props.i18n.sidebarThumbnails || '缩略图' }, { value: 'outline', label: props.i18n.sidebarOutline || '书签' }], value => (settings.value.pdfSidebarPanel = value as any, save())),
-  selectField('pdfRenderMaxWidth', props.i18n.pdfRenderMaxWidth || '页面清晰度（扫描件）', String(settings.value.pdfRenderMaxWidth || 1920), [{ value: '1280', label: '1280' }, { value: '1920', label: '1920' }, { value: '2560', label: '2560' }, { value: '3200', label: '3200' }], value => (settings.value.pdfRenderMaxWidth = Number(value) || 1920, save()), true, props.i18n.pdfRenderMaxWidthDesc || '底图宽度：越大扫描件越清晰，内存占用也越高；默认 1920，重新打开 PDF 后生效'),
+  { key: 'pdfRenderMaxWidth', type: 'range', label: `${props.i18n.pdfRenderMaxWidth || '页面清晰度（扫描件）'} · ${Number(settings.value.pdfRenderMaxWidth) || 640}`, value: Number(settings.value.pdfRenderMaxWidth) || 640, min: 640, max: 3200, step: 640, hint: props.i18n.pdfRenderMaxWidthDesc || '底图宽度：越大扫描件越清晰、打开越慢；默认 640（官方默认），觉得扫描件发虚再往上调，重新打开 PDF 后生效', set: (value: number) => (settings.value.pdfRenderMaxWidth = value, save()) },
   checkboxField('pdfMarkImageWithAnnotations', props.i18n.pdfMarkImageWithAnnotations || '标注图片包含标注样式', !!settings.value.pdfMarkImageWithAnnotations, value => (settings.value.pdfMarkImageWithAnnotations = value, save()), true, '形状标注导出图片时是否把标注框本身也带上'),
   selectField('noteInsertTarget', props.i18n.noteInsertTarget || '插入位置', settings.value.noteInsertTarget, NOTE_TARGET_OPTIONS.map(value => ({ value, label: props.i18n[`noteInsertTarget${value.charAt(0).toUpperCase()}${value.slice(1)}`] || value })), value => (settings.value.noteInsertTarget = value as any, save())),
   selectField('noteInsertMode', props.i18n.noteInsertMode || '插入方式', settings.value.noteInsertMode, NOTE_MODE_OPTIONS.map(value => ({ value, label: props.i18n[NOTE_MODE_LABELS[value]] || value })), value => (settings.value.noteInsertMode = value as any, save()), settings.value.noteInsertTarget === 'current'),
@@ -544,6 +543,7 @@ onUnmounted(() => window.removeEventListener('sireaderSettingsUpdated', syncAnno
                   <SettingRows v-if="field.results?.length" :rows="docResultRows(field)" :i18n="i18n" />
                 </div>
               </li>
+              <SettingItem v-else-if="field.type === 'range'" :item="{ key: field.key, type: 'range', min: field.min, max: field.max, step: field.step }" :model-value="field.value" :label="field.label" :hint="field.hint" :i18n="i18n" @input="field.set" />
               <li v-else-if="field.type === 'textarea'" class="b3-list-item b3-list-item--hide-action sr-note-textarea">
                 <span class="b3-list-item__toggle fn__hidden"></span>
                 <span class="b3-list-item__text" :class="{ ariaLabel: !!field.hint }" :aria-label="field.hint || undefined">{{ field.label }}</span>

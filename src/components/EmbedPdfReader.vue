@@ -700,7 +700,7 @@ function configuration() {
     plugins: {
       stage: { zoom: zoom(), scrollBehavior: scrollBehavior(), scrollChaining: false },
       // 底图预算 640 太小：大尺寸扫描页放大后全靠瓦片补锐，瓦片没覆盖到的地方会一直发虚。
-      render: { snapshot: { scale: 2 }, fullPage: { maxWidth: Number(props.settings?.pdfRenderMaxWidth) || 1920 } },
+      render: { snapshot: { scale: 2 }, fullPage: { maxWidth: Number(props.settings?.pdfRenderMaxWidth) || 640 } },
       annotation: {
         afterCreate: { tool: keepTool.value ? 'stay' : 'default' },
         tools: pdfAnnotationToolOptions(props.settings?.pdfAnnotationToolDefaults),
@@ -721,12 +721,6 @@ function configuration() {
         .add('sireader:lock-annotation-tool', { to: 'shapes' })
       for (const id of ['read-only', 'import-annotations', 'export-annotations', 'import-layer', 'export-layer']) {
         result = result.add('sireader:' + id, { to: 'document' })
-      }
-      // 侧栏：默认打开哪个面板由设置决定；另外两个面板做成顶栏按钮，和标签并排显示（不再只藏在标题下拉里）。
-      const sidebar = props.settings?.pdfSidebarPanel === 'outline' ? 'outline' : 'thumbnails'
-      for (const panel of ['thumbnails', 'outline', 'attachments']) {
-        result = result.panel(panel, { open: panel === sidebar })
-        for (const other of ['thumbnails', 'outline', 'attachments']) if (other !== panel) result = result.add('panel:' + other, { to: panel })
       }
       if (isMobile()) result = result.add('sireader:close', { to: 'pager' })
       for (const id of ['dict-selection', 'translate-selection', 'create-hole']) result = result.add('sireader:' + id, { to: 'selection' })

@@ -400,11 +400,9 @@ export class LicenseManager {
 
 }
 
-// 授权状态全局共享：绑定/恢复授权后所有组件立刻拿到新权益，不用重启思源。
-const license = ref<LicenseInfo | null>(null)
-const userAvatar = ref<string | null>(null)
-
 export function useLicense(_i18n?: any) {
+  const license = ref<LicenseInfo | null>(null)
+  const userAvatar = ref<string | null>(null)
   const qr = ref<{ data: string; expiresAt: string } | null>(null)
   const loading = ref(false)
   const processing = ref(false)
@@ -437,6 +435,7 @@ export function useLicense(_i18n?: any) {
       qr.value = null
       if (!synced) return showMessage('绑定二维码已失效，请重新生成', 3000, 'error')
       await LicenseManager.save(synced)
+      window.dispatchEvent(new CustomEvent('sireader:license-updated'))
       await updateLicense(synced)
       showMessage(synced.type !== 'free' ? '绑定成功，会员权益已同步' : '账号已绑定，当前为基础版', 2500, 'info')
     }
@@ -459,11 +458,13 @@ export function useLicense(_i18n?: any) {
     try {
       const result = await LicenseManager.recover()
       if (!result.success || !result.license) return showMessage(result.error || '未检测到有效会员权益', 3000, 'error')
-      await updateLicense(result.license)
+      window.dispatchEvent(new CustomEvent('sireader:license-updated'))
       showMessage(result.message || '会员权益已同步', 2500, 'info')
     }
     finally { processing.value = false }
   }
+  window.addEventListener('sireader:license-updated', load)
+  onScopeDispose(() => window.removeEventListener('sireader:license-updated', load))
   const can = computed(() => (feature: string) => LicenseManager.can(feature, license.value))
   const showUpgrade = (featureName: string) => showMessage(
     `${featureName}需要相应会员权限<div style="margin-top:12px;text-align:right"><button class="b3-button b3-button--text" onclick="window._openLicenseContent?.()">查看会员</button></div>`,

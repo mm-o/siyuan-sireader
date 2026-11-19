@@ -585,13 +585,10 @@
   "bookDetails": "Book Details",
   "openDataLocation": "Show data location",
   "pdfMarkImageWithAnnotations": "Include the annotation in exported images",
-  "pdfSidebarPanel": "Default sidebar",
   "pdfRenderMaxWidth": "Page sharpness (scans)",
-  "pdfRenderMaxWidthDesc": "Base image width: higher keeps scans sharper but uses more memory; default 1920, takes effect after reopening the PDF",
+  "pdfRenderMaxWidthDesc": "Base image width: higher keeps scans sharper but opens slower; default 640 (the upstream default), raise it only if scans look soft, takes effect after reopening the PDF",
   "fullscreen": "Full screen",
   "exitFullscreen": "Exit full screen",
-  "sidebarThumbnails": "Thumbnails",
-  "sidebarOutline": "Bookmarks",
   "selectBook": "Select This Book",
   "unselectBook": "Cancel Selection",
   "rate": "Rating",
@@ -872,3 +869,4 @@
   ,"continueReading": "Continue reading a recently opened book"
   ,"legacyDbRestored": "Bookshelf and annotations restored from the legacy database"
 }
+

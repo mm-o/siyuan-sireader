@@ -56,7 +56,7 @@
   <MarkPanel v-if="!isEmbedPdfMode" ref="markPanelRef" :root="containerRef" :book-url="getBookUrl()" :manager="markManager" :reader="reader" :current-view="currentView" :read-only="false" :i18n="i18n" :tts-controller="ttsController" :tts-config="currentSettings?.tts" :quick-mark-mode="quickMarkMode" :quick-mark-color="COLORS[quickMarkColor].color" :quick-mark-style="quickMarkStyle" :can="can" :show-upgrade="showUpgrade" @copy="(text,sel)=>handleCopy({text,cfi:sel?.cfi,page:sel?.page,section:sel?.section,rects:sel?.rects,textOffset:sel?.textOffset})" @dict="handleOpenDict" @copy-mark-only="handleCopyToClipboard" />
 </template>
 <script setup lang="ts">
-import { ref, shallowRef, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, shallowRef, computed, onMounted, onUnmounted, onBeforeUnmount } from 'vue'
 import { Menu, showMessage } from 'siyuan'
 import type { Plugin } from 'siyuan'
 import type { ReaderSettings } from '@/composables/useSetting'
