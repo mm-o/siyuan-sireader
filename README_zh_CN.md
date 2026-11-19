@@ -7,7 +7,7 @@
 让思源笔记变身专业阅读器，支持 EPUB/PDF/TXT/在线小说  
 专业电子书阅读器，支持 EPUB/PDF/MOBI/TXT/在线小说；PDF 支持高亮、墨迹、形状、表单、印章、签名、图片、截图、搜索、打印、导出和回链，并提供标注笔记、词典、翻译、主题与书架管理
 
-[![Version](https://img.shields.io/badge/version-2.8.1-blue.svg)](https://github.com/mm-o/siyuan-sireader)
+[![Version](https://img.shields.io/badge/version-2.8.2-blue.svg)](https://github.com/mm-o/siyuan-sireader)
 [![License](https://img.shields.io/badge/license-MIT%20%2B%20AGPL-green.svg)](LICENSE)
 [![SiYuan](https://img.shields.io/badge/SiYuan-3.0+-orange.svg)](https://github.com/siyuan-note/siyuan)
 
@@ -18,6 +18,14 @@
 ---
 
 ## 📝 最新更新
+
+## v2.8.2 (2026-11-19)
+
+### 新增
+
+- 书架搜索改为全库检索：在任意分组里搜索都不再只搜组内，分组名、书内书名、作者、标签、文件名与路径、状态、格式、元数据（出版社 / ISBN / 简介等）全部纳入匹配；空格分词、全部命中即显示，命中的分组本身也会作为结果出现，紧凑视图里分组内的命中书不再被折叠隐藏。
+- 书架网格封面状态改为“压边水印”样式：在读 / 读完 / 未读 压在右下角并随封面自适应，倾斜 + 模糊光晕做出毛绒质感，不再像贴片徽标那样错位。
+
 
 ## v2.8.1 (2026-11-19)
 

@@ -95,14 +95,14 @@
           <span v-if="item.data.rating && !hidden('rating')" class="bs-badge bs-badge--left">{{ starText(item.data.rating) }}</span>
           <span class="bs-badge bs-badge--right">{{ item.data.format.toUpperCase() }}</span>
           <span v-if="!hidden('progress')" class="bs-badge bs-badge--bottom">{{ getProgress(item.data) }}</span>
-          <span v-if="!hidden('status')" class="bs-watermark" :class="watermarkClass(item.data.status)">{{ statusMap[item.data.status] }}</span>
+          <span v-if="!hidden('status')" class="bs-stamp" :class="stampClass(item.data.status)">{{ statusMap[item.data.status] }}</span>
         </template>
         <template v-else>
           <div v-if="item.data.type === 'smart'" class="bs-tags">
             <span v-for="text in groupChips(item.data)" :key="text" class="bs-tag bs-tag--type">{{ text }}</span>
           </div>
           <span class="bs-badge bs-badge--bottom">{{ countText(groupCount(item.data)) }}</span>
-          <span class="bs-watermark bs-watermark--group">{{ props.i18n?.group || 'Group' }}</span>
+          <span class="bs-stamp bs-stamp--group">{{ props.i18n?.group || 'Group' }}</span>
         </template>
       </div>
       <div class="bs-title ariaLabel" :aria-label="mainText(item)">{{ mainText(item) }}</div>
@@ -210,6 +210,7 @@ const props = withDefaults(defineProps<{
   getGroupCoverUrls: (group: GroupConfig) => string[]
   getProgress: (book: Book) => string
   currentGroup?: string | null
+  searching?: boolean
   currentGroupIsSmart?: boolean
   selecting?: boolean
   selectedUrls?: string[]
@@ -274,7 +275,8 @@ const compactTree = computed<CompactNode[]>(() => {
   })
   const roots: CompactNode[] = childGroups().map(node)
   for (const book of books) {
-    if (!groupedBook(book, groups)) {
+    // 搜索时把命中的书全部平铺出来（分组里的也显示），否则它们在分组节点下面看不到
+    if (props.searching || !groupedBook(book, groups)) {
       roots.push({
         key: `root-${book.url}`,
         item: { type: 'book', data: book },
@@ -409,7 +411,7 @@ const compactItemStyle = (row: CompactRow) => ({ '--file-toggle-width': `${compa
 const compactToggleStyle = (row: CompactRow) => ({ paddingLeft: `${compactIndent(row)}px` })
 const compactPath = (row: CompactRow) => isGroup(row.item) ? row.item.data.id : isBook(row.item) ? row.item.data.url : row.item.data.id
 const starText = (rating: number) => `★${Math.max(0, Math.min(5, rating))}`
-const watermarkClass = (status: BookStatus) => `bs-watermark--${status}`
+const stampClass = (status: BookStatus) => `bs-stamp--${status}`
 const mainText = (item: Item) => isGroup(item) ? item.data.name : isBook(item) ? item.data.title : item.data.preview?.title || item.data.label
 const groupChips = (group: GroupConfig) => [
   ...(group.rules?.tags || []).slice(0, 2),
@@ -476,7 +478,7 @@ const tagStyle = (tag: string) => {
 .bs-tree-view .bs-compact-progress{flex:0 0 4ch;width:4ch;margin-left:2px;overflow:hidden;text-align:right;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
 .bs-home-drop{display:none}
 .bs-list :deep(.b3-list-item){margin:0}
-.bs-grid{display:grid;gap:6px;overflow:auto;scrollbar-gutter:stable;align-content:start;padding:8px 0 8px 8px;box-sizing:border-box}
+.bs-grid{display:grid;gap:12px 10px;overflow:auto;scrollbar-gutter:stable;align-content:start;padding:8px 0 8px 8px;box-sizing:border-box}
 .bs-home-drop{grid-column:1/-1;align-items:center;justify-content:center;min-height:38px;padding:0 12px;border-radius:10px;background:color-mix(in srgb,var(--b3-theme-primary) 8%,transparent);color:var(--b3-theme-on-surface-variant);font-size:12px}
 .bs-home-drop.is-visible{display:flex}
 .bs-home-drop.is-drop-target{background:color-mix(in srgb,var(--b3-theme-primary) 18%,transparent);color:var(--b3-theme-primary)}
@@ -486,9 +488,14 @@ const tagStyle = (tag: string) => {
 .bs-row.is-selected,.bs-row.is-selected:hover{background:color-mix(in srgb,var(--b3-theme-primary) 20%,var(--b3-theme-background))!important;border-color:color-mix(in srgb,var(--b3-theme-primary) 55%,var(--b3-border-color))}
 .bs-row.is-drop-target{background:color-mix(in srgb,var(--b3-theme-primary) 16%,transparent)}
 .bs-cover.is-drop-target::after{content:'';position:absolute;inset:0;background:color-mix(in srgb,var(--b3-theme-primary) 18%,transparent);pointer-events:none}
-.bs-cover,.bs-row__cover{position:relative;overflow:hidden;background:var(--b3-theme-surface-lighter);box-shadow:inset 0 0 0 1px var(--b3-border-color)}
-.bs-cover{aspect-ratio:2/3;border-radius:6px}
-.bs-cover img,.bs-row__cover img{display:block;width:100%;height:100%;object-fit:cover;background:inherit;animation:bs-cover-fade .18s ease}
+.bs-cover,.bs-row__cover{position:relative;overflow:hidden;background:var(--b3-theme-surface-lighter);border:1px solid color-mix(in srgb,var(--b3-theme-on-surface) 12%,transparent);border-radius:8px;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.32),inset 0 -1px 0 rgba(0,0,0,.10),0 1px 1px rgba(0,0,0,.06),0 3px 6px -2px rgba(0,0,0,.14),0 14px 26px -18px rgba(0,0,0,.45)}
+.bs-cover{aspect-ratio:2/3}
+/* 悬停只做一件事：封面图在框内放大 */
+.bs-grid-item:hover .bs-cover img{transform:scale(1.04)}
+/* 毛玻璃边缘：一层极淡的渐变高光 + 内描边，让封面边界从“糊”变成“有边” */
+.bs-cover::after,.bs-row__cover::after{content:'';position:absolute;inset:0;border-radius:inherit;pointer-events:none;box-shadow:inset 0 0 0 1px rgba(255,255,255,.14);background:linear-gradient(180deg,rgba(255,255,255,.10),rgba(255,255,255,0) 34%)}
+.bs-cover img,.bs-row__cover img{display:block;width:100%;height:100%;object-fit:cover;background:inherit;border-radius:inherit;animation:bs-cover-fade .18s ease;transition:transform .2s ease;transform-origin:center;will-change:transform}
 .bs-group-cover{display:grid;grid-template-columns:repeat(2,1fr);grid-template-rows:repeat(2,1fr);width:100%;height:100%;gap:1px;background:var(--b3-border-color);border-radius:inherit;overflow:hidden}
 .bs-spine-cover{position:relative;width:100%;height:100%;overflow:hidden;border-radius:inherit;background:linear-gradient(90deg,#4b5563 0 16%,var(--b3-theme-surface-lighter) 16%)}
 .bs-spine-cover img{width:84%;height:100%;margin-left:16%;object-fit:cover}
@@ -496,14 +503,15 @@ const tagStyle = (tag: string) => {
 .bs-import-check{position:absolute;top:4px;left:4px;z-index:2}
 .bs-title,.bs-row__title,.bs-row__author,.bs-row .ft__error{color:var(--b3-theme-on-surface);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .bs-title{padding-top:3px;font-size:13px;line-height:1.4}
-.bs-badge{position:absolute;z-index:1;padding:3px 6px;border-radius:999px;background:rgba(0,0,0,.62);font-size:10px;line-height:1;color:#fff}
+.bs-badge{position:absolute;z-index:1;padding:3px 6px;border-radius:999px;background:color-mix(in srgb,var(--b3-theme-background) 52%,transparent);-webkit-backdrop-filter:blur(12px) saturate(160%);backdrop-filter:blur(12px) saturate(160%);box-shadow:inset 0 0 0 1px rgba(255,255,255,.22),0 1px 3px rgba(0,0,0,.16);font-size:10px;line-height:1;font-weight:600;color:var(--b3-theme-on-background)}
 .bs-badge--left{top:6px;left:6px}.bs-badge--right{top:6px;right:6px}.bs-badge--bottom{left:6px;bottom:6px}
 .bs-cover .bs-tags{position:absolute;top:6px;left:6px;right:28px;z-index:1}
-.bs-watermark{position:absolute;right:-.17em;bottom:-.13em;font-size:54px;font-weight:900;line-height:.82;letter-spacing:-.07em;pointer-events:none;opacity:.7;text-shadow:0 1px 0 rgba(255,255,255,.14)}
-.bs-watermark--group{right:6px;bottom:6px;padding:3px 6px;border-radius:999px;background:color-mix(in srgb,var(--b3-theme-background) 78%,transparent);box-shadow:0 1px 3px rgba(0,0,0,.16);color:var(--b3-theme-on-surface);font-size:10px;font-weight:600;line-height:1;letter-spacing:0}
-.bs-watermark--unread{color:#f59e0b}
-.bs-watermark--reading{color:var(--b3-theme-primary)}
-.bs-watermark--finished{color:var(--b3-card-success-color,#2aa775)}
+.bs-stamp{position:absolute;right:-.22em;bottom:-.14em;font-size:clamp(38px,42%,72px);font-weight:900;line-height:.8;letter-spacing:-.03em;opacity:.7;pointer-events:none;transform:rotate(-8deg);transform-origin:100% 100%;filter:blur(.4px);-webkit-filter:blur(.4px);text-shadow:0 0 1px currentColor,0 0 7px color-mix(in srgb,currentColor 55%,transparent),0 0 16px color-mix(in srgb,currentColor 28%,transparent),0 1px 0 rgba(255,255,255,.16)}
+@media (prefers-reduced-motion:no-preference){.bs-stamp{transition:opacity .18s ease}.bs-grid-item:hover .bs-stamp{opacity:.82}}
+.bs-stamp--group{inset:auto 6px 6px auto;display:inline-block;padding:3px 6px;border-radius:999px;background:color-mix(in srgb,var(--b3-theme-background) 78%,transparent);box-shadow:0 1px 3px rgba(0,0,0,.16);color:var(--b3-theme-on-surface);font-size:10px;font-weight:600;letter-spacing:0;text-indent:0;opacity:1}
+.bs-stamp--unread{color:#f59e0b}
+.bs-stamp--reading{color:var(--b3-theme-primary)}
+.bs-stamp--finished{color:var(--b3-card-success-color,#2aa775)}
 .bs-list{display:flex;flex-direction:column;gap:6px;overflow:auto;scrollbar-gutter:stable;padding:8px 0 8px 8px;box-sizing:border-box}
 .bs-row{position:relative;display:flex;align-items:flex-start;gap:10px;min-height:102px;padding:0 12px 0 0;border:1px solid color-mix(in srgb,var(--b3-border-color) 92%, transparent);border-radius:8px;background:linear-gradient(180deg,color-mix(in srgb,var(--b3-theme-background) 96%, white),var(--b3-theme-background));box-sizing:border-box;overflow:hidden;content-visibility:auto;contain-intrinsic-size:104px}
 .bs-row__cover{flex:0 0 auto;width:64px;height:96px;margin:2px;border-right:1px solid color-mix(in srgb,var(--b3-border-color) 88%, transparent);border-radius:8px}

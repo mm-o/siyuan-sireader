@@ -304,15 +304,13 @@ export class BookshelfManager {
     return books;
   }
   async getBookshelfState(opt: BookshelfStateOptions = {}) {
-    const { currentGroup = null, keyword = '', sortBy = 'time', reverse = false, status, rating, formats, tags } = opt
+    const { currentGroup = null, sortBy = 'time', reverse = false, status, rating, formats, tags } = opt
     const db = await this.db()
     const [source, groups] = await Promise.all([db.getBooks(), this.getGroups()])
     const group = groups.find(g => g.id === currentGroup)
     let books = await db.filterBooks({ sortBy, reverse, status, rating, formats, tags }, source)
     if (group) books = books.filter(book => this.matchGroup(book, group))
     else if (currentGroup) books = books.filter(book => book.groups?.includes(currentGroup))
-    const query = keyword.trim().toLowerCase()
-    if (query) books = books.filter(book => [book.title, book.author, ...(book.tags || [])].some(value => value?.toLowerCase().includes(query)))
     const counts = Object.fromEntries(groups.map(group => [group.id, source.filter(book => this.matchGroup(book, group)).length]))
     return { books, groups, counts, tags: await db.getAllTags(source), stats: await db.getStats(source, false) }
   }

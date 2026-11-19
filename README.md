@@ -7,7 +7,7 @@
 Transform SiYuan Notes into a professional eBook reader  
 Professional eBook reader for EPUB/PDF/MOBI/TXT/online novels. PDFs support highlights, ink, shapes, forms, stamps, signatures, images, screenshots, search, printing, export, and backlinks, with annotation notes, dictionary, translation, themes, and bookshelf management.
 
-[![Version](https://img.shields.io/badge/version-2.8.1-blue.svg)](https://github.com/mm-o/siyuan-sireader)
+[![Version](https://img.shields.io/badge/version-2.8.2-blue.svg)](https://github.com/mm-o/siyuan-sireader)
 [![License](https://img.shields.io/badge/license-MIT%20%2B%20AGPL-green.svg)](LICENSE)
 [![SiYuan](https://img.shields.io/badge/SiYuan-3.0+-orange.svg)](https://github.com/siyuan-note/siyuan)
 
@@ -18,6 +18,14 @@ Professional eBook reader for EPUB/PDF/MOBI/TXT/online novels. PDFs support high
 ---
 
 ## 📝 Latest Updates
+
+## v2.8.2 (2026-11-19)
+
+### Added
+
+- Bookshelf search now covers the whole shelf: searching inside a group no longer stays in that group, and group names, titles, authors, tags, file names and paths, status, format and metadata (publisher / ISBN / description) all match; words are split on spaces and all must hit, matching groups themselves show up as results, and the compact view no longer hides matched books that live inside a group.
+- Grid cover status is now an edge-bleeding watermark: reading / finished / unread sits on the bottom-right corner, scales with the cover, and gets a tilted, softly blurred, haloed look with a fuzzy feel instead of a misaligned badge.
+
 
 ## v2.8.1 (2026-11-19)
 

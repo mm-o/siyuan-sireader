@@ -254,7 +254,7 @@ const groupPanelCover = computed(() => {
   if (!editingGroup.value) return ''
   return getGroupCoverUrls(editingGroup.value)[0] || ''
 })
-const viewProps = computed(() => ({ items: displayItems.value, mode: viewMode.value, gridStyle: gridStyle.value, groupCounts: groupCounts.value, statusMap: localizedStatusMap.value, getCoverUrl, getGroupCoverUrls, getProgress, currentGroup: currentGroup.value, currentGroupIsSmart: currentGroupIsSmart.value, selecting: selecting.value, selectedUrls: selectedBookUrls.value, hiddenItems: props.hiddenItems || [], dragEnabled, i18n: props.i18n }))
+const viewProps = computed(() => ({ items: displayItems.value, searching: !!keyword.value.trim(), mode: viewMode.value, gridStyle: gridStyle.value, groupCounts: groupCounts.value, statusMap: localizedStatusMap.value, getCoverUrl, getGroupCoverUrls, getProgress, currentGroup: currentGroup.value, currentGroupIsSmart: currentGroupIsSmart.value, selecting: selecting.value, selectedUrls: selectedBookUrls.value, hiddenItems: props.hiddenItems || [], dragEnabled, i18n: props.i18n }))
 
 const getSortKey = (item: any, type: string) => item.type === 'group'
   ? (type === 'name' ? item.data.name : type === 'time' ? (item.data as any).created || 0 : item.data.order)
@@ -264,7 +264,8 @@ const matchBook = (book: Book, kw = keyword.value.toLowerCase()) => {
   const tokens = kw.split(/\s+/).filter(Boolean)
   if (!tokens.length) return true
   const groupNames = (book.groups || []).map(id => groups.value.find(group => group.id === id)?.name || '')
-  const haystack = [book.title, book.author || '', book.path || '', book.url || '', book.status || '', ...(book.tags || []), ...groupNames].join('\n').toLowerCase()
+  const meta = Object.values((book as any).meta || {}).filter(value => typeof value === 'string')
+  const haystack = [book.title, book.author || '', book.path || '', book.url || '', book.status || '', (book as any).format || '', ...(book.tags || []), ...groupNames, ...meta].join('\n').toLowerCase()
   return tokens.every(token => haystack.includes(token))
 }
 
@@ -376,7 +377,8 @@ const refreshGroups = async () => { const { groups: nextGroups, counts } = await
 const readBooks = async (group = currentGroup.value) => {
   // 有关键词就搜全库：分组内的搜索不再只搜组内
   const scope = keyword.value.trim() ? null : group
-  const state = await bookshelfManager.getBookshelfState({ currentGroup: scope, keyword: keyword.value, sortBy: sortType.value, reverse: sortReverse.value, status: filterStatus.value, rating: filterRating.value, formats: filterFormats.value, tags: filterTags.value })
+  // 关键词由 displayItems 里的 matchBook 处理（分词 AND、跨分组、含分组名/路径/元数据），这里只负责范围和排序
+  const state = await bookshelfManager.getBookshelfState({ currentGroup: scope, keyword: '', sortBy: sortType.value, reverse: sortReverse.value, status: filterStatus.value, rating: filterRating.value, formats: filterFormats.value, tags: filterTags.value })
   books.value = state.books
   stats.value = state.stats
   groups.value = state.groups
