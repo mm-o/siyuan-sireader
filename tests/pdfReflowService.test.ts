@@ -5,7 +5,7 @@ const storage = vi.hoisted(() => ({ upsertEmbedPdfAnnotation: vi.fn(async () => 
 vi.mock('@/core/storage', () => storage)
 const bridge = vi.hoisted(() => ({ open: vi.fn(async () => {}), page: vi.fn(async () => ({ pageIndex: 0, ocr: false, blocks: [{ text: '正文', spans: [] }] })), ocr: vi.fn(async () => ({ pageIndex: 0, ocr: true, blocks: [{ text: '重新识别' }] })), begin: vi.fn(async () => {}), append: vi.fn(async () => {}), finish: vi.fn(async () => ({ buffer: new ArrayBuffer(4), pageMap: [0], annotationMap: [] })), dispose: vi.fn() }))
 vi.mock('@/core/diagnostics', () => ({ diagnosticLog: vi.fn() }))
-import { recognizePdfPage, createPdfReflowSession, synchronizeReflowAnnotation } from '../src/services/pdfReflow'
+import { recognizePdfPage, createPdfReflowSession, createReflowController, reflowLayoutFor, reflowWindowRange, synchronizeReflowAnnotation } from '../src/services/pdfReflow'
 import { projectReflowAnnotation } from '../src/core/pdfReflow'
 // Exercise RPC and generation together; only the browser transport is substituted.
 let transport: any
@@ -57,6 +57,61 @@ test('failed and aborted OCR requests clean up their image and propagate errors'
   files.putFile.mockImplementationOnce(async () => { controller.abort() })
   await expect(recognizePdfPage(png(), controller.signal)).rejects.toMatchObject({ name: 'AbortError' })
   expect(files.removeFile).toHaveBeenCalledTimes(2)
+})
+
+test('按需重排窗口按给定页数取相邻页并夹在首尾之内', () => {
+  expect(reflowWindowRange(0, 10, 3)).toEqual({ from: 0, to: 2 })
+  expect(reflowWindowRange(5, 10, 3)).toEqual({ from: 4, to: 6 })
+  expect(reflowWindowRange(9, 10, 3)).toEqual({ from: 7, to: 9 })
+  expect(reflowWindowRange(3, 2, 3)).toEqual({ from: 0, to: 1 })
+  expect(reflowWindowRange(0, 1, 3)).toEqual({ from: 0, to: 0 })
+  // 默认 12 页窗口以当前页为中心
+  expect(reflowWindowRange(20, 100)).toEqual({ from: 14, to: 25 })
+})
+
+test('重排版式夹在安全区间内', () => {
+  // 0/未测量时回落默认值，过小的有效值才夹到下限
+  expect(reflowLayoutFor(0, 0, 0)).toEqual({ width: 480, height: 720, fontSize: 18 })
+  expect(reflowLayoutFor(100, 100, 5)).toEqual({ width: 240, height: 400, fontSize: 12 })
+  expect(reflowLayoutFor(9999, 9999, 99)).toEqual({ width: 720, height: 960, fontSize: 32 })
+  expect(reflowLayoutFor(480, 720, 18)).toEqual({ width: 480, height: 720, fontSize: 18 })
+})
+
+
+const makeController = (overrides: Record<string, any> = {}) => {
+  const calls: string[] = []
+  const opened: { id: string; bytes: any }[] = []
+  const controller = createReflowController({
+    scoped: (name: string) => name === 'stage' ? { getCurrentPageIndex: () => 0, getZoomMode: () => 'fit-width', getZoomLevel: () => 1 } : { canCopy: () => true },
+    documentId: () => 'doc-1',
+    signal: () => new AbortController().signal,
+    setStatus: () => {},
+    label: (_key: string, fallback: string) => fallback,
+    layout: () => ({ width: 480, height: 720, fontSize: 18 }),
+    canCopy: () => true,
+    openPdf: async () => ({ pages: { list: async () => ({ pages: Array.from({ length: 10 }, () => ({ ref: {}, size: { width: 200, height: 300 } })) }) }, close: async () => {} }),
+    attach: async (_id: string, _signal: AbortSignal, target: number) => { calls.push('attach:' + target) },
+    writeManaged: async () => { calls.push('write') },
+    ensureEngine: async () => { calls.push('engine') },
+    onFailure: (error: any) => { calls.push('failure:' + (error?.message || error)) },
+    documents: () => ({
+      download: async () => new Uint8Array([1, 2, 3]).buffer,
+      open: async (input: any) => { opened.push({ id: input.id, bytes: input.bytes }); return { document: { status: 'ready' } } },
+      setActive: () => {}, close: async () => {}, forDocument: () => ({ get: () => ({ zoomTo: () => {} }) }),
+    }),
+    flush: async () => {},
+    ...overrides,
+  })
+  return { controller, calls, opened }
+}
+
+test('按需重排控制器：失败只上报不抛出，状态保持可用', async () => {
+  // node 环境没有 Worker，真实会话会失败——正好覆盖错误冒泡与状态复位
+  const { controller, calls } = makeController()
+  await controller.toggle()
+  expect(calls.some(call => call.startsWith('failure:'))).toBe(true)
+  expect(controller.isActive()).toBe(false)
+  controller.reset()
 })
 
 test('PDF extraction restrictions cannot be bypassed through OCR', () => {

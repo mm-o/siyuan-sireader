@@ -1,4 +1,4 @@
-﻿minimumReleaseAgeExclude:
+minimumReleaseAgeExclude:
   - '@embedpdf/core-acrojs@3.2.0'
   - '@embedpdf/core-annotation@3.2.0'
   - '@embedpdf/core-fonts@3.2.0'
@@ -51,5 +51,5 @@
   - '@embedpdf/default-fallback-fonts@1.0.1'
   - '@embedpdf/default-signature-fonts@1.0.1'
 patchedDependencies:
+  '@embedpdf/viewer@3.2.0': patches/@embedpdf__viewer@3.2.0.patch
   foliate-js@0.0.0: patches/foliate-js@0.0.0.patch
-

@@ -1,4 +1,6 @@
 {
+  "sourcePage": "原书页",
+  "exportReflow": "导出重排 PDF",
   "pdfReflow": "文字重排",
   "pdfReadOnly": "只读模式",
   "pdfImportAnnotations": "导入 PDF 批注",

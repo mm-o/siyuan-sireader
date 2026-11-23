@@ -38,13 +38,6 @@ export async function init(p: Plugin) {
   setPlugin(p)
   installDiagnostics({ plugin: p.name, version: (p as any).version || '', frontend: (p as any).platform || '' })
   diagnosticLog('info', 'plugin.init.start', { plugin: p.name })
-  // Finish recovery before mounting readers; sync notifications never trigger it.
-  // Legacy SQLite storage (reader.db from v0.9.x ~ v1.2.x) must be imported first,
-  // otherwise an upgraded user sees an empty bookshelf with no clue.
-  await migrateLegacyDatabase(p)
-  // 支持手动补导：控制台执行 await sireaderImportLegacyDatabase()（比如用户又补了一份更全的 reader.db）
-  ;(window as any).sireaderImportLegacyDatabase = () => migrateLegacyDatabase(p, { force: true })
-  await recoverBackupRecords()
   initDictModule(p)
   initMobile(p)
 
@@ -56,8 +49,19 @@ export async function init(p: Plugin) {
   registerReaderIcons(p)
   app = createApp(App)
   app.mount(div)
-  resolveAppReady()
-  diagnosticLog('info', 'plugin.init.done', { plugin: p.name })
+  diagnosticLog('info', 'plugin.init.ui-mounted', { plugin: p.name })
+  ;(window as any).sireaderImportLegacyDatabase = () => migrateLegacyDatabase(p, { force: true })
+  void (async () => {
+    try {
+      await migrateLegacyDatabase(p)
+      await recoverBackupRecords()
+      diagnosticLog('info', 'plugin.init.maintenance-done', { plugin: p.name })
+    } catch (error: any) {
+      diagnosticLog('error', 'plugin.init.maintenance-failed', { message: error?.message || String(error) })
+    } finally {
+      resolveAppReady()
+    }
+  })()
 }
 
 export async function destroy() {

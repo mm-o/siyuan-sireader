@@ -183,7 +183,8 @@ const appendToNoteDoc = async (title: string, settings: ReaderSettings, text: st
       await bookshelfManager.updateBook(bookUrl, { bindDocId: id, bindDocName })
     }
   }
-  return api.appendBlock('markdown', text, id)
+  const { appendBlockWithRetry } = await import('@/utils/copy')
+  return appendBlockWithRetry(text, id)
 }
 const insertDailyNote = async (settings: ReaderSettings, text: string) => {
   const notebook = getNotebookId(settings)
@@ -205,6 +206,8 @@ export const insertNote = async (text: string, settings: ReaderSettings, title =
     document: () => appendToNoteDoc(title, settings, text, `book:${key}`, pickId(settings.parentDoc)),
     dailynote: () => insertDailyNote(settings, text),
   }[target] || (() => navigator.clipboard.writeText(text)))()
+  // 写入失败时 appendBlock 返回 null：不提示成功，把结果交给调用方判断。
+  if (!result && target !== 'current') return result
   showMessage('已插入笔记', 1500, 'info')
   return result
 }

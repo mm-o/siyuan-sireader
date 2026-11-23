@@ -3,6 +3,7 @@
     <div ref="host" class="embed-pdf-reader__host" :class="{ 'hide-pdf-toolbar': toolbarHidden }"
       @pointermove.capture="rememberPointer" @pointerleave="clearHover" @pointerdown="clearHover"></div>
     <div v-if="status" class="embed-pdf-reader__status">{{ status }}</div>
+    <div v-else-if="sourcePage" class="embed-pdf-reader__source-page">{{ i18n?.sourcePage || '原书页' }} {{ sourcePage }}<template v-if="sourceTotal"> / {{ sourceTotal }}</template></div>
     <input ref="pdfImport" type="file" hidden @change="importPdfData">
     <Teleport to="body">
       <div ref="noteTooltip" class="embed-pdf-reader__note" role="tooltip"></div>
@@ -13,6 +14,7 @@
 <script setup lang="ts">
 import { computed, createApp, onBeforeUnmount, ref, watch } from 'vue'
 import { Dialog, showMessage } from 'siyuan'
+import { putFile } from '@/api'
 import { bookshelfManager } from '@/core/bookshelf'
 import { alignLegacyPdfAnnotations, needsLegacyPdfTextAlign } from '@/core/dataMigration'
 import { createLatestSaver, deleteEmbedPdfAnnotation, readEmbedPdfAnnotations, readEmbedPdfProgress, trackPending, upsertEmbedPdfAnnotation, writeEmbedPdfProgress, writeManagedFile } from '@/core/storage'
@@ -25,15 +27,52 @@ import { isMobile } from '@/utils/mobile'
 import { capturePdfAnnotationImage, initEmbedPdfViewer, legacyPdfDraft, makePdfSelectionMark, openPdf, pdfAnnotationColor, pdfAnnotationRecord, pdfAnnotationResource, pdfAnnotationSubtype, pdfAnnotationToolOptions, pdfAnnotationTransfer, pdfMarkFromAnnotation, pdfBox, sendPdfMarkToDoc } from '@/utils/embedPdfActions'
 import { settingsManager, type ReaderSettings, type ReadTheme } from '@/composables/useSetting'
 import { readerIconPaths } from '@/utils/icon'
-import { createPdfReflowSession, synchronizeReflowAnnotation } from '@/services/pdfReflow'
+import { createReflowController, reflowLayoutFor, synchronizeReflowAnnotation } from '@/services/pdfReflow'
+import { ensureRuntime, MUPDF_FILES } from '@/services/runtimeAssets'
 import type { ReflowDocument } from '@/core/pdfReflow'
 import { pdfQuickSendCommandId, pdfViewerCommand } from '@/utils/keyboard'
 import Translate from './Translate.vue'
+
+// 上游字体链是 --epdf-font: var(--embedpdf-host-font, 西文字体…)；CSS 变量能穿透 shadow 边界，
+// 在宿主元素上换成中文字体栈，文本框里的中文才不会渲染成方框。
+const PDF_FONT_STACK = 'ui-sans-serif, system-ui, "Noto Sans SC", "PingFang SC", "Microsoft YaHei", "Source Han Sans SC", sans-serif'
+const insidePdfViewer = (node: any) => {
+  let current = node
+  for (let i = 0; current && i < 40; i++) {
+    if (String(current.tagName || '').toLowerCase().startsWith('embedpdf')) return true
+    const root = current.getRootNode?.()
+    current = root instanceof ShadowRoot ? root.host : current.parentElement
+  }
+  return false
+}
+if (typeof Element !== 'undefined' && !(Element.prototype as any).__sireaderScrollHook) {
+  // 上游注释面板跳转写死了 smooth；只把阅读器自己的 shadow 树改成瞬时，外层页面不受影响。
+  const instant = (arg: any) => typeof arg === 'object' && arg ? { ...arg, behavior: 'instant' } : arg
+  const patch = (name: 'scrollIntoView' | 'scrollTo' | 'scrollBy') => {
+    const native = Element.prototype[name] as any
+    Element.prototype[name] = function (this: Element, ...args: any[]) {
+      return native.apply(this, insidePdfViewer(this) ? args.map(instant) : args)
+    } as any
+  }
+  ;(Element.prototype as any).__sireaderScrollHook = true
+  for (const name of ['scrollIntoView', 'scrollTo', 'scrollBy'] as const) patch(name)
+}
 
 const props = defineProps<{ source: File | string | null; settings?: ReaderSettings; theme?: string; customTheme?: ReadTheme; bookUrl?: string; storageKey?: string; i18n?: any; onAnnotationPersisted?: (event: any) => void }>()
 const emit = defineEmits<{ ready: [viewer: any, context: { documentId: string; bookUrl: string; storageKey: string }]; 'read-only': [value: boolean]; detached: [] }>()
 const host = ref<HTMLElement>()
 const status = ref('')
+// 重排态：底部显示"原始书页"，避免和重排后的窗口页码混淆
+const sourcePage = ref(0)
+const sourceTotal = ref(0)
+const refreshSourcePage = () => {
+  const current = reflowResult()
+  if (!current) { sourcePage.value = 0; sourceTotal.value = 0; return }
+  const stage = scoped('stage')
+  const output = stage ? stage.getCurrentPageIndex() : 0
+  sourcePage.value = (current.pageMap[output] ?? current.pageMap[0] ?? 0) + 1
+  sourceTotal.value = current.sourcePageCount
+}
 const toolbarHidden = ref(false)
 const readOnly = ref(false)
 // 上游 afterCreate 是整份文档的设置；这里以本地状态为准，避免依赖它自己的激活链路。
@@ -47,7 +86,6 @@ let pointer: PointerEvent | undefined
 const rememberPointer = (event: PointerEvent) => { pointer = event.pointerType === 'mouse' ? event : undefined }
 const clearHover = () => { if (noteTooltip.value) noteTooltip.value.style.display = 'none' }
 const sourceKey = () => props.storageKey || props.bookUrl || ''
-const scrollBehavior = () => props.settings?.pageAnimation === 'push' ? 'instant' : 'smooth'
 const zoom = () => {
   const value = props.settings?.pdfZoomLevel
   return typeof value === 'number' && value > 0 ? { level: value } : { mode: typeof value === 'string' ? value : 'fit-width' }
@@ -73,8 +111,7 @@ const stopRestore = () => {
   for (const timer of restoreTimers) clearTimeout(timer)
   restoreTimers.clear()
 }
-let reflow: (ReflowDocument & { url: string; name: string; original: Uint8Array; sourcePageCount: number }) | undefined
-let inReflow = false
+// 按需重排：一次只排 3 页（当前页 ±1），滑到窗口边缘再续排并拼进同一个 PDF。
 
 const scoped = (name: string) => viewer?.forDocument(documentId).tryGet(name)
 const annotationId = (annotation: any) => annotation.nm || JSON.stringify(annotation.ref)
@@ -186,7 +223,7 @@ async function changeMetadata(annotation: any, updates: any) {
   if (!record) return
   record.custom = { ...record.custom, ...updates }
   metadata.set(record.id, record.custom)
-  const generated = inReflow ? reflow : undefined
+  const generated = reflowResult()
   const originalKey = sourceKey()
   const key = generated?.url || originalKey
   if (key) {
@@ -320,7 +357,7 @@ async function attachDocument(id: string, signal: AbortSignal, targetPage?: numb
   const stage = scoped('stage')
   const annotation = scoped('annotation')
   const render = scoped('render')
-  const generated = inReflow ? reflow : undefined
+  const generated = reflowResult()
   const bookUrl = generated?.url || props.bookUrl || ''
   const key = generated?.url || sourceKey()
   const nativeIds = await restoreAnnotations(annotation, key, bookUrl, signal)
@@ -357,14 +394,22 @@ async function attachDocument(id: string, signal: AbortSignal, targetPage?: numb
   }, 500)
   // 3.x 的注解不再带选区文字（2.x 有 annotation.text）；侧栏和复制模板读 custom.text，创建时补一次刚才的选区。
   const quoteSubtypes = ['highlight', 'underline', 'squiggly', 'strikeout', 'text']
-  let quoted = ''
-  const rememberSelection = () => { void scoped('selection')?.readText?.().then(text => { quoted = text || quoted }, () => {}) }
+  let quoted = { text: '', at: 0 }
+  const captureQuote = () => {
+    void Promise.resolve(scoped('selection')?.readText?.()).then((text: any) => {
+      const value = String(text || '').trim()
+      if (value && value !== quoted.text) quoted = { text: value, at: Date.now() }
+    }, () => { })
+  }
+  // 选区一变就先记下来：顶部「注释」直接画标注时不会再发 onCommitted，只有 onChanged 靠得住。
+  const rememberSelection = () => setTimeout(captureQuote, 60)
+  const quoteAlive = () => !!quoted.text && Date.now() - quoted.at < 60000
   const recordsByRef = new Map(annotation.list().map((item: any) => [JSON.stringify(item.ref), recordOf(item)]))
   const changed = (type: 'create' | 'update', native: any) => {
     const record = recordOf(native)
-    if (record && type === 'create' && quoted && !record.custom?.text && quoteSubtypes.includes(native.subtype)) {
-      metadata.set(record.id, record.custom = { ...record.custom, text: quoted })
-      quoted = ''
+    if (record && type === 'create' && !record.custom?.text && quoteAlive() && quoteSubtypes.includes(native.subtype)) {
+      metadata.set(record.id, record.custom = { ...record.custom, text: quoted.text })
+      quoted = { text: '', at: 0 }
     }
     recordsByRef.set(JSON.stringify(native.ref), record)
     if (!key || !record || nativeIds.has(record.id)) return
@@ -398,7 +443,11 @@ async function attachDocument(id: string, signal: AbortSignal, targetPage?: numb
       noteTooltip.value.textContent = text
       showTooltip(noteTooltip.value, pointer.clientX + 12, pointer.clientY + 12)
     }),
-    stage.onPageChanged(() => { if (restoring === null) save.schedule(stage.getCurrentPageIndex()) }),
+    stage.onPageChanged(() => {
+      if (restoring === null) save.schedule(stage.getCurrentPageIndex())
+      refreshSourcePage()
+      ensureReflow().extend()
+    }),
     stage.onZoomChanged(({ mode, level }: any) => {
       const value = mode === 'custom' ? level : mode
       if (value !== 'automatic' && value !== 'fit-page' && value !== 'fit-width' && typeof value !== 'number') return
@@ -432,6 +481,8 @@ async function attachDocument(id: string, signal: AbortSignal, targetPage?: numb
     annotation.tools.onDefaultsChanged(({ toolId, defaults }: any) => {
       void settingsManager.patch({ pdfAnnotationToolDefaults: { ...props.settings?.pdfAnnotationToolDefaults, [toolId]: defaults } }).catch(onFailure)
     }),
+    // onChanged 在拖选过程中就会触发，是顶部工具画标注时唯一能拿到原文的时机。
+    scoped('selection')?.onChanged?.(rememberSelection),
     scoped('selection')?.onCommitted?.(rememberSelection),
     // 上游只放行 http/https/mailto/tel；思源块链接（siyuan://blocks/… 或裸块 id）由这里接管，打开并定位到块。
     scoped('link')?.registerUriOpener?.((uri: string) => {
@@ -477,67 +528,42 @@ async function attachDocument(id: string, signal: AbortSignal, targetPage?: numb
   emit('ready', viewer, { documentId: id, bookUrl, storageKey: key })
 }
 
-async function toggleReflow() {
-  if (switching || !session || !documentId) return
-  switching = true
-  const signal = session.signal
-  const activeViewer = viewer
-  const previousId = documentId
-  const stage = scoped('stage')
-  const index = stage.getCurrentPageIndex()
-  status.value = props.i18n?.pdfReflow || 'Text reflow'
-  let nextId = ''
+// 重排流程在 services/pdfReflow 里；这里只提供上下文并转调。
+let reflowController: ReturnType<typeof createReflowController> | undefined
+const ensureReflow = () => reflowController ||= createReflowController({
+  scoped: name => scoped(name),
+  documentId: () => documentId,
+  signal: () => session?.signal || null,
+  setStatus: text => { status.value = text },
+  label: (key, fallback) => (props.i18n as any)?.[key] || fallback,
+  layout: () => reflowLayoutFor(host.value?.clientWidth || 480, host.value?.clientHeight || 720, props.settings?.textSettings?.fontSize || 18),
+  canCopy: () => !!scoped('selection')?.canCopy(),
+  openPdf: bytes => openPdf(bytes),
+  attach: (id, signal, target) => attachDocument(id, signal, target),
+  writeManaged: (blob, url, name) => writeManagedFile(blob, url, name),
+  ensureEngine: () => ensureRuntime('mupdf', MUPDF_FILES),
+  onFailure: error => onFailure(error),
+  documents: () => viewer?.documents,
+  scope: id => viewer?.forDocument(id),
+  flush: () => flushAnnotations(),
+})
+const reflowResult = () => ensureReflow().current()
+const exportReflow = async () => {
+  const current = reflowResult()
+  if (!current) return
   try {
-    await flushAnnotations()
-    const firstReflow = !reflow
-    if (!reflow) {
-      const original = await activeViewer.documents.download(previousId, { signal })
-      const source = await openPdf(original.slice())
-      try {
-        const { pages } = await source.pages.list()
-        const generator = createPdfReflowSession(source, pages, scoped('selection').canCopy(), props.i18n)
-        try {
-          const width = Math.max(240, Math.min(720, host.value?.clientWidth || 480))
-          const generated = await generator.generate(original.slice().buffer, { width, height: Math.max(400, Math.min(960, host.value?.clientHeight || 720)), fontSize: Math.max(12, Math.min(32, props.settings?.textSettings?.fontSize || 18)) }, signal, (page, count) => { status.value = `${props.i18n?.pdfReflow || 'Text reflow'} ${page}/${count}` })
-          const digest = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', generated.buffer))).map(value => value.toString(16).padStart(2, '0')).join('')
-          const name = 'reflow-' + digest + '.pdf'
-          const url = '/public/siyuan-sireader/reflow/' + name
-          await writeManagedFile(new Blob([generated.buffer], { type: 'application/pdf' }), url, name)
-          reflow = { ...generated, url, name, original, sourcePageCount: pages.length }
-        } finally { generator.dispose() }
-      } finally { await source.close() }
-    }
-    signal.throwIfAborted()
-    const generated = reflow
-    const previousMode = inReflow
-    if (!previousMode && !firstReflow) generated.original = await activeViewer.documents.download(previousId, { signal })
-    const next = previousMode ? generated.original : generated.buffer
-    nextId = crypto.randomUUID()
-    const { document } = await activeViewer.documents.open({ kind: 'bytes', bytes: next, id: nextId }, { name: previousMode ? undefined : generated.name, activate: false, signal })
-    if (document.status !== 'ready') throw new Error(props.i18n?.pdfLoadFailed || 'PDF load failed')
-    signal.throwIfAborted()
-    inReflow = !previousMode
-    activeViewer.documents.setActive(nextId)
-    try {
-      const mode = stage.getZoomMode()
-      activeViewer.forDocument(nextId).get('stage').zoomTo(mode === 'custom' ? stage.getZoomLevel() : { mode })
-      const target = previousMode ? generated.pageMap[index] ?? 0 : Math.max(0, generated.pageMap.indexOf(index))
-      await attachDocument(nextId, signal, target)
-    } catch (error) {
-      inReflow = previousMode
-      if (!signal.aborted) {
-        activeViewer.documents.setActive(previousId)
-        await attachDocument(previousId, signal, index)
-      }
-      throw error
-    }
-    await activeViewer.documents.close(previousId)
-  } catch (error) {
-    if (nextId && documentId !== nextId) await activeViewer.documents.close(nextId).catch(() => {})
-    if (!signal.aborted) onFailure(error)
-  } finally {
-    if (!signal.aborted) status.value = ''
-    switching = false
+    const response = await fetch(current.url)
+    if (!response.ok) throw new Error(`重排文件读取失败（HTTP ${response.status}）`)
+    const blob = await response.blob()
+    const name = current.name || `reflow-${Date.now()}.pdf`
+    const path = `/data/assets/${name}`
+    await putFile(path, false, new File([blob], name, { type: 'application/pdf' }))
+    const link = `![](${path.replace('/data/', '')})`
+    await navigator.clipboard?.writeText(link).catch(() => {})
+    showMessage(`已导出到 assets/${name}（链接已复制）`, 3000, 'info')
+    diagnosticLog('info', 'pdf.reflow.export', { name, bytes: blob.size })
+  } catch (error: any) {
+    onFailure(error)
   }
 }
 
@@ -561,7 +587,7 @@ function configuration() {
   const send = async (mark: any, id: string) => {
     if (!mark) return
     await sendPdfMarkToDoc(mark, id, {
-      bookUrl: inReflow ? reflow?.url : props.bookUrl,
+      bookUrl: reflowController?.current()?.url || props.bookUrl,
       settings: props.settings, i18n: props.i18n,
       marks: { updateMark: (item: any, updates: any) => {
         const target = annotationById(item.id)
@@ -585,7 +611,8 @@ function configuration() {
     return !!items?.length && items.every((item: any) => item.subtype === 'redact')
   }
   const commands = [
-    { ...command('pdf-reflow', props.i18n?.pdfReflow || 'Text reflow', 'text', toggleReflow), active: () => inReflow },
+    { ...command('pdf-reflow', props.i18n?.pdfReflow || 'Text reflow', 'text', () => ensureReflow().toggle()), active: () => !!reflowController?.isActive() },
+    { ...command('export-reflow', props.i18n?.exportReflow || '导出重排 PDF', 'download', exportReflow), visible: () => !!reflowController?.isActive() },
     command('dict-selection', props.i18n?.dict || 'Dictionary', 'book', async () => dict(await selectionMark())),
     command('dict-annotation', props.i18n?.dict || 'Dictionary', 'book', () => dict(annotationMark())),
     command('translate-selection', props.i18n?.translate || 'Translate', 'languages', async () => {
@@ -624,7 +651,7 @@ function configuration() {
     command('copy-annotation-link', props.i18n?.copyBacklink || 'Copy annotation link', 'copy', async () => {
       const mark = await annotationImageMark()
       if (mark) {
-        await copyMark(mark, { bookUrl: inReflow ? reflow?.url : props.bookUrl, isPdf: true, settings: { ...props.settings, noteInsertTarget: 'clipboard' }, showMsg: (text: string) => showMessage(text) } as any)
+        await copyMark(mark, { bookUrl: reflowResult()?.url || props.bookUrl, isPdf: true, settings: { ...props.settings, noteInsertTarget: 'clipboard' }, showMsg: (text: string) => showMessage(text) } as any)
       }
     }),
     {
@@ -698,7 +725,7 @@ function configuration() {
     readOnly: readOnly.value,
     features: { ...pdfFeatures, 'documents.open': false },
     plugins: {
-      stage: { zoom: zoom(), scrollBehavior: scrollBehavior(), scrollChaining: false },
+      stage: { zoom: zoom(), scrollBehavior: 'instant', scrollChaining: false },
       // 底图预算 640 太小：大尺寸扫描页放大后全靠瓦片补锐，瓦片没覆盖到的地方会一直发虚。
       render: { snapshot: { scale: 2 }, fullPage: { maxWidth: Number(props.settings?.pdfRenderMaxWidth) || 640 } },
       annotation: {
@@ -710,6 +737,7 @@ function configuration() {
     layout: (layout: any) => {
       let result = layout
         .add('sireader:pdf-reflow', { to: 'main' })
+        .add('sireader:export-reflow', { to: 'document' })
         .add({ custom: 'view-only' }, { to: 'main' })
         .place('pager', { float: 'bottom', hideWhenIdle: false })
         .add('sireader:toc', { to: 'pager' })
@@ -749,8 +777,8 @@ watch([host, () => props.source], async ([target, source], _, onCleanup) => {
     element = viewer = undefined
     documentId = ''
     initialDocumentId = ''
-    inReflow = false
-    reflow = undefined
+    reflowController?.reset()
+    reflowController = undefined
   })
   status.value = ''
   try {
@@ -796,13 +824,23 @@ watch([host, () => props.source], async ([target, source], _, onCleanup) => {
     if (signal.aborted) next.remove()
     else {
       element = next
+      // 中文字体必须落在宿主上（变量会继承进 shadow），否则文本框里的中文是方框。
+      next.style.setProperty('--embedpdf-host-font', PDF_FONT_STACK)
       if (documentId) element.features = pdfFeatures
       // 上游评论/笔记输入框不判断输入法组合态，回车确认候选词会被当成提交；组合期间拦在本层，不进上游。
       const guardIme = (event: KeyboardEvent) => {
         if (event.isComposing || event.keyCode === 229) event.stopPropagation()
       }
-      ;(next.shadowRoot ?? next).addEventListener('keydown', guardIme, true)
-      onCleanup(() => (next.shadowRoot ?? next).removeEventListener('keydown', guardIme, true))
+      const shadow = next.shadowRoot ?? next
+      shadow.addEventListener('keydown', guardIme, true)
+      // 键盘选择（shift+方向键）不触发选区事件，靠这两个原生监听兜底。
+      document.addEventListener('pointerup', rememberSelection, true)
+      document.addEventListener('keyup', rememberSelection, true)
+      onCleanup(() => {
+        document.removeEventListener('pointerup', rememberSelection, true)
+        document.removeEventListener('keyup', rememberSelection, true)
+        shadow.removeEventListener('keydown', guardIme, true)
+      })
     }
   } catch (error: any) {
     if (!signal.aborted) status.value = error?.message || 'PDF load failed'
@@ -811,14 +849,17 @@ watch([host, () => props.source], async ([target, source], _, onCleanup) => {
 
 watch(() => [props.theme, props.customTheme], () => { if (element) element.theme = theme() }, { deep: true })
 watch(appState, value => { if (element) element.appState = value }, { deep: true })
-watch(scrollBehavior, value => scoped('stage')?.updateSettings({ scrollBehavior: value }))
 onBeforeUnmount(() => session?.abort())
 defineExpose({ flushAnnotations, annotationActions, executeCommand, stopRestore })
 </script>
 
 <style scoped>
 .embed-pdf-reader,.embed-pdf-reader__host{position:relative;width:100%;height:100%}
-.embed-pdf-reader__status{position:absolute;inset:0;display:grid;place-items:center;background:var(--b3-theme-background);color:var(--b3-theme-on-surface)}
+.embed-pdf-reader__status{position:absolute;left:50%;top:18px;transform:translateX(-50%);z-index:30;display:flex;align-items:center;gap:8px;padding:8px 14px;border-radius:999px;border:1px solid var(--b3-border-color);background:color-mix(in srgb,var(--b3-theme-surface) 94%,transparent);box-shadow:0 6px 18px #0000002e;color:var(--b3-theme-on-surface);font-size:13px;line-height:1.2;pointer-events:none;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
+.embed-pdf-reader__status::before{content:'';width:14px;height:14px;flex:0 0 14px;border-radius:50%;border:2px solid color-mix(in srgb,var(--b3-theme-primary) 30%,transparent);border-top-color:var(--b3-theme-primary);animation:sireader-spin .8s linear infinite}
+@keyframes sireader-spin{to{transform:rotate(360deg)}}
+.embed-pdf-reader__source-page{position:absolute;left:50%;bottom:8px;transform:translateX(-50%);z-index:29;padding:4px 10px;border-radius:999px;border:1px solid var(--b3-border-color);background:color-mix(in srgb,var(--b3-theme-surface) 92%,transparent);color:var(--b3-theme-on-surface);font-size:12px;line-height:1.2;font-variant-numeric:tabular-nums;pointer-events:none;box-shadow:0 2px 8px #00000024}
+@media (prefers-reduced-motion:reduce){.embed-pdf-reader__status::before{animation:none}}
 .hide-pdf-toolbar :deep(embedpdf-viewer::part(toolbar-main)),
 .hide-pdf-toolbar :deep(embedpdf-viewer::part(toolbar-annotate)),
 .hide-pdf-toolbar :deep(embedpdf-viewer::part(toolbar-shapes)),

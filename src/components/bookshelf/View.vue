@@ -495,7 +495,8 @@ const tagStyle = (tag: string) => {
 .bs-grid-item:hover .bs-cover img{transform:scale(1.04)}
 /* 毛玻璃边缘：一层极淡的渐变高光 + 内描边，让封面边界从“糊”变成“有边” */
 .bs-cover::after,.bs-row__cover::after{content:'';position:absolute;inset:0;border-radius:inherit;pointer-events:none;box-shadow:inset 0 0 0 1px rgba(255,255,255,.14);background:linear-gradient(180deg,rgba(255,255,255,.10),rgba(255,255,255,0) 34%)}
-.bs-cover img,.bs-row__cover img{display:block;width:100%;height:100%;object-fit:cover;background:inherit;border-radius:inherit;animation:bs-cover-fade .18s ease;transition:transform .2s ease;transform-origin:center;will-change:transform}
+.bs-cover img,.bs-row__cover img{display:block;width:100%;height:100%;object-fit:cover;background:inherit;border-radius:inherit;animation:bs-cover-fade .18s ease;transition:transform .2s ease;transform-origin:center}
+.bs-grid-item:hover .bs-cover img{will-change:transform}
 .bs-group-cover{display:grid;grid-template-columns:repeat(2,1fr);grid-template-rows:repeat(2,1fr);width:100%;height:100%;gap:1px;background:var(--b3-border-color);border-radius:inherit;overflow:hidden}
 .bs-spine-cover{position:relative;width:100%;height:100%;overflow:hidden;border-radius:inherit;background:linear-gradient(90deg,#4b5563 0 16%,var(--b3-theme-surface-lighter) 16%)}
 .bs-spine-cover img{width:84%;height:100%;margin-left:16%;object-fit:cover}
@@ -506,9 +507,9 @@ const tagStyle = (tag: string) => {
 .bs-badge{position:absolute;z-index:1;padding:3px 6px;border-radius:999px;background:color-mix(in srgb,var(--b3-theme-background) 52%,transparent);-webkit-backdrop-filter:blur(12px) saturate(160%);backdrop-filter:blur(12px) saturate(160%);box-shadow:inset 0 0 0 1px rgba(255,255,255,.22),0 1px 3px rgba(0,0,0,.16);font-size:10px;line-height:1;font-weight:600;color:var(--b3-theme-on-background)}
 .bs-badge--left{top:6px;left:6px}.bs-badge--right{top:6px;right:6px}.bs-badge--bottom{left:6px;bottom:6px}
 .bs-cover .bs-tags{position:absolute;top:6px;left:6px;right:28px;z-index:1}
-.bs-stamp{position:absolute;right:-.22em;bottom:-.14em;font-size:clamp(38px,42%,72px);font-weight:900;line-height:.8;letter-spacing:-.03em;opacity:.7;pointer-events:none;transform:rotate(-8deg);transform-origin:100% 100%;filter:blur(.4px);-webkit-filter:blur(.4px);text-shadow:0 0 1px currentColor,0 0 7px color-mix(in srgb,currentColor 55%,transparent),0 0 16px color-mix(in srgb,currentColor 28%,transparent),0 1px 0 rgba(255,255,255,.16)}
+.bs-stamp{position:absolute;right:-.22em;bottom:-.14em;font-size:clamp(38px,42%,72px);font-weight:900;line-height:.8;letter-spacing:-.03em;opacity:.7;pointer-events:none;transform:rotate(-8deg);transform-origin:100% 100%;filter:blur(.4px);text-shadow:0 0 1px currentColor,0 0 7px color-mix(in srgb,currentColor 55%,transparent),0 0 16px color-mix(in srgb,currentColor 28%,transparent),0 1px 0 rgba(255,255,255,.16)}
 @media (prefers-reduced-motion:no-preference){.bs-stamp{transition:opacity .18s ease}.bs-grid-item:hover .bs-stamp{opacity:.82}}
-.bs-stamp--group{inset:auto 6px 6px auto;display:inline-block;padding:3px 6px;border-radius:999px;background:color-mix(in srgb,var(--b3-theme-background) 78%,transparent);box-shadow:0 1px 3px rgba(0,0,0,.16);color:var(--b3-theme-on-surface);font-size:10px;font-weight:600;letter-spacing:0;text-indent:0;opacity:1}
+.bs-stamp--group{inset:auto 6px 6px auto;display:inline-block;padding:3px 6px;border-radius:999px;background:color-mix(in srgb,var(--b3-theme-background) 78%,transparent);box-shadow:0 1px 3px rgba(0,0,0,.16);color:var(--b3-theme-on-surface);font-size:10px;font-weight:600;letter-spacing:0;opacity:1}
 .bs-stamp--unread{color:#f59e0b}
 .bs-stamp--reading{color:var(--b3-theme-primary)}
 .bs-stamp--finished{color:var(--b3-card-success-color,#2aa775)}

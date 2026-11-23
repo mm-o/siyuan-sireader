@@ -230,7 +230,7 @@ export default defineConfig(({
       vue(),
       viteStaticCopy({
         targets: [
-          { src: ['./node_modules/mupdf/dist/mupdf.js', './node_modules/mupdf/dist/mupdf-wasm.js', './node_modules/mupdf/dist/mupdf-wasm.wasm'], dest: './mupdf/' },
+          // MuPDF / sherpa-onnx 的 wasm 合计约 24 MB，改为首次使用时下载到 public/runtime（这里只留 LICENSE 合规文件）。
           { src: './node_modules/mupdf/LICENSE', dest: './mupdf/' },
           { src: ['./THIRD_PARTY_NOTICES.md', './LICENSE'], dest: './' },
           { src: './src/vendor/scribe-layout', dest: './sources/' },
@@ -264,10 +264,6 @@ export default defineConfig(({
           {
             src: "./node_modules/sql.js/dist/sql-wasm-inline.js",
             dest: "./legacy/",
-          },
-          {
-            src: "./src/libs/sherpa-onnx/sherpa-onnx.wasm",
-            dest: "./sherpa-onnx/",
           },
         ],
       }),

@@ -7,7 +7,7 @@
 Transform SiYuan Notes into a professional eBook reader  
 Professional eBook reader for EPUB/PDF/MOBI/TXT/online novels. PDFs support highlights, ink, shapes, forms, stamps, signatures, images, screenshots, search, printing, export, and backlinks, with annotation notes, dictionary, translation, themes, and bookshelf management.
 
-[![Version](https://img.shields.io/badge/version-2.8.2-blue.svg)](https://github.com/mm-o/siyuan-sireader)
+[![Version](https://img.shields.io/badge/version-2.8.3-blue.svg)](https://github.com/mm-o/siyuan-sireader)
 [![License](https://img.shields.io/badge/license-MIT%20%2B%20AGPL-green.svg)](LICENSE)
 [![SiYuan](https://img.shields.io/badge/SiYuan-3.0+-orange.svg)](https://github.com/siyuan-note/siyuan)
 
@@ -19,6 +19,29 @@ Professional eBook reader for EPUB/PDF/MOBI/TXT/online novels. PDFs support high
 
 ## 📝 Latest Updates
 
+## v2.8.3 (2026-11-23)
+
+### Fixed
+
+- Faster startup: the dock and top-bar icons no longer appear later than other plugins, because data checks now run in the background instead of holding up the UI. Readers still wait for those checks, so upgraded users never see an empty shelf.
+- No more repeated data checks on every startup: already-migrated data is remembered and skipped, and when the shelf has not changed the per-book record check is skipped too, so startup uses less work and finishes sooner.
+- PDF annotations no longer insert duplicates into your note: adding a comment, marking done or not done, editing an annotation, or repeatedly editing a comment used to leave extra blocks behind. One annotation now maps to exactly one block, with comments stacked in order after it.
+- Deleting a PDF annotation now really removes its block: previously the block was re-inserted right away and a `tree not found` error could pop up.
+- Editing an annotation no longer wipes the comments already appended to it: annotation blocks are quotes whose body sits in a child block, and rewriting the whole block used to rebuild that child too.
+- Editing a comment no longer adds a second one: each comment remembers its own block, so an edit changes just that line.
+- Marking done or not done only changes the status and no longer writes extra text into the note.
+- Highlights and underlines drawn from the top "Annotate" toolbar now carry the selected original text into your note, instead of only the backlink and the word "Annotation".
+- For screenshot annotations with a text comment, the template's text slot keeps the selected original text and the note goes to the note slot, so the two no longer overwrite each other.
+
+### Changed
+
+- Half the install size: the PDF reflow engine (MuPDF) and the offline speech engine are no longer bundled and are downloaded on first use, taking the install size from about 50 MB down to about 20 MB. Each downloads once when you first use "PDF reflow" or "Offline reading" and is cached locally afterwards, so it still works offline.
+- Removed leftover build files (about 3.3 MB) and runtime files that are no longer used, leaving a cleaner plugin folder.
+- Chinese text in PDF text boxes no longer renders as empty squares: the font chain inside the viewer now uses a stack with CJK glyphs.
+- The reply box in the annotation sidebar is now a multi-line input you can drag taller, so long comments no longer squeeze into a single line. Enter adds a new line and `Ctrl/Cmd + Enter` sends.
+- Jumping from the right-side annotation panel no longer plays an extra scroll animation and matches the other jumps in the reader.
+- Slimmed down the annotation sync implementation: removed the ineffective content-fingerprint dedupe, a duplicated insert helper, and the whole diagnostic logging chain. The sync path now keeps only four actions: create the block, update it, append a comment, delete it.
+
 ## v2.8.2 (2026-11-19)
 
 ### Added
@@ -26,12 +49,11 @@ Professional eBook reader for EPUB/PDF/MOBI/TXT/online novels. PDFs support high
 - Bookshelf search now covers the whole shelf: searching inside a group no longer stays in that group, and group names, titles, authors, tags, file names and paths, status, format and metadata (publisher / ISBN / description) all match; words are split on spaces and all must hit, matching groups themselves show up as results, and the compact view no longer hides matched books that live inside a group.
 - Grid cover status is now an edge-bleeding watermark: reading / finished / unread sits on the bottom-right corner, scales with the cover, and gets a tilted, softly blurred, haloed look with a fuzzy feel instead of a misaligned badge.
 
-
 ## v2.8.1 (2026-11-19)
 
 ### Fixed
 
-- Fixed the reader's table-of-contents button doing nothing and every jump/settings-sync event being dead
+- Fixed the reader's table-of-contents button doing nothing and page jumps plus settings sync failing at the same time: the reader initialised in the wrong order, so the rest of its setup never ran.
 
 ## v2.8.0 (2026-11-17)
 
@@ -39,13 +61,13 @@ Professional eBook reader for EPUB/PDF/MOBI/TXT/online novels. PDFs support high
 
 - Full-screen button for EPUB and other non-PDF readers: one button to enter and leave full screen, with the icon following the state (PDF keeps its built-in full screen).
 - The translation window is wider (720px, up to 92vw), the source and translation boxes size to their content and can be dragged taller, and the engine picker plus "Add as annotation" stay pinned so the dialog itself never scrolls.
-- New "Page sharpness (scans)" setting for the PDF base image width (five stops: 640 / 1280 / 1920 / 2560 / 3200, default 640, the upstream default). High-resolution scans such as 291 ppi look soft at normal zoom; raising it sharpens them at the cost of per-page bitmap memory, and it applies after reopening the PDF.
+- New "Page sharpness (scans)" setting with five levels, defaulting to the built-in value. High-resolution scans look soft at normal zoom; raising it sharpens them at the cost of memory, and it applies after reopening the PDF.
 
 ### Fixed
 
 - Fixed membership features needing a SiYuan restart after "Recover entitlement": the license state is now shared across the app, so it takes effect immediately.
 - Fixed bookshelf search inside a group only finding that group: any keyword now searches the whole shelf, and group names, author, status, tags, file names and paths all match (space-separated words, all must match).
-- Fixed blurry exported images for shape annotations: exports render at 4 px/pt (~288 dpi) with a 600 px floor for small marks, and polygons (type 7) are included.
+- Fixed blurry exported images for shape annotations: exports now render at about 288 dpi, small marks keep enough pixels, and polygon annotations are included too.
 - Fixed annotation backlinks opening at the last reading position instead of the target page: the jump target now goes through a single-slot handoff consumed once the reader is ready, with "restore last position" cancelled, covering the not-open, already-open and cross-book cases (the timer-based retry polling is gone).
 - Fixed a horizontal scrollbar (the grey bar) appearing under a settings row on hover: the settings list now scrolls vertically only, and the "Note insertion" group uses the same flat row structure as the other groups.
 
@@ -630,6 +652,11 @@ Professional eBook reader for EPUB/PDF/MOBI/TXT/online novels. PDFs support high
 - **Ink Annotation** - Suitable for handwritten notes and highlighting
 - **Shape Annotation** - Rectangle selection, Circle marking, Triangle indication
 - **Toolbar Drag** - Long press toolbar button to drag position
+- **Multi-line Comments** - The reply box in the annotation sidebar is a multi-line input you can drag taller; Enter adds a line, `Ctrl/Cmd + Enter` sends
+- **Selected Text Carried Over** - Highlights and underlines drawn from the top "Annotate" toolbar now sync the selected original text to your note, not just the backlink
+- **One Block per Annotation** - Adding comments, marking done, or editing an annotation updates the same block instead of inserting duplicates; comments stack in order after the annotation
+- **Deleting Removes the Block** - Removing a PDF annotation also removes its synced block; editing an annotation keeps the comments already appended to it
+- **Screenshot Annotations** - For image annotations with a text note, the template's text slot keeps the selected original text and the note goes to the note slot
 
 ---
 

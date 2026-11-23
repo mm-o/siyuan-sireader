@@ -68,6 +68,7 @@ const linePoints = (value: any, box: any) => {
 const isPdfLinkAnnotation = (a: any) => a?.type === 2 && !!(a.action || a.target || a.destination || a.dest || a.url || a.uri || a.href)
 export const isUserEmbedPdfAnnotation = (item: any) => {
   const a = item?.annotation || item
+  if (a?.inReplyToId) return false
   return typeof a?.type === 'number' && !isPdfLinkAnnotation(a) && (a.type !== 2 || !!(a.created || a.modified || a.author || a.custom || String(a.contents || '').trim()))
 }
 const compactPdfRects = (rects: any[] = []) => rects.map(pdfRect).sort((a, b) => a.origin.y - b.origin.y || a.origin.x - b.origin.x).reduce((list: any[], rect) => {

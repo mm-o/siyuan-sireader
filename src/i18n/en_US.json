@@ -1,4 +1,6 @@
 {
+  "sourcePage": "Book page",
+  "exportReflow": "Export reflowed PDF",
   "pdfReflow": "Text reflow",
   "pdfReadOnly": "Read-only mode",
   "pdfImportAnnotations": "Import PDF annotations",

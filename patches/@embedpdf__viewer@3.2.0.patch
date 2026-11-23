@@ -1,0 +1,46 @@
+diff --git a/dist/chunks/comments-panel-DfUngPkF-BdOkNWgM.js b/dist/chunks/comments-panel-DfUngPkF-BdOkNWgM.js
+index 33f0f8afff3e13c691b0e68c1d8305a423ee321b..8ca62db6cfd40b71ae6e6a7d24f9079618e0d6d5 100644
+--- a/dist/chunks/comments-panel-DfUngPkF-BdOkNWgM.js
++++ b/dist/chunks/comments-panel-DfUngPkF-BdOkNWgM.js
+@@ -353,13 +353,14 @@ function de({ view: e, writing: n, selected: a, onSelect: l, onPick: i, cardRef:
+         o.canWrite && (a || c) && /* @__PURE__ */ t("div", {
+           className: `flex items-center gap-1.5 ${C ? "border-border-subtle border-t pt-2" : ""}`,
+           onClick: (s) => s.stopPropagation(),
+-          children: [/* @__PURE__ */ t("input", {
+-            type: "text",
++          children: [/* @__PURE__ */ t("textarea", {
+             value: c,
++            rows: 2,
+             placeholder: d(C ? "comments.replyPlaceholder" : "comments.addPlaceholder"),
+             onChange: (s) => x(s.target.value),
+-            onKeyDown: (s) => s.key === "Enter" && N(),
+-            className: "border-border bg-surface text-fg focus:border-accent h-8 w-full min-w-0 flex-1 rounded-md border px-2.5 text-sm outline-none"
++            onKeyDown: (s) => s.key === "Enter" && (s.metaKey || s.ctrlKey) && N(),
++            className: "border-border bg-surface text-fg focus:border-accent w-full min-w-0 flex-1 rounded-md border px-2.5 py-1.5 text-sm outline-none",
++            style: { minHeight: "64px", maxHeight: "44vh", resize: "vertical", lineHeight: "1.6", whiteSpace: "pre-wrap", overflowWrap: "anywhere" }
+           }), /* @__PURE__ */ t(v, {
+             label: d(C ? "comments.reply" : "commands.comment"),
+             onClick: N,
+diff --git a/dist/chunks/comments-panel-DfUngPkF-u2dBWV5n.js b/dist/chunks/comments-panel-DfUngPkF-u2dBWV5n.js
+index b367d593687fc4deea515c7f9971aac89d651bd7..c1ef3643f6fc0724ac7a351eff84b0006aa0a3f6 100644
+--- a/dist/chunks/comments-panel-DfUngPkF-u2dBWV5n.js
++++ b/dist/chunks/comments-panel-DfUngPkF-u2dBWV5n.js
+@@ -351,13 +351,14 @@ function de({ view: e, writing: n, selected: a, onSelect: l, onPick: i, cardRef:
+         o.canWrite && (a || c) && /* @__PURE__ */ t("div", {
+           className: `flex items-center gap-1.5 ${C ? "border-border-subtle border-t pt-2" : ""}`,
+           onClick: (s) => s.stopPropagation(),
+-          children: [/* @__PURE__ */ t("input", {
+-            type: "text",
++          children: [/* @__PURE__ */ t("textarea", {
+             value: c,
++            rows: 2,
+             placeholder: d(C ? "comments.replyPlaceholder" : "comments.addPlaceholder"),
+             onChange: (s) => x(s.target.value),
+-            onKeyDown: (s) => s.key === "Enter" && N(),
+-            className: "border-border bg-surface text-fg focus:border-accent h-8 w-full min-w-0 flex-1 rounded-md border px-2.5 text-sm outline-none"
++            onKeyDown: (s) => s.key === "Enter" && (s.metaKey || s.ctrlKey) && N(),
++            className: "border-border bg-surface text-fg focus:border-accent w-full min-w-0 flex-1 rounded-md border px-2.5 py-1.5 text-sm outline-none",
++            style: { minHeight: "64px", maxHeight: "44vh", resize: "vertical", lineHeight: "1.6", whiteSpace: "pre-wrap", overflowWrap: "anywhere" }
+           }), /* @__PURE__ */ t(v, {
+             label: d(C ? "comments.reply" : "commands.comment"),
+             onClick: N,

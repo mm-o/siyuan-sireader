@@ -51,6 +51,19 @@ const recordInsertedBlocks = async (item: any, result: any, ctx: any) => {
   }
   return blockId
 }
+const insertGeneratedNote = async (item: any, md: string, settings: any, meta: Awaited<ReturnType<typeof resolveExportMeta>>, ctx: any) =>
+  recordInsertedBlocks(item, await (await import('@/utils/noteInsert')).insertNote(md, { ...settings, noteInsertMode: 'appendDoc', noteInsertTarget: 'document' }, meta.title, ctx.bookUrl || meta.title, ctx.i18n), ctx)
+// 内核偶发返回空结果时补一次；插件生命周期结束（410）就没必要再试。
+export const appendBlockWithRetry = async (text: string, docId: string) => {
+  const { appendBlock } = await import('@/api')
+  for (let i = 0; i < 2; i++) {
+    const res = await appendBlock('markdown', text, docId).catch(() => null)
+    if (getInsertedBlockIds(res).length) return res
+    if ((window as any).__sireader_lastAppendError?.code === 410) return null
+    if (!i) await new Promise(r => setTimeout(r, 120))
+  }
+  return null
+}
 const syncingMarks = new Set<string>()
 export const imageSrcToMarkdown = async (src: string | Blob, name = 'mark') => {
   if (!src) return ''
@@ -93,9 +106,6 @@ const writeExport = async (text: string, ctx: ExportCtx, meta: Awaited<ReturnTyp
   }
   await writeClipboard(text, ctx.showMsg, message)
 }
-const insertGeneratedNote = async (item: any, md: string, settings: any, meta: Awaited<ReturnType<typeof resolveExportMeta>>, ctx: any) =>
-  recordInsertedBlocks(item, await (await import('@/utils/noteInsert')).insertNote(md, { ...settings, noteInsertMode: 'appendDoc' }, meta.title, ctx.bookUrl || meta.title, ctx.i18n), ctx)
-
 const buildBookMarkdown = async (item: ExportItem, ctx: ExportCtx | any, meta?: Awaited<ReturnType<typeof resolveExportMeta>>) => {
   meta ||= await resolveExportMeta(ctx)
   if (!ctx.bookUrl) return item.text || item.chapter || ''
@@ -134,7 +144,8 @@ const markToExportItem = async (item: ExportItem | any, ctx: ExportCtx | any): P
   return {
     chapter,
     cfi,
-    text: item.text || '',
+    // 模板的「文本」位只放选区原文：截图/形状类批注的正文是用户注释，不能顶掉它。
+    text: item.quote ?? item.text ?? '',
     note: item.note || '',
     image: item.image || item.src ? await imageSrcToMarkdown(item.image || item.src || '', 'mark') : '',
     id: item.id || '',
@@ -183,40 +194,67 @@ export const importMark = async (item: any, ctx: any) => {
 export const sendMarkToDoc = async (item: any, docId: string, ctx: any) => appendMarkToDoc(item, docId, ctx)
 
 export const updateMarkInDoc = async (item: any, ctx: any) => {
-  try {
-    if (!item.blockId) return
-    const md = await buildMarkMarkdown(item, ctx)
-    if (!md) return
-    const { updateBlock } = await import('@/api')
-    try { await updateBlock('markdown', md, item.blockId) } catch {}
-  } catch {}
+  // 完成/取消完成只是状态位，不改标注正文：直接跳过写入，避免反复覆盖块内容。
+  if (!item?.blockId || ctx?.statusOnly) return
+  const md = await buildMarkMarkdown(item, ctx).catch(() => '')
+  if (!md) return
+  const { updateBlock, getBlockKramdown, getChildBlocks } = await import('@/api')
+  // 标注块是容器（引用块），正文在它的第一个子块里。直接 updateBlock 容器会重建整棵子树，
+  // 把追加进去的回复一起抹掉，所以只改承载正文的那个子块。
+  const kids = await getChildBlocks(item.blockId).catch(() => [] as any[])
+  const target = Array.isArray(kids) && kids.length ? String((kids[0] as any)?.id || item.blockId) : item.blockId
+  const current = await getBlockKramdown(target).catch(() => null)
+  const kramdown = String((current as any)?.kramdown || (current as any)?.data?.kramdown || '').replace(/\n\{:[^}]*\}\s*$/, '')
+  if (kramdown.trim() !== md.trim()) await updateBlock('markdown', md, target).catch(() => null)
 }
 
 export const syncMarkOnCreate = async (item: any, ctx: any) => {
-  const syncKey = `${ctx.bookUrl || ''}:${item?.id || item?.cfi || item?.page || ''}`
+  const syncKey = `${ctx.bookUrl || ''}:${item?.id || ''}`
+  // 已绑定 / 非标注 / 只读 / 重入 / 设置关闭：都不建块，只保证已有绑定不丢。
+  if (item?.blockId || item?.blockIds?.length || item?.type === 'bookmark' || item?.readOnly || syncingMarks.has(syncKey) || (ctx.maxAgeMs && item?.timestamp && Date.now() - item.timestamp > ctx.maxAgeMs) || !await shouldSyncOnAdd()) {
+    const bound = item?.blockId || item?.blockIds?.[0] || ''
+    if (bound && !item.blockId && ctx.marks) await ctx.marks.updateMark(item, { blockId: bound })
+    return bound
+  }
+  syncingMarks.add(syncKey)
   try {
-    if (item?.blockId || item?.type === 'bookmark' || item?.readOnly || syncingMarks.has(syncKey) || (ctx.maxAgeMs && item?.timestamp && Date.now() - item.timestamp > ctx.maxAgeMs) || !await shouldSyncOnAdd()) return
-    syncingMarks.add(syncKey)
     const settings = await resolveSettings(ctx.settings)
     const meta = await resolveExportMeta({ ...ctx, settings })
-    const docId = await getBoundDocId(ctx.bookUrl)
     const md = await buildMarkMarkdown(item, { ...ctx, settings })
-    if (!md) return
-    if (docId) {
-      await appendMarkToDoc(item, docId, { ...ctx, showMsg: () => {} }, md)
-      return
-    }
-    if (shouldInsert(settings)) await insertGeneratedNote(item, md, settings, meta, ctx)
-  } catch {}
-  finally { syncKey && syncingMarks.delete(syncKey) }
+    if (!md) return ''
+    return await insertGeneratedNote(item, md, settings, meta, ctx) || ''
+  } catch { return '' }
+  finally { syncingMarks.delete(syncKey) }
+}
+
+export const appendReplyToMark = async (item: any, replyText: string, ctx: any) => {
+  if (!replyText) return ''
+  const boundId = item?.blockId || item?.blockIds?.[0]
+  if (!boundId) return await syncMarkOnCreate(item, ctx)
+  const { appendBlock, updateBlock, getBlockKramdown } = await import('@/api')
+  // 回复已绑定自己的块：编辑时只改这块，不再追加。内容没变就不写，避免自我触发循环。
+  if (item?.replyBlockId) {
+    const current = await getBlockKramdown(item.replyBlockId).catch(() => null)
+    const kramdown = String((current as any)?.kramdown || (current as any)?.data?.kramdown || '').replace(/\n\{:[^}]*\}\s*$/, '').trim()
+    if (kramdown !== replyText.trim()) await updateBlock('markdown', replyText, item.replyBlockId).catch(() => null)
+    return item.replyBlockId
+  }
+  // 首次回复：接在标注块末尾，纯文本一行，不加装饰标记；返回新块 id 供调方写回。
+  return getInsertedBlockIds(await appendBlock('markdown', replyText, boundId).catch(() => null))[0] || boundId
 }
 
 export const syncMarkOnDelete = async (item: any) => {
-  const blockIds = typeof item === 'string' ? [item] : Array.from(new Set([...(Array.isArray(item?.blockIds) ? item.blockIds : []), item?.blockId].filter(Boolean)))
-  if (!blockIds.length || !await shouldSyncOnDelete()) return false
-  const { deleteBlock } = await import('@/api')
-  for (const id of blockIds) await deleteBlock(id as string).catch(() => {})
-  return true
+  const ids = Array.from(new Set((typeof item === 'string' ? [item] : [...(item?.blockIds || []), item?.blockId]).filter(Boolean))) as string[]
+  if (!ids.length || !await shouldSyncOnDelete()) return false
+  const { deleteBlock, getBlockByID } = await import('@/api')
+  // 标注块是容器：删掉它就是连带删掉所有子块（回复）。再按 blockIds 逐个删子块必然 tree not found，
+  // 所以只在「块确实还存在」时删一个，删完即止。
+  for (const id of ids) {
+    if (!await getBlockByID(id).catch(() => null)) continue
+    await deleteBlock(id).catch(() => null)
+    return true
+  }
+  return false
 }
 
 export const saveMarkEdit = async (mark: any, updates: any, ctx: any) => {
@@ -224,9 +262,11 @@ export const saveMarkEdit = async (mark: any, updates: any, ctx: any) => {
   await ctx.marks.updateMark(mark, updates)
   updates.tags?.length && await (await import('@/composables/useSetting')).collectAnnotationTagPresets(updates.tags).catch(() => {})
   try {
-    const next = { ...mark, ...updates }
-    next.blockId ? await updateMarkInDoc(next, ctx) : await syncMarkOnCreate(next, ctx)
-  } catch {}
+    const next = { ...mark, ...updates }, boundId = next.blockId || next.blockIds?.[0]
+    // 只改状态位（完成/未完成）且正文没变时不碰块内容。
+    const statusOnly = 'completed' in updates && !String(updates.text ?? mark?.text ?? '').trim()
+    boundId ? await updateMarkInDoc({ ...next, blockId: boundId }, { ...ctx, statusOnly }) : await syncMarkOnCreate(next, ctx)
+  } catch { }
 }
 
 let _plugin: any

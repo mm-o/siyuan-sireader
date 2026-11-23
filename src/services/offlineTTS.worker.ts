@@ -60,7 +60,7 @@ const initialize = async (manifest: OfflineTTSModelManifest, pluginName: string)
   stage = 'initialize:wasm-fetch'
   inference?.free()
   inference = null
-  const wasmUrl = `/plugins/${pluginName}/sherpa-onnx/sherpa-onnx.wasm`
+  const wasmUrl = '/public/siyuan-sireader/runtime/sherpa-onnx/sherpa-onnx.wasm'
   const wasmResponse = await fetch(wasmUrl, { cache: 'force-cache' })
   if (!wasmResponse.ok) throw new Error(`离线语音引擎加载失败（HTTP ${wasmResponse.status}）`)
   const wasm = await wasmResponse.arrayBuffer()

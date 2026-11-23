@@ -370,12 +370,27 @@ const recoverShelfRecord = async (book: any, roots: string[], startedAt: number)
   return storageEngine.recover(bookRecordKey(key), candidate, `backups/before-recovery/${startedAt}/${name}`)
 }
 
+const RECOVERY_MARKER = 'recovery-state.json'
+// 书架指纹：只依赖书的 key 列表，不读记录内容
+const shelfFingerprint = (shelf: Record<string, any>) => {
+  const keys = Object.keys(shelf).sort()
+  let hash = 2166136261
+  for (const key of keys.join('|')) { hash ^= key.charCodeAt(0); hash = Math.imul(hash, 16777619) }
+  return keys.length + ':' + (hash >>> 0).toString(36)
+}
+
 /** One-time best-effort repair before readers mount, never from sync notifications. */
 export const recoverBackupRecords = async () => {
   if (recoveryTask) return recoveryTask
   recoveryTask = (async () => {
     const startedAt = Date.now()
     const shelf = await loadData<Record<string, any>>('bookshelf.json') || {}
+    const fingerprint = shelfFingerprint(shelf)
+    const marker = await loadData<Record<string, any>>(RECOVERY_MARKER).catch(() => null)
+    if (marker?.fingerprint === fingerprint) {
+      diagnosticLog('debug', 'recovery.skipped', { fingerprint })
+      return 0
+    }
     const roots = (await pluginStorageAdapter.listAll?.('backups/storage-v1') || [])
       .filter(item => item.isDir && /^\d+$/.test(item.name)).map(item => item.name).sort((a, b) => Number(b) - Number(a))
     let restored = 0
@@ -401,6 +416,7 @@ export const recoverBackupRecords = async () => {
       }
     }
     diagnosticLog('info', 'recovery.done', { written: restored, normalized, supplemented, addedAnnotations, failed, durationMs: Date.now() - startedAt })
+    await saveData(RECOVERY_MARKER, { fingerprint, books: Object.keys(shelf).length, at: Date.now() }).catch(() => {})
     return restored
   })().catch(error => { diagnosticLog('error', 'recovery.failed', { error }); return 0 }).finally(() => { recoveryTask = null })
   return recoveryTask

@@ -212,7 +212,7 @@ const embedPdfMark=(item:any)=>{
   const a=item?.annotation||item, page=(a.pageIndex??0)+1, bookmark=a.custom?.type==='bookmark', redaction=a.type===PDF_REDACT_TYPE
   const text=a.custom?.title||a.custom?.text||a.contents||(redaction?i18n.value.redaction||'Redaction':PDF_SHAPE_TYPES.includes(a.type)?i18n.value.shapeAnnotation||'形状标注':i18n.value.annotation||i18n.value.mark||'Annotation')
   const color=[a.strokeColor,a.color,a.fontColor,a.backgroundColor].map(embedPdfColor).find(c=>c&&c!=='transparent')||'#ffcd45'
-  return Object.assign(item,{id:a.id,type:bookmark?'bookmark':redaction?'redaction':a.type===1||a.type===3?'note':'highlight',format:'pdf',readOnly:a.flags?.includes('readOnly'),page,cfi:`#page-${page}`,title:bookmark?text:a.custom?.title,text:bookmark?text:a.custom?.text||a.contents||text,note:bookmark||redaction?'':a.custom?.note||a.contents||'',tags:a.custom?.tags||[],blockId:a.custom?.blockId,blockIds:a.custom?.blockIds,color,style:embedPdfStyle(a.type,a.custom),timestamp:new Date(a.created||a.modified||Date.now()).getTime(),chapter:bookmark?'':a.custom?.chapter||`${i18n.value.page||'Page '}${page}${i18n.value.pageSuffix||''}`,customOrder:a.custom?.customOrder})
+  return Object.assign(item,{id:a.id,inReplyToId:a.inReplyToId,type:bookmark?'bookmark':redaction?'redaction':a.type===1||a.type===3?'note':'highlight',format:'pdf',readOnly:a.flags?.includes('readOnly'),page,cfi:`#page-${page}`,title:bookmark?text:a.custom?.title,text:bookmark?text:a.custom?.text||a.contents||text,note:bookmark||redaction?'':a.custom?.note||a.contents||'',tags:a.custom?.tags||[],blockId:a.custom?.blockId||a.custom?.blockIds?.[0],blockIds:a.custom?.blockIds,color,style:embedPdfStyle(a.type,a.custom),timestamp:new Date(a.created||a.modified||Date.now()).getTime(),chapter:bookmark?'':a.custom?.chapter||`${i18n.value.page||'Page '}${page}${i18n.value.pageSuffix||''}`,customOrder:a.custom?.customOrder,quote:a.custom?.text||''})
 }
 const compact=(value:Record<string,any>)=>Object.fromEntries(Object.entries(value).filter(([,v])=>v!==undefined))
 const refreshEmbedPdfMarks=()=>{
@@ -226,33 +226,61 @@ const imageEmbedPdfMark = async (item: any, contextKey?: string) => {
   return { ...item, annotation, image: await capturePdfAnnotationImage(currentView.value?.render, annotation, !!currentSettings.value?.pdfMarkImageWithAnnotations) }
 }
 const pdfSyncQueues=new Map<string,Promise<void>>()
+// 删除是终局：同一个标注 id 一旦删掉，后续 update/create 都是余波，绝不再重建块。
+const pdfDeletedMarks=new Set<string>()
+// 把块绑定写回标注本身：当前打开的这份 PDF 直接改内存 annotation，否则落盘。
+const persistPdfMark=async(item:any,updates:any,a:any,eventKey:string)=>{
+  Object.assign(item,updates)
+  const live=latestPdfAnnotation(item),scope=embedPdfReaderRef.value?.annotationActions
+  const custom={...(a?.custom||{}),...updates}
+  if(embedPdfDocumentContext.value?.storageKey===eventKey&&scope&&live)await scope.update(live.id,{custom})
+  else await upsertEmbedPdfAnnotation(eventKey,{annotation:{...cloneStorageValue(a),custom}})
+}
+// 同一标注的事件必须串行，否则并发插入会出双份。
+const queuePdfSync=(key:string,run:()=>Promise<void>)=>{
+  const task=(pdfSyncQueues.get(key)||Promise.resolve()).catch(()=>undefined).then(run)
+  pdfSyncQueues.set(key,task)
+  void trackPending(task.finally(()=>{if(pdfSyncQueues.get(key)===task)pdfSyncQueues.delete(key)}))
+}
+// 回复不独立建块，挂到父标注所在的块上。
+const syncEmbedPdfReply=(event:any,mark:any,a:any,eventUrl:string,eventKey:string)=>{
+  // 只认真实评论正文：占位回复对象 contents 为空，embedPdfMark 的兜底会给出“标注”之类假文本。
+  const replyText=String(a?.contents||a?.custom?.note||a?.custom?.text||'').trim(),deleting=event?.type==='delete'
+  if(!replyText&&!deleting)return
+  const replyBlockId=mark.blockId||''
+  if(deleting&&!replyBlockId)return
+  const parentMark=embedPdfMark({annotation:(embedPdfReaderRef.value?.annotationActions.get(mark.inReplyToId)||{id:mark.inReplyToId})})
+  queuePdfSync(`${eventUrl}:${mark.inReplyToId}`,async()=>{
+    try{
+      const m=await import('@/utils/copy')
+      if(deleting)return void await m.syncMarkOnDelete(replyBlockId)
+      const bid=await m.appendReplyToMark({...parentMark,replyBlockId},replyText,{bookUrl:eventUrl,isPdf:true})
+      // 首次插入后把回复自己的块 id 写回：之后编辑只改这块，不再追加第二条。
+      if(bid&&bid!==replyBlockId&&bid!==(parentMark.blockId||parentMark.blockIds?.[0]))await persistPdfMark(mark,{blockId:bid},a,eventKey)
+    }catch{}
+  })
+}
 const syncEmbedPdfEvent=(event:any)=>{
   const a=event?.annotation,mark=a&&embedPdfMark({annotation:cloneStorageValue(a)})
   const eventUrl=event?.bookUrl||getPdfBookUrl(),eventKey=event?.storageKey||embedPdfDocumentContext.value?.storageKey||props.bookInfo?.dataId||getBookUrl()
   if(!mark)return
-  const key=`${eventUrl}:${mark.id}`,previous=pdfSyncQueues.get(key)||Promise.resolve()
-  const task=previous.catch(()=>undefined).then(async()=>{
+  const key=`${eventUrl}:${mark.id}`
+  if(event?.type==='delete')pdfDeletedMarks.add(key)
+  else if(pdfDeletedMarks.has(key))return
+  if(mark.inReplyToId)return syncEmbedPdfReply(event,mark,a,eventUrl,eventKey)
+  queuePdfSync(key,async()=>{
     try{
-      const m=await import('@/utils/copy'),ctx={bookUrl:eventUrl,isPdf:true,marks:currentView.value?.marks}
-      const next=event?.type==='delete'?mark:await imageEmbedPdfMark(mark,eventKey).catch(()=>mark)
-      if(event?.type==='delete')await m.syncMarkOnDelete(next)
-      else{
-        const durableMarks={updateMark:async(item:any,updates:any)=>{
-          const annotation=item.annotation||a
-          Object.assign(item,updates)
-          const live=latestPdfAnnotation(item), scope=embedPdfReaderRef.value?.annotationActions
-          if(embedPdfDocumentContext.value?.storageKey===eventKey&&scope&&live){
-            await scope.update(live.id,{custom:updates})
-          } else await upsertEmbedPdfAnnotation(eventKey,{annotation:{...annotation,custom:{...(annotation.custom||{}),...updates}}})
-        }}
-        const durableCtx={...ctx,marks:durableMarks}
-        if(event?.type==='update'&&next.blockId)await m.updateMarkInDoc(next,durableCtx)
-        else await m.syncMarkOnCreate(next,durableCtx)
-      }
+      const m=await import('@/utils/copy')
+      if(event?.type==='delete')return void await m.syncMarkOnDelete(mark)
+      const next=await imageEmbedPdfMark(mark,eventKey).catch(()=>mark),boundId=next.blockId||next.blockIds?.[0]
+      // 完成/取消完成只是状态位，正文没变就不写块，避免反复追加“标注”。
+      const statusOnly=event?.type==='update'&&'completed' in (a?.custom||{})&&!(a?.contents||'').trim()
+      const ctx={bookUrl:eventUrl,isPdf:true,statusOnly,marks:{updateMark:(item:any,updates:any)=>persistPdfMark(item,updates,a,eventKey)}}
+      // 已绑定一律更新复用；只有从未绑定才创建，防止 create 事件对已绑定标注重复插入。
+      if(boundId)await m.updateMarkInDoc({...next,blockId:boundId},ctx)
+      else await m.syncMarkOnCreate(next,ctx)
     }catch(e){console.error('[PdfSync]',e)}
   })
-  pdfSyncQueues.set(key,task)
-  void trackPending(task.finally(()=>{if(pdfSyncQueues.get(key)===task)pdfSyncQueues.delete(key)}))
 }
 const updateEmbedPdfMark=async(item:any,updates:any)=>{
   const requested=item.annotation||item
@@ -435,7 +463,7 @@ const init=async()=>{
       await initEmbedPdfMode(loadSource)
     }else{
       reader=await createReader({container:viewerContainerRef.value!,settings:getSettings()!,plugin:props.plugin})
-      await reader.open(async()=>await loadSource()||await Promise.reject(new Error(i18n.value.bookMissing || 'No book provided')),props.bookInfo?.format)
+        await reader.open(async()=>await loadSource()||await Promise.reject(new Error(i18n.value.bookMissing || 'No book provided')),props.bookInfo?.format)
       const view=reader.getView()
       markManager.value=createMarkManager({format:'epub',view,plugin:props.plugin,bookUrl,bookName:getBookName(),reader})
       !isTemporary&&await markManager.value.init()

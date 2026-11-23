@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Copyright (c) 2023 frostime. All rights reserved.
  * https://github.com/frostime/sy-plugin-template-vite
  *
@@ -224,7 +224,13 @@ export async function appendBlock(
     parentID: parentID,
   };
   let url = "/api/block/appendBlock";
-  return request(url, payload);
+  const response: IWebSocketData = await fetchSyncPost(url, payload).catch((e: any) => ({ code: -1, msg: String(e?.message || e), data: null }));
+  if (response.code !== 0) {
+    console.error("[SiReader:appendBlock]", { code: response.code, msg: response.msg, parentID, dataType, dataLen: data?.length });
+    // 只留状态码：调用方靠 410 判断插件生命周期已结束，重试没有意义。
+    (window as any).__sireader_lastAppendError = { code: response.code };
+  }
+  return response.code === 0 ? response.data : null;
 }
 
 export async function updateBlock(

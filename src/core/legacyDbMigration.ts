@@ -307,10 +307,27 @@ const copyCover = async (url: string, source: string) => {
 export const migrateLegacyDatabase = async (plugin: PluginLike, options: { force?: boolean } = {}) => {
   const root = `${PLUGIN_STORAGE_ROOT}/${plugin.name}`
   try {
+    // 迁移过一次就彻底不扫了：连候选路径都不去探（老标记只有 done / importedDb 也算数）。
+    // 换库要重导：控制台 await sireaderImportLegacyDatabase()（force）
+    const existing = await loadData<Record<string, any>>(MIGRATION_MARKER).catch(() => null)
+    if (!options.force && existing && (existing.done === true || existing.importedDb === true)) {
+      diagnosticLog('debug', 'legacy-db.migration.skipped', { reason: 'marker', at: existing.at })
+      return 0
+    }
     const candidates = [
       ...LEGACY_DB_NAMES.map((name) => `${root}/${name}`),
       ...await backupDatabasePaths(plugin.name),
     ]
+    const marks = importMarks(existing)
+    if (!options.force) {
+      // 迁移过的来源直接跳过，不必再把旧库读进内存比对大小（换库时用 sireaderImportLegacyDatabase 强制重导）
+      const imported = candidates.find((candidate) => marks.some((mark) => mark.source === candidate))
+      if (imported) {
+        diagnosticLog('debug', 'legacy-db.migration.skipped', { source: imported })
+        return 0
+      }
+    }
+
     let dbPath = ''
     let blob: Blob | null = null
     for (const candidate of candidates) {
@@ -322,8 +339,6 @@ export const migrateLegacyDatabase = async (plugin: PluginLike, options: { force
     }
     if (!blob) return 0
 
-    const marker = await loadData<Record<string, any>>(MIGRATION_MARKER).catch(() => null)
-    const marks = importMarks(marker)
     if (!options.force && marks.some((mark) => mark.source === dbPath && mark.bytes === blob.size)) {
       diagnosticLog('debug', 'legacy-db.migration.already-imported', {
         source: dbPath,

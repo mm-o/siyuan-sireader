@@ -236,7 +236,8 @@ test.each([
   vi.mocked(readDir).mockResolvedValue([{ name: '100', isDir: true }] as any)
   files.set(`backups/storage-v1/100/${key}`, JSON.stringify(backup))
   expect(await recoverBackupRecords()).toBe(0)
-  expect(putFile).not.toHaveBeenCalled()
+  // 只允许写"恢复检查已完成"的标记文件；备份记录本身不能被合并进当前数据
+  expect(vi.mocked(putFile).mock.calls.every(([path]) => String(path).includes('recovery-state'))).toBe(true)
   expect(JSON.parse(files.get(key)!).annotations).toHaveLength(1)
 })
 

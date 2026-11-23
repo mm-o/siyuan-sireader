@@ -26,6 +26,20 @@ self.onmessage = ({ data }) => {
       } else if (command === 'layout-page') {
         if (!output) throw new Error('Reflow output is not initialized')
         output.append(payload)
+      } else if (command === 'merge') {
+        // 按需分窗：把新窗口的页拼进来（at: 'start' 前插 / 'end' 追加）
+        const base = payload.base
+          ? engine.PDFDocument.openDocument(payload.base, 'application/pdf')
+          : new engine.PDFDocument()
+        const addition = engine.PDFDocument.openDocument(payload.addition, 'application/pdf')
+        try {
+          const at = payload.at === 'start' ? 0 : base.countPages()
+          for (let n = 0; n < addition.countPages(); n++) base.insertPage(at + n, addition, n)
+          result = { buffer: base.saveToBuffer('compress').asUint8Array().slice().buffer }
+        } finally {
+          addition.destroy?.()
+          base.destroy?.()
+        }
       } else if (command === 'layout-finish') {
         if (!output) throw new Error('Reflow output is not initialized')
         result = output.finish(); output = undefined

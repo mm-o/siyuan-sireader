@@ -4,6 +4,7 @@ import { BUILTIN_KOKORO, BUILTIN_XIAO_YA, createPiperImportManifest, isSafeOffli
 
 const ROOT = '/data/public/siyuan-sireader/tts'
 const PUBLIC_ROOT = '/public/siyuan-sireader/tts'
+import { ensureRuntime, SHERPA_FILES } from '@/services/runtimeAssets'
 export const OFFICIAL_TTS_MODELS_URL = 'https://k2-fsa.github.io/sherpa/onnx/tts/all/'
 const MANIFEST_FILE = 'sireader-model.json'
 
@@ -262,6 +263,7 @@ const requestWorker = <T>(type: string, data: Record<string, unknown> = {}) => n
 })
 
 export const initializeOfflineTTS = async (manifest: OfflineTTSModelManifest) => {
+  await ensureRuntime('sherpa-onnx', SHERPA_FILES)
   await requestWorker<void>('initialize', { manifest, pluginName: pluginInfo.name })
   activeManifestId = manifest.id
 }
