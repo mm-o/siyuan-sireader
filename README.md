@@ -7,7 +7,7 @@
 Transform SiYuan Notes into a professional eBook reader  
 Professional eBook reader for EPUB/PDF/MOBI/TXT/online novels. PDFs support highlights, ink, shapes, forms, stamps, signatures, images, screenshots, search, printing, export, and backlinks, with annotation notes, dictionary, translation, themes, and bookshelf management.
 
-[![Version](https://img.shields.io/badge/version-2.8.3-blue.svg)](https://github.com/mm-o/siyuan-sireader)
+[![Version](https://img.shields.io/badge/version-2.8.5-blue.svg)](https://github.com/mm-o/siyuan-sireader)
 [![License](https://img.shields.io/badge/license-MIT%20%2B%20AGPL-green.svg)](LICENSE)
 [![SiYuan](https://img.shields.io/badge/SiYuan-3.0+-orange.svg)](https://github.com/siyuan-note/siyuan)
 
@@ -18,6 +18,22 @@ Professional eBook reader for EPUB/PDF/MOBI/TXT/online novels. PDFs support high
 ---
 
 ## 📝 Latest Updates
+
+## v2.8.5 (2026-11-26)
+
+### Fixed
+
+- Text reflow no longer stops after the first screen with `An ArrayBuffer is detached and could not be cloned`. The accumulated reflow PDF was handed to the viewer, which transfers the bytes to its pdfium worker and detaches the caller's buffer, so the next merge had nothing valid to splice. A live copy is now kept for merging and only a copy is handed to the engine.
+- Continued windows are no longer blank: documents are spliced with MuPDF's `graftPage` instead of `insertPage` (which expects a PDFObject), so `non-page object in page tree` is gone as well.
+- Backward extends no longer overlap the pages already shown, so a page can no longer appear twice.
+- Continuing a reflow no longer jumps to the start of the new window: the page index is re-mapped so you stay exactly where you were reading.
+- Reflow PDFs are generated in memory only and are never written to `data/public` (every continued window used to leave another copy behind). They are saved to `assets/` only when you click "Export reflow PDF", and that export now includes the annotations drawn in the current window. Leftover reflow temp files can be deleted safely.
+- Marks and backlinks copied or sent to notes from a reflow now point at the matching page of the source PDF (reflow pages are mapped back to source pages) instead of a temporary reflow URL that no longer resolves.
+- Showing a reflow no longer reports success when it failed, and leaving reflow no longer keeps using the reflow annotation key.
+
+### Improved
+
+- Reflow windows are 6 pages instead of 12, with a 2-page lookahead, so the first paint and every page turn are faster; the source PDF is no longer re-copied or re-parsed per window, windows are grafted incrementally inside the worker, and merged output is saved without recompression.
 
 ## v2.8.4 (2026-11-26)
 

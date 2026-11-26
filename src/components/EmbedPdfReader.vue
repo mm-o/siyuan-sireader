@@ -17,7 +17,7 @@ import { Dialog, showMessage } from 'siyuan'
 import { putFile } from '@/api'
 import { bookshelfManager } from '@/core/bookshelf'
 import { alignLegacyPdfAnnotations, needsLegacyPdfTextAlign } from '@/core/dataMigration'
-import { createLatestSaver, deleteEmbedPdfAnnotation, readEmbedPdfAnnotations, readEmbedPdfProgress, trackPending, upsertEmbedPdfAnnotation, writeEmbedPdfProgress, writeManagedFile } from '@/core/storage'
+import { createLatestSaver, deleteEmbedPdfAnnotation, readEmbedPdfAnnotations, readEmbedPdfProgress, trackPending, upsertEmbedPdfAnnotation, writeEmbedPdfProgress } from '@/core/storage'
 import { diagnosticLog } from '@/core/diagnostics'
 import { showTooltip } from '@/core/MarkManager'
 import { buildEmbedPdfLook } from '@/utils/embedPdfTheme'
@@ -424,7 +424,9 @@ async function attachDocument(id: string, signal: AbortSignal, targetPage?: numb
     }
     recordsByRef.set(JSON.stringify(native.ref), record)
     if (!key || !record || nativeIds.has(record.id)) return
-    const event = { type, annotation: record, bookUrl, storageKey: key }
+    // bookUrl 是这份文档的存储 key（重排时是内存里的 reflow:xxx，不落盘）；
+    // 写进笔记的链接要用源书地址 + 源页，所以单独带 linkBookUrl。
+    const event = { type, annotation: record, bookUrl, storageKey: key, linkBookUrl: props.bookUrl || bookUrl }
     const role = native.subtype === 'stamp' ? 'appearance' : native.subtype === 'file-attachment' ? 'file' : null
     const resource = role ? annotation.downloadResource(native.ref, role) : Promise.resolve(undefined)
     void resource.catch(onFailure)
@@ -536,7 +538,8 @@ async function attachDocument(id: string, signal: AbortSignal, targetPage?: numb
   const offLinkLoaded = scoped('link')?.onLoaded?.(() => { void adoptBlockLinks() })
   if (offLinkLoaded) subscriptions.push(offLinkLoaded)
   emit('read-only', readOnly.value || !ownsActiveDocument())
-  emit('ready', viewer, { documentId: id, bookUrl, storageKey: key })
+  // linkBookUrl/pageMap：重排时文档是内存里的临时 PDF，写进笔记的链接要回到源书和源页
+  emit('ready', viewer, { documentId: id, bookUrl, storageKey: key, linkBookUrl: props.bookUrl || bookUrl, pageMap: generated ? [...generated.pageMap] : [] })
 }
 
 // 重排流程在 services/pdfReflow 里；这里只提供上下文并转调。
@@ -551,7 +554,6 @@ const ensureReflow = () => reflowController ||= createReflowController({
   canCopy: () => !!scoped('selection')?.canCopy(),
   openPdf: bytes => openPdf(bytes),
   attach: (id, signal, target) => attachDocument(id, signal, target),
-  writeManaged: (blob, url, name) => writeManagedFile(blob, url, name),
   ensureEngine: () => ensureRuntime('mupdf', MUPDF_FILES),
   onFailure: error => onFailure(error),
   documents: () => viewer?.documents,
@@ -559,20 +561,35 @@ const ensureReflow = () => reflowController ||= createReflowController({
   flush: () => flushAnnotations(),
 })
 const reflowResult = () => ensureReflow().current()
+// 重排只是临时视图、不落盘，所以写进笔记/复制的链接必须指向原始 PDF：
+// 页码按 pageMap 换算回源页，bookUrl 用源书链接（否则笔记里会留下打不开的重排地址）。
+const reflowPageMap = () => (reflowController?.isActive() ? reflowController.current()?.pageMap : undefined)
+const sourceBookUrl = () => props.bookUrl || ''
+const toSourceMark = (mark: any) => {
+  const pageMap = reflowPageMap()
+  const index = (Number(mark?.page) || 0) - 1
+  const source = pageMap && index >= 0 ? pageMap[index] : undefined
+  if (source == null || source === index) return mark
+  const page = source + 1
+  // chapter 清空，交给下游按映射后的页码重新生成「第 N 页」
+  return { ...mark, page, cfi: `#page-${page}`, chapter: '' }
+}
+// 重排 PDF 不落盘（临时产物，写盘只会越滚越大）；只有用户点「导出重排 PDF」时才真正保存一份。
 const exportReflow = async () => {
   const current = reflowResult()
   if (!current) return
   try {
-    const response = await fetch(current.url)
-    if (!response.ok) throw new Error(`重排文件读取失败（HTTP ${response.status}）`)
-    const blob = await response.blob()
+    // 优先用引擎里的当前文档：连这一窗里新画的标注一起导出；不行再用内存里的重排结果
+    const live = await Promise.resolve(viewer?.documents?.download(documentId)).catch(() => null)
+    const bytes = live instanceof Uint8Array ? live.slice().buffer : live instanceof ArrayBuffer ? live : current.buffer.slice(0)
+    if (!bytes.byteLength) throw new Error('重排结果已释放，请重新进入重排后再导出')
     const name = current.name || `reflow-${Date.now()}.pdf`
     const path = `/data/assets/${name}`
-    await putFile(path, false, new File([blob], name, { type: 'application/pdf' }))
+    await putFile(path, false, new File([bytes], name, { type: 'application/pdf' }))
     const link = `![](${path.replace('/data/', '')})`
     await navigator.clipboard?.writeText(link).catch(() => {})
     showMessage(`已导出到 assets/${name}（链接已复制）`, 3000, 'info')
-    diagnosticLog('info', 'pdf.reflow.export', { name, bytes: blob.size })
+    diagnosticLog('info', 'pdf.reflow.export', { name, bytes: bytes.byteLength })
   } catch (error: any) {
     onFailure(error)
   }
@@ -597,8 +614,8 @@ function configuration() {
   }
   const send = async (mark: any, id: string) => {
     if (!mark) return
-    await sendPdfMarkToDoc(mark, id, {
-      bookUrl: reflowController?.current()?.url || props.bookUrl,
+    await sendPdfMarkToDoc(toSourceMark(mark), id, {
+      bookUrl: sourceBookUrl() || reflowResult()?.url || '',
       settings: props.settings, i18n: props.i18n,
       marks: { updateMark: (item: any, updates: any) => {
         const target = annotationById(item.id)
@@ -662,7 +679,7 @@ function configuration() {
     command('copy-annotation-link', props.i18n?.copyBacklink || 'Copy annotation link', 'copy', async () => {
       const mark = await annotationImageMark()
       if (mark) {
-        await copyMark(mark, { bookUrl: reflowResult()?.url || props.bookUrl, isPdf: true, settings: { ...props.settings, noteInsertTarget: 'clipboard' }, showMsg: (text: string) => showMessage(text) } as any)
+        await copyMark(toSourceMark(mark), { bookUrl: sourceBookUrl() || reflowResult()?.url, isPdf: true, settings: { ...props.settings, noteInsertTarget: 'clipboard' }, showMsg: (text: string) => showMessage(text) } as any)
       }
     }),
     {

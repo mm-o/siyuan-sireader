@@ -160,7 +160,7 @@ const touchPagingEvents:[string,EventListener,AddEventListenerOptions?][]=[['tou
 const bindTouchPaging=(target:EventTarget|null|undefined)=>{if(!isMobile()||!target||touchTargets.has(target))return;touchTargets.add(target);touchPagingEvents.forEach(([type,handler,options])=>target.addEventListener(type,handler,options))}
 const unbindTouchPaging=()=>{touchTargets.forEach(target=>touchPagingEvents.forEach(([type,handler])=>target.removeEventListener(type,handler,true)));touchTargets.clear()}
 const embedPdfSource = ref<File | string | null>(null)
-const embedPdfDocumentContext = ref<{ documentId: string; bookUrl: string; storageKey: string } | null>(null)
+const embedPdfDocumentContext = ref<{ documentId: string; bookUrl: string; storageKey: string; linkBookUrl?: string; pageMap?: number[] } | null>(null)
 const embedPdfPages = shallowRef<any>(null)
 const embedPdfMarks = ref<any[]>([])
 const currentView = ref<any>(null)
@@ -215,6 +215,16 @@ const embedPdfMark=(item:any)=>{
   return Object.assign(item,{id:a.id,inReplyToId:a.inReplyToId,type:bookmark?'bookmark':redaction?'redaction':a.type===1||a.type===3?'note':'highlight',format:'pdf',readOnly:a.flags?.includes('readOnly'),page,cfi:`#page-${page}`,title:bookmark?text:a.custom?.title,text:bookmark?text:a.custom?.text||a.contents||text,note:bookmark||redaction?'':a.custom?.note||a.contents||'',tags:a.custom?.tags||[],blockId:a.custom?.blockId||a.custom?.blockIds?.[0],blockIds:a.custom?.blockIds,insertedAt:a.custom?.insertedAt,color,style:embedPdfStyle(a.type,a.custom),timestamp:new Date(a.created||a.modified||Date.now()).getTime(),chapter:bookmark?'':a.custom?.chapter||`${i18n.value.page||'Page '}${page}${i18n.value.pageSuffix||''}`,customOrder:a.custom?.customOrder,quote:a.custom?.text||''})
 }
 const compact=(value:Record<string,any>)=>Object.fromEntries(Object.entries(value).filter(([,v])=>v!==undefined))
+// 重排是临时视图（不落盘）：只在写进笔记/复制链接时把重排页换算回源页，
+// 列表里的 mark 仍用重排页码，面板定位和书签比较不受影响。
+const pdfMarkForLink=(item:any)=>{
+  const map=embedPdfDocumentContext.value?.pageMap
+  const index=(Number(item?.page)||0)-1
+  const source=map&&index>=0?map[index]:undefined
+  if(source==null||source===index)return item
+  const page=source+1
+  return {...item,page,cfi:`#page-${page}`,chapter:''}
+}
 const refreshEmbedPdfMarks=()=>{
   if(isEmbedPdfMode.value)embedPdfMarks.value=(embedPdfReaderRef.value?.annotationActions.list() || []).filter(isUserEmbedPdfAnnotation).map((annotation:any)=>embedPdfMark({annotation}))
 }
@@ -250,9 +260,10 @@ const pdfCommentsOf=(mark:any,event:any)=>{
   return [...known,...own].filter(Boolean)
 }
 const syncEmbedPdfEvent=(event:any)=>{
-  const a=event?.annotation,mark=a&&embedPdfMark({annotation:cloneStorageValue(a)})
-  if(!mark)return
-  const eventUrl=event?.bookUrl||getPdfBookUrl(),eventKey=event?.storageKey||embedPdfDocumentContext.value?.storageKey||props.bookInfo?.dataId||getBookUrl()
+  const a=event?.annotation,raw=a&&embedPdfMark({annotation:cloneStorageValue(a)})
+  if(!raw)return
+  const mark=pdfMarkForLink(raw)
+  const eventUrl=event?.linkBookUrl||getPdfBookUrl(),eventKey=event?.storageKey||embedPdfDocumentContext.value?.storageKey||props.bookInfo?.dataId||getBookUrl()
   const reply=!!mark.inReplyToId,deleting=event?.type==='delete'
   // 回复不单独建块：它只改写父标注那一条。父标注删掉了就没什么可写的。
   const owner=reply?embedPdfReaderRef.value?.annotationActions.get(mark.inReplyToId):cloneStorageValue(a)
@@ -340,7 +351,7 @@ const detachPdfView=()=>{
   embedPdfPages.value=null
   embedPdfMarks.value=[]
 }
-const handleEmbedPdfReady=(viewer:any,context:{documentId:string;bookUrl:string;storageKey:string})=>{
+const handleEmbedPdfReady=(viewer:any,context:{documentId:string;bookUrl:string;storageKey:string;linkBookUrl?:string;pageMap?:number[]})=>{
   embedPdfDocumentContext.value=context
   const scope=viewer.forDocument(context.documentId)
   const stage=scope.get('stage')
@@ -496,6 +507,7 @@ const init=async()=>{
 }
 const copyReaderMark=(item:any,clipboard=false)=>{
   if(typeof item==='string'||(!item.id&&item.text&&!item.image)){const loc=reader?.getLocation();item={text:item.text||item,cfi:item.cfi,page:item.page,chapter:loc?.tocItem?.label||loc?.tocItem?.title,id:''}}
+  else if(isEmbedPdfMode.value)item=pdfMarkForLink(item)
   copyMarkUtil(item,{bookUrl:isEmbedPdfMode.value?getPdfBookUrl():getBookUrl(),bookInfo:props.bookInfo,settings:clipboard?{...(getSettings()||{}),noteInsertTarget:'clipboard'}:getSettings(),reader,showMsg:(msg:string)=>showMessage(msg,1000)})
 }
 const handleCopy=(item:any)=>copyReaderMark(item)
@@ -530,7 +542,8 @@ const handleSearchClear=()=>{searchQuery.value='';searchResults.value=[];searchC
 const updateBookmarkState=()=>hasBookmark.value=!!markManager.value?.hasBookmark?.()
 const toggleBookmark=async()=>{if(isEmbedPdfMode.value)return;try{hasBookmark.value=await marks.value?.toggleBookmark?.();window.dispatchEvent(new CustomEvent('sireader:marks-updated'))}catch(e:any){showMessage(e.message||i18n.value.operationFailed||'Operation failed',2000,'error')}}
 const getBookUrl=()=>currentBookUrl.value||props.bookInfo?.url||props.url||''
-const getPdfBookUrl=()=>embedPdfDocumentContext.value?.bookUrl||getBookUrl()
+// 重排的 bookUrl 只是内部 key（重排 PDF 不落盘），写进笔记的链接要用源书地址
+const getPdfBookUrl=()=>embedPdfDocumentContext.value?.linkBookUrl||embedPdfDocumentContext.value?.bookUrl||getBookUrl()
 const savePosition=()=>isMobile()&&getBookUrl()&&reader&&saveMobilePosition(getBookUrl(),{cfi:reader.getLocation()?.cfi})
 const syncReaderFocus=(focused:boolean)=>{const bookUrl=getBookUrl();if(!bookUrl||readerFocused===focused)return;readerFocused=focused;dispatchReaderLifecycle(focused?'focus':'blur',bookUrl)}
 const hasReaderFocus=()=>!!containerRef.value&&containerRef.value.contains(document.activeElement)

@@ -7,7 +7,7 @@
 让思源笔记变身专业阅读器，支持 EPUB/PDF/TXT/在线小说  
 专业电子书阅读器，支持 EPUB/PDF/MOBI/TXT/在线小说；PDF 支持高亮、墨迹、形状、表单、印章、签名、图片、截图、搜索、打印、导出和回链，并提供标注笔记、词典、翻译、主题与书架管理
 
-[![Version](https://img.shields.io/badge/version-2.8.3-blue.svg)](https://github.com/mm-o/siyuan-sireader)
+[![Version](https://img.shields.io/badge/version-2.8.5-blue.svg)](https://github.com/mm-o/siyuan-sireader)
 [![License](https://img.shields.io/badge/license-MIT%20%2B%20AGPL-green.svg)](LICENSE)
 [![SiYuan](https://img.shields.io/badge/SiYuan-3.0+-orange.svg)](https://github.com/siyuan-note/siyuan)
 
@@ -18,6 +18,22 @@
 ---
 
 ## 📝 最新更新
+
+## v2.8.5 (2026-11-26)
+
+### 修复
+
+- PDF 文字重排只能读到第一屏、继续翻页就报 `An ArrayBuffer is detached and could not be cloned`：累积的重排 PDF 交给阅读器时会被转移给 pdfium 线程，主线程那份随即失效，续排再拿它拼接必然失败。现在自己保留一份可用的累积结果，交给引擎的是拷贝。
+- 续排拼进来的页不再空白：跨文档搬页改用 MuPDF 的 `graftPage`（`insertPage` 只接受 PDFObject），也不再报 `non-page object in page tree`。
+- 向前续排不再把新窗口压在已有内容上，同一页不会出现两次。
+- 续排后不再跳到新窗口开头：按累积前的位置换算页码，仍停在同一处正文。
+- 重排 PDF 只在内存里生成，不再往 `data/public` 写文件（原来每续一窗就多一份、越滚越大）；只有点击「导出重排 PDF」才保存到 `assets/`，导出内容包含当前窗口里新画的标注。历史遗留的重排临时文件可直接删除。
+- 从重排复制或发送到笔记的标注与回链，改为指向原始 PDF 的对应页（重排页自动换算回源页），不再写入打不开的临时重排地址。
+- 显示失败时不再谎报“已进入重排”，退出重排后源 PDF 也不再沿用重排的标注键。
+
+### 优化
+
+- 重排窗口从 12 页缩到 6 页、距边界 2 页即续排，首屏与翻页更快；同一会话不再重复搬运和解析整本 PDF，分窗合并在 Worker 内增量插页，合并结果也不再重新压缩。
 
 ## v2.8.4 (2026-11-26)
 

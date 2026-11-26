@@ -89,12 +89,33 @@ async function recognizeOnce(blob: Blob, signal: AbortSignal) {
   }
 }
 
-/** 按需重排的窗口：当前页 ±1（默认 3 页），夹在文档首尾之内。 */
-export const REFLOW_WINDOW = 12
+/**
+ * 按需重排的窗口：以当前页为中心取 6 页，夹在文档首尾之内。
+ * 窗口越小首屏越快、续排时每一步要排的页也越少；代价是合并次数变多，
+ * 所以 worker 侧改成把累积文档留住、只增量插页（见 pdfReflow.worker 的 merge）。
+ */
+export const REFLOW_WINDOW = 6
+/** 距窗口边缘还剩几页就开始续排。 */
+export const REFLOW_TRIGGER = 2
 export const reflowWindowRange = (center: number, total: number, window = REFLOW_WINDOW) => {
   const last = Math.max(0, total - 1)
   const from = Math.max(0, Math.min(center - Math.floor(window / 2), Math.max(0, last - window + 1)))
   return { from, to: Math.min(last, from + window - 1) }
+}
+
+/**
+ * 续排窗口：从已有区间外面接一窗，**不与已有页重叠**。
+ * 以前续排也用「以中心取窗」，向前续排会盖住已有 6 页，合并后同一页出现两次。
+ * 已经在文档首/尾时返回 to < from，调用方据此放弃。
+ */
+export const reflowExtendRange = (start: number, end: number, total: number, at: 'start' | 'end', window = REFLOW_WINDOW) => {
+  const last = Math.max(0, total - 1)
+  if (at === 'end') {
+    if (end >= last) return { from: last + 1, to: last } // 到底了：空区间
+    return { from: end + 1, to: Math.min(last, end + window) }
+  }
+  if (start <= 0) return { from: 0, to: -1 } // 到顶了：空区间
+  return { from: Math.max(0, start - window), to: start - 1 }
 }
 
 /** 重排版式：宽度/高度/字号都夹到安全区间，供 render 与测试共用。 */
@@ -108,21 +129,43 @@ export function createPdfReflowSession(document: any, pages: readonly any[], can
   if (!canCopy) throw new Error(messages.pdfReflowNoExtractPermission || 'This PDF does not allow text extraction')
   const lifetime = new AbortController()
   const worker = createReflowWorker(lifetime.signal)
+  // worker 是否已经持有一份可继续追加的累积文档
+  let mergeSeeded = false
+  // worker 里当前打开的是哪一份源 PDF：同一个 key 的后续窗口不必再搬字节
+  let openedKey = ''
   return {
-    /** 把一个新窗口的 PDF 拼到已有结果的前面（start）或后面（end）。 */
-    async merge(base: ArrayBuffer | undefined, addition: ArrayBuffer, at: 'start' | 'end') {
-      const result = await worker.request<{ buffer: ArrayBuffer }>('merge', { base, addition, at })
+    /**
+     * 把一个新窗口的 PDF 拼到已有结果的前面（start）或后面（end）。
+     * expect = 拼之前应有多少页：worker 用它校验留着的累积文档有没有跑偏。
+     */
+    async merge(base: ArrayBuffer | undefined, addition: ArrayBuffer, at: 'start' | 'end', expect?: number) {
+      // 累积文档还在（页数对得上）就不必把整本 base 再搬过去重解析
+      if (mergeSeeded) {
+        try {
+          const result = await worker.request<{ buffer: ArrayBuffer }>('merge', { addition, at, expect })
+          return result.buffer
+        } catch (error) {
+          if ((error as { fatal?: boolean })?.fatal) throw error
+          // 状态对不上（上一次合并中途失败等）：退回带 base 重建
+          mergeSeeded = false
+        }
+      }
+      const result = await worker.request<{ buffer: ArrayBuffer }>('merge', { base, addition, at, expect })
+      mergeSeeded = true
       return result.buffer
     },
-    async generate(buffer: ArrayBuffer, layout: ReflowLayout, callerSignal: AbortSignal, progress: (page: number, count: number) => void, range?: { from: number; to: number }, onStage?: (stage: 'render' | 'ocr', page: number, count: number) => void) {
+    async generate(buffer: ArrayBuffer, layout: ReflowLayout, callerSignal: AbortSignal, progress: (page: number, count: number) => void, range?: { from: number; to: number }, onStage?: (stage: 'render' | 'ocr', page: number, count: number) => void, reuseKey?: string) {
       callerSignal.throwIfAborted()
       const cancel = () => lifetime.abort(callerSignal.reason)
       callerSignal.addEventListener('abort', cancel, { once: true })
       const { signal } = lifetime
       try {
         // Transfer a copy: the committed source snapshot remains available for rollback.
-        const snapshot = buffer.slice(0)
-        await worker.request<void>('open', { buffer: snapshot, sizes: pages.map((page: any) => page.size), engineUrl: new URL(runtimeUrl('mupdf', 'mupdf.js'), location.origin).href }, [snapshot])
+        // reuseKey 没变时 worker 里已经是这份文档，连拷贝都不用做，直接跳过 open。
+        const reuse = !!reuseKey && reuseKey === openedKey
+        const snapshot = reuse ? undefined : buffer.slice(0)
+        await worker.request<void>('open', { buffer: snapshot, sizes: pages.map((page: any) => page.size), engineUrl: new URL(runtimeUrl('mupdf', 'mupdf.js'), location.origin).href, key: reuseKey }, snapshot ? [snapshot] : [])
+        openedKey = reuseKey || ''
         await worker.request<void>('layout-begin', layout)
         const skipped: number[] = []
         let skipReason = ''
@@ -216,7 +259,6 @@ export type ReflowControllerContext = {
   canCopy: () => boolean
   openPdf: (bytes: ArrayBuffer | Uint8Array) => Promise<any>
   attach: (id: string, signal: AbortSignal, target: number) => Promise<void>
-  writeManaged: (blob: Blob, url: string, name: string) => Promise<void>
   ensureEngine: () => Promise<void>
   onFailure: (error: unknown) => void
   documents: () => any
@@ -230,6 +272,8 @@ type ReflowFrame = {
   pages: any[]
   generator: any
   original: ArrayBuffer
+  /** 同一份源文档的会话标识：续排换窗口时不必重搬、重解整本 PDF */
+  key: string
   start: number
   end: number
 }
@@ -240,16 +284,16 @@ export function createReflowController(ctx: ReflowControllerContext) {
   let active = false
   let busy = false
 
-  const digestName = async (buffer: ArrayBuffer) =>
-    'reflow-' + Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', buffer))).map(value => value.toString(16).padStart(2, '0')).join('') + '.pdf'
+  const digestOf = async (buffer: ArrayBuffer) =>
+    Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', buffer))).map(value => value.toString(16).padStart(2, '0')).join('')
 
-  const buildWindow = async (signal: AbortSignal, center: number) => {
+  const buildWindow = async (signal: AbortSignal, range: { from: number; to: number }) => {
     if (!frame) throw new Error('Reflow session is not ready')
     const startedAt = performance.now()
-    const { from, to } = reflowWindowRange(center, frame.pages.length)
+    const { from, to } = range
     ctx.setStatus(`${ctx.label('pdfReflow', 'Text reflow')} 0/${to - from + 1}`)
     const generated = await frame.generator.generate(
-      frame.original.slice(0),
+      frame.original,
       ctx.layout(),
       signal,
       (page: number, count: number) => { ctx.setStatus(`${ctx.label('pdfReflow', 'Text reflow')} ${page}/${count}`) },
@@ -258,37 +302,58 @@ export function createReflowController(ctx: ReflowControllerContext) {
         const stageText = stage === 'ocr' ? ctx.label('pdfReflowRecognizing', '识别中') : ctx.label('pdfReflowRendering', '渲染中')
         ctx.setStatus(`${ctx.label('pdfReflow', 'Text reflow')} ${page}/${count} · ${stageText}…`)
       },
+      frame.key,
     )
     diagnosticLog('info', 'pdf.reflow.window', { from, to, ms: Math.round(performance.now() - startedAt) })
     return { generated, from, to }
   }
 
-  const showWindow = async (buffer: ArrayBuffer, pageMap: number[], annotationMap: any[], to: number, targetSource: number, signal: AbortSignal) => {
+  /**
+   * merge 的 base：就是内存里那份累积结果。
+   * 重排产物是临时的、不落盘，所以这份 buffer 必须始终活着；
+   * 一旦它被 detach（谁把它 transfer 走了），只能明确报错，不能拿死 buffer 去 postMessage。
+   */
+  const mergeBase = (buffer: ArrayBuffer | undefined) => {
+    if (buffer?.byteLength) return buffer
+    diagnosticLog('error', 'pdf.reflow.merge.base.detached')
+    throw new Error('重排缓冲已被释放，请退出重排后重新进入')
+  }
+
+  const showWindow = async (buffer: ArrayBuffer, pageMap: number[], annotationMap: any[], targetSource: number, signal: AbortSignal) => {
     const documents = ctx.documents()
     if (!documents) return
     const previousId = ctx.documentId()
+    const previousWindow = current
     const stage = ctx.scoped('stage')
     const mode = stage?.getZoomMode() || 'fit-width'
     const level = stage?.getZoomLevel()
-    const name = await digestName(buffer)
-    const url = '/public/siyuan-sireader/reflow/' + name
-    await ctx.writeManaged(new Blob([buffer], { type: 'application/pdf' }), url, name)
+    // 重排 PDF 是临时产物：只在内存里，不写 data 目录（否则每续一窗就多一份、越滚越大）。
+    // 内容哈希只用来当标注/进度的稳定 key 和导出时的文件名。
+    const digest = await digestOf(buffer)
+    const name = `reflow-${digest}.pdf`
+    const url = `reflow:${digest}`
+    // documents.open() 会把 bytes 转移给 pdfium 的 worker（toArrayBuffer→postMessage transfer），
+    // 交进去的 ArrayBuffer 立刻 detached。续排还要拿累积结果当 merge 的 base，所以自己留一份，
+    // 交给引擎的是拷贝 —— 否则续排第二次就报 "merge: ... ArrayBuffer is detached"。
+    // attachDocument 会用 current() 作为标注/进度的 key，所以这里必须先挂上再 attach。
     current = { url, name, buffer, pageMap, annotationMap, sourcePageCount: frame?.pages.length || 0 }
     const nextId = crypto.randomUUID()
-    const { document } = await documents.open({ kind: 'bytes', bytes: buffer, id: nextId }, { name: active ? undefined : name, activate: false, signal })
+    const { document } = await documents.open({ kind: 'bytes', bytes: buffer.slice(0), id: nextId }, { name: active ? undefined : name, activate: false, signal })
     if (document.status !== 'ready') throw new Error(ctx.label('pdfLoadFailed', 'PDF load failed'))
     signal.throwIfAborted()
-    active = true
     documents.setActive(nextId)
     try {
       ctx.scope(nextId).get('stage').zoomTo(mode === 'custom' && level ? level : { mode })
       await ctx.attach(nextId, signal, Math.max(0, pageMap.indexOf(targetSource)))
     } catch (error) {
+      // 回滚：先把 current 换回上一窗，再按它的 key 重新 attach 上一窗
+      current = previousWindow
       if (!signal.aborted) { documents.setActive(previousId); await ctx.attach(previousId, signal, 0) }
       throw error
     }
+    // 只有真的显示出来了才算进入重排；中途失败时 isActive() 不能谎报
+    active = true
     if (previousId && previousId !== nextId) await documents.close(previousId).catch(() => {})
-    if (frame) frame.end = to
   }
 
   /** 滑到窗口边缘时续排下一窗。 */
@@ -296,29 +361,31 @@ export function createReflowController(ctx: ReflowControllerContext) {
     if (!active || !frame || busy) return
     const signal = ctx.signal()
     const stage = ctx.scoped('stage')
-    if (!signal || !stage || !current) return
+    const previous = current
+    if (!signal || !stage || !previous) return
     const output = stage.getCurrentPageIndex()
-    const size = current.pageMap.length
+    const size = previous.pageMap.length
     if (!size) return
-    // 提前 3 页就开始续排，翻到边界时已经接上了
-    const atEnd = output >= size - 3 && frame.end < frame.pages.length - 1
-    const atStart = output <= 2 && frame.start > 0
-    if (!atEnd && !atStart) return
+    // 提前几页就开始续排，翻到边界时已经接上了
+    const forward = output >= size - REFLOW_TRIGGER && frame.end < frame.pages.length - 1
+    const backward = output <= REFLOW_TRIGGER - 1 && frame.start > 0
+    if (!forward && !backward) return
     busy = true
     try {
-      const window = await buildWindow(signal, atEnd ? frame.end + 1 : frame.start - 1)
-      const merged = current
-        ? await frame.generator.merge(current.buffer, window.generated.buffer, atEnd ? 'end' : 'start')
-        : window.generated.buffer
-      const pageMap = atEnd
-        ? [...current!.pageMap, ...window.generated.pageMap]
-        : [...window.generated.pageMap, ...current!.pageMap]
-      const annotationMap = atEnd
-        ? [...current!.annotationMap, ...window.generated.annotationMap]
-        : [...window.generated.annotationMap, ...current!.annotationMap]
-      if (atEnd) frame.end = window.to
+      const range = reflowExtendRange(frame.start, frame.end, frame.pages.length, forward ? 'end' : 'start')
+      if (range.to < range.from) return
+      const window = await buildWindow(signal, range)
+      const addition = window.generated
+      const merged = await frame.generator.merge(mergeBase(previous.buffer), addition.buffer, forward ? 'end' : 'start', previous.pageMap.length)
+      const pageMap = forward ? [...previous.pageMap, ...addition.pageMap] : [...addition.pageMap, ...previous.pageMap]
+      const annotationMap = forward ? [...previous.annotationMap, ...addition.annotationMap] : [...addition.annotationMap, ...previous.annotationMap]
+      if (pageMap.length !== annotationMap.length) diagnosticLog('warn', 'pdf.reflow.merge.map.mismatch', { pages: pageMap.length, maps: annotationMap.length })
+      if (forward) frame.end = window.to
       else frame.start = window.from
-      await showWindow(merged, pageMap, annotationMap, atEnd ? window.to : window.to, atEnd ? window.from : window.to, signal)
+      // 累积后仍是同一处正文：把当前页索引换算过去，续排后不要跳页
+      const shift = forward ? 0 : addition.pageMap.length
+      const target = pageMap[Math.min(pageMap.length - 1, output + shift)] ?? 0
+      await showWindow(merged, pageMap, annotationMap, target, signal)
     } catch (error) {
       if (!signal.aborted) ctx.onFailure(error)
     } finally {
@@ -345,6 +412,8 @@ export function createReflowController(ctx: ReflowControllerContext) {
         const { document } = await documents.open({ kind: 'bytes', bytes: frame.original.slice(0), id: nextId }, { activate: false, signal })
         if (document.status !== 'ready') throw new Error(ctx.label('pdfLoadFailed', 'PDF load failed'))
         active = false
+        // 退出后回到源文档自己的标注/进度 key（current 还挂着会让源 PDF 继续用重排 key）
+        current = undefined
         documents.setActive(nextId)
         await ctx.attach(nextId, signal, source)
         await documents.close(previousId).catch(() => {})
@@ -358,16 +427,19 @@ export function createReflowController(ctx: ReflowControllerContext) {
       current = undefined
       ctx.setStatus(ctx.label('pdfReflow', 'Text reflow'))
       await ctx.ensureEngine()
-      const original = await documents.download(previousId, { signal })
-      const source = await ctx.openPdf(original.slice())
+      const downloaded = await documents.download(previousId, { signal })
+      // download() 返回 Uint8Array；open() 会转移它的 buffer，所以「引擎用」和「回滚用」各留独立副本
+      const bytes = downloaded instanceof Uint8Array ? downloaded.slice() : new Uint8Array(downloaded as ArrayBuffer).slice()
+      const original = bytes.slice()
+      const source = await ctx.openPdf(bytes)
       try {
         const { pages } = await source.pages.list()
         if (!pages.length) throw new Error('PDF has no pages')
-        frame = { source, pages, generator: createPdfReflowSession(source, pages, ctx.canCopy()), original: original.slice().buffer as ArrayBuffer, start: 0, end: 0 }
-        const window = await buildWindow(signal, index)
+        frame = { source, pages, generator: createPdfReflowSession(source, pages, ctx.canCopy()), original: original.buffer as ArrayBuffer, key: crypto.randomUUID(), start: 0, end: 0 }
+        const window = await buildWindow(signal, reflowWindowRange(index, pages.length))
         frame.start = window.from
         frame.end = window.to
-        await showWindow(window.generated.buffer, window.generated.pageMap, window.generated.annotationMap, window.to, index, signal)
+        await showWindow(window.generated.buffer, window.generated.pageMap, window.generated.annotationMap, index, signal)
       } catch (error) { await source.close().catch(() => {}); throw error }
     } catch (error) {
       if (!signal.aborted) ctx.onFailure(error)

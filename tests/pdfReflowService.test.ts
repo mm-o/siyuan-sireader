@@ -3,9 +3,9 @@ const files = vi.hoisted(() => ({ putFile: vi.fn(async () => {}), removeFile: vi
 vi.mock('@/api', () => files)
 const storage = vi.hoisted(() => ({ upsertEmbedPdfAnnotation: vi.fn(async () => {}), deleteEmbedPdfAnnotation: vi.fn(async () => {}) }))
 vi.mock('@/core/storage', () => storage)
-const bridge = vi.hoisted(() => ({ open: vi.fn(async () => {}), page: vi.fn(async () => ({ pageIndex: 0, ocr: false, blocks: [{ text: '正文', spans: [] }] })), ocr: vi.fn(async () => ({ pageIndex: 0, ocr: true, blocks: [{ text: '重新识别' }] })), begin: vi.fn(async () => {}), append: vi.fn(async () => {}), finish: vi.fn(async () => ({ buffer: new ArrayBuffer(4), pageMap: [0], annotationMap: [] })), dispose: vi.fn() }))
+const bridge = vi.hoisted(() => ({ open: vi.fn(async () => {}), page: vi.fn(async () => ({ pageIndex: 0, ocr: false, blocks: [{ text: '正文', spans: [] }] })), ocr: vi.fn(async () => ({ pageIndex: 0, ocr: true, blocks: [{ text: '重新识别' }] })), begin: vi.fn(async () => {}), append: vi.fn(async () => {}), finish: vi.fn(async () => ({ buffer: new ArrayBuffer(4), pageMap: [0], annotationMap: [] })), merge: vi.fn(async () => ({ buffer: new ArrayBuffer(8) })), dispose: vi.fn() }))
 vi.mock('@/core/diagnostics', () => ({ diagnosticLog: vi.fn() }))
-import { recognizePdfPage, createPdfReflowSession, createReflowController, reflowLayoutFor, reflowWindowRange, synchronizeReflowAnnotation } from '../src/services/pdfReflow'
+import { recognizePdfPage, createPdfReflowSession, createReflowController, reflowLayoutFor, reflowWindowRange, reflowExtendRange, REFLOW_WINDOW, synchronizeReflowAnnotation } from '../src/services/pdfReflow'
 import { projectReflowAnnotation } from '../src/core/pdfReflow'
 // Exercise RPC and generation together; only the browser transport is substituted.
 let transport: any
@@ -18,8 +18,12 @@ beforeEach(() => {
     constructor() { transport = this }
     postMessage(message: any, transfer: Transferable[]) {
       const { id, command, payload } = structuredClone(message, { transfer })
-      const method = { open: 'open', page: 'page', ocr: 'ocr', 'layout-begin': 'begin', 'layout-page': 'append', 'layout-finish': 'finish' }[command]
-      const args = command === 'open' ? [payload.buffer, payload.sizes] : command === 'page' ? [payload.index] : command === 'ocr' ? [payload.index, payload] : command === 'layout-finish' ? [] : [payload]
+      const method = { open: 'open', page: 'page', ocr: 'ocr', merge: 'merge', 'layout-begin': 'begin', 'layout-page': 'append', 'layout-finish': 'finish' }[command]
+      const args = command === 'open' ? [payload.buffer, payload.sizes]
+        : command === 'page' ? [payload.index]
+          : command === 'ocr' ? [payload.index, payload]
+            : command === 'merge' ? [payload.base, payload.addition, payload.at, payload.expect]
+              : command === 'layout-finish' ? [] : [payload]
       Promise.resolve().then(() => bridge[method](...args)).then(
         result => { if (!this.terminated) this.onmessage({ data: { id, result } }) },
         error => { if (!this.terminated) this.onmessage({ data: { id, error: error.message } }) },
@@ -65,8 +69,21 @@ test('按需重排窗口按给定页数取相邻页并夹在首尾之内', () =>
   expect(reflowWindowRange(9, 10, 3)).toEqual({ from: 7, to: 9 })
   expect(reflowWindowRange(3, 2, 3)).toEqual({ from: 0, to: 1 })
   expect(reflowWindowRange(0, 1, 3)).toEqual({ from: 0, to: 0 })
-  // 默认 12 页窗口以当前页为中心
-  expect(reflowWindowRange(20, 100)).toEqual({ from: 14, to: 25 })
+  // 默认 6 页窗口以当前页为中心（窗口越小首屏越快）
+  expect(reflowWindowRange(20, 100)).toEqual({ from: 17, to: 22 })
+  expect(REFLOW_WINDOW).toBe(6)
+  expect(reflowWindowRange(20, 100, 12)).toEqual({ from: 14, to: 25 })
+})
+
+test('续排窗口接在已有区间外面：不重叠、不越界、到边就是空区间', () => {
+  expect(reflowExtendRange(0, 5, 40, 'end')).toEqual({ from: 6, to: 11 })
+  expect(reflowExtendRange(30, 35, 40, 'end')).toEqual({ from: 36, to: 39 })
+  expect(reflowExtendRange(34, 39, 40, 'end')).toEqual({ from: 40, to: 39 })
+  expect(reflowExtendRange(6, 11, 40, 'start')).toEqual({ from: 0, to: 5 })
+  expect(reflowExtendRange(30, 41, 40, 'start')).toEqual({ from: 24, to: 29 })
+  expect(reflowExtendRange(0, 5, 40, 'start')).toEqual({ from: 0, to: -1 })
+  // 窗口大小可覆盖：12 页窗口时一次接满 12 页
+  expect(reflowExtendRange(0, 11, 40, 'end', 12)).toEqual({ from: 12, to: 23 })
 })
 
 test('重排版式夹在安全区间内', () => {
@@ -91,7 +108,6 @@ const makeController = (overrides: Record<string, any> = {}) => {
     canCopy: () => true,
     openPdf: async () => ({ pages: { list: async () => ({ pages: Array.from({ length: 10 }, () => ({ ref: {}, size: { width: 200, height: 300 } })) }) }, close: async () => {} }),
     attach: async (_id: string, _signal: AbortSignal, target: number) => { calls.push('attach:' + target) },
-    writeManaged: async () => { calls.push('write') },
     ensureEngine: async () => { calls.push('engine') },
     onFailure: (error: any) => { calls.push('failure:' + (error?.message || error)) },
     documents: () => ({
@@ -157,6 +173,21 @@ test('scans and empty pages use fresh SiYuan OCR before being appended', async (
   expect(files.removeFile).toHaveBeenCalledTimes(2)
 })
 
+test('同一会话的后续窗口不再重搬源 PDF（复用 worker 里已打开的文档）', async () => {
+  const { session } = setupSession(), buffer = new Uint8Array([1, 2, 3, 4]).buffer, signal = new AbortController().signal
+  await session.generate(buffer, layout, signal, vi.fn(), undefined, undefined, 'session-key')
+  expect(bridge.open).toHaveBeenCalledTimes(1)
+  expect(bridge.open.mock.calls[0][0]).toEqual(buffer)
+  // 同一个 key：不搬字节，也不解一次
+  await session.generate(buffer, layout, signal, vi.fn(), undefined, undefined, 'session-key')
+  expect(bridge.open).toHaveBeenCalledTimes(2)
+  expect(bridge.open.mock.calls[1][0]).toBeUndefined()
+  // 换了源文档就必须重新搬
+  await session.generate(buffer, layout, signal, vi.fn(), undefined, undefined, 'other-key')
+  expect(bridge.open.mock.calls[2][0]).toEqual(buffer)
+  session.dispose()
+})
+
 test('cancelling generation stops before appending a stale page', async () => {
   const { session } = setupSession(), controller = new AbortController()
   bridge.page.mockImplementationOnce(async () => { controller.abort(); return { pageIndex: 0, ocr: false, blocks: [{ text: '旧页' }] } })
@@ -211,4 +242,68 @@ test('create/update/delete share a stable source id without copying appearance c
   expect(storage.upsertEmbedPdfAnnotation).toHaveBeenLastCalledWith('source-key', expect.objectContaining({ annotation: expect.objectContaining({ id: first, contents: 'edited' }) }))
   expect(storage.upsertEmbedPdfAnnotation.mock.calls[0][1]).not.toHaveProperty('ctx')
   expect(storage.deleteEmbedPdfAnnotation).toHaveBeenCalledWith('source-key', first)
+})
+
+// 续排的回归测试：引擎 open() 会 transfer 掉传进去的 bytes，之前重排把自己的累积结果
+// 直接交了出去，翻到第 12 页续排时报 "merge: ... ArrayBuffer is detached"。
+// 放在文件末尾：它改写了 bridge 的实现，不影响前面的用例。
+test('续排连续两窗：引擎 detach 已显示的 PDF 后仍能合并并保持阅读位置', async () => {
+  let output = 0
+  const seen: number[] = []
+  const bases: number[] = []
+  const positions: string[] = []
+  const expects: number[] = []
+  bridge.begin.mockImplementation(async () => { seen.length = 0 })
+  bridge.page.mockImplementation(async (index: number) => {
+    seen.push(index)
+    return { pageIndex: index, ocr: false, blocks: [{ text: `正文${index}`, spans: [] }] }
+  })
+  bridge.finish.mockImplementation(async () => {
+    const pageMap = seen.slice()
+    return { buffer: new ArrayBuffer(8), pageMap, annotationMap: pageMap.map(() => ({ glyphs: [] })) }
+  })
+  bridge.merge.mockImplementation(async (base: ArrayBuffer, _addition: ArrayBuffer, at: string, expect: number) => {
+    bases.push(base?.byteLength ?? -1)
+    positions.push(at)
+    expects.push(expect)
+    return { buffer: new ArrayBuffer(8) }
+  })
+  const { controller, calls } = makeController({
+    scoped: (name: string) => name === 'stage'
+      ? { getCurrentPageIndex: () => output, getZoomMode: () => 'fit-width', getZoomLevel: () => 1 }
+      : { canCopy: () => true },
+    scope: () => ({ get: () => ({ zoomTo: () => {} }) }),
+    openPdf: async () => ({ pages: { list: async () => ({ pages: Array.from({ length: 40 }, (_value, index) => ({ ref: { index }, size: { width: 200, height: 300 } })) }) }, close: async () => {} }),
+    documents: () => ({
+      download: async () => new Uint8Array([1, 2, 3]).buffer,
+      // 引擎的真实行为：open() 把 bytes transfer 给 pdfium worker，调用方的 ArrayBuffer 立刻 detached
+      open: async (input: any) => { structuredClone(input.bytes, { transfer: [input.bytes] }); return { document: { status: 'ready' } } },
+      setActive: () => {}, close: async () => {}, forDocument: () => ({ get: () => ({ zoomTo: () => {} }) }),
+    }),
+  })
+  const failures = () => calls.filter(call => call.startsWith('failure:'))
+  await controller.toggle()
+  expect(failures()).toEqual([])
+  expect(controller.current()?.pageMap).toEqual(Array.from({ length: 6 }, (_value, index) => index))
+  output = 5 // 距边界还有 2 页就该续排
+  await controller.extend()
+  expect(failures()).toEqual([])
+  expect(controller.current()?.pageMap).toEqual(Array.from({ length: 12 }, (_value, index) => index))
+  output = 11
+  await controller.extend()
+  expect(failures()).toEqual([])
+  expect(controller.current()?.pageMap).toEqual(Array.from({ length: 18 }, (_value, index) => index))
+  // 重排 PDF 是临时产物：一窗、两窗、三窗都不许落盘（以前每续一窗就多写一份，越滚越大）
+  expect(files.putFile).not.toHaveBeenCalled()
+  expect(files.removeFile).not.toHaveBeenCalled()
+  expect(controller.current()?.url).toMatch(/^reflow:[0-9a-f]{64}$/)
+  expect(controller.current()?.name).toMatch(/^reflow-[0-9a-f]{64}\.pdf$/)
+  // 第一次合并要把 base 交给 worker（活的 buffer），之后 worker 留着累积文档，只送新窗口
+  expect(bases).toEqual([8, -1])
+  // 合并前应有多少页，用来校验 worker 留着的累积文档没跑偏
+  expect(expects).toEqual([6, 12])
+  expect(positions).toEqual(['end', 'end'])
+  // 续排后停在原来那一页，不跳到新窗口开头
+  expect(calls.filter(call => call.startsWith('attach:'))).toEqual(['attach:0', 'attach:5', 'attach:11'])
+  controller.reset()
 })
