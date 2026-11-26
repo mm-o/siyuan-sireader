@@ -67,7 +67,7 @@ export const ensureRuntime = (name: string, files: string[]) => {
       }
       const found = await fetchRuntime(name, file)
       if (!found) {
-        throw new Error(`缺少运行时组件 ${name}/${file}：请把它放到 ${runtimeHint(name, file)}`)
+        throw new Error(`缺少运行时组件 ${name}/${file}：请从 ${base()}/${file} 下载后放到 ${runtimeHint(name, file)}`)
       }
       try {
         await putFile(`${RUNTIME_ROOT}/${name}/${file}`, false, new File([found.blob], file))
@@ -86,6 +86,18 @@ export const ensureRuntime = (name: string, files: string[]) => {
   }).finally(() => { tasks.delete(name) })
   tasks.set(name, task)
   return task
+}
+
+/** 运行时文件是否已经落到工作空间里（设置界面用来显示"已就绪 / 未下载"）。 */
+export const runtimeStatus = async (name: string, files: string[]) => {
+  let present: string[] = []
+  try {
+    const result: any = await readDir(`${RUNTIME_ROOT}/${name}`)
+    const entries = Array.isArray(result?.data) ? result.data : Array.isArray(result) ? result : []
+    present = entries.map((item: any) => String(item?.name || ''))
+  } catch { /* 目录还不存在就等于都没下载 */ }
+  const missing = files.filter(file => !present.includes(file))
+  return { ready: !missing.length, missing }
 }
 
 export const MUPDF_FILES = ['mupdf.js', 'mupdf-wasm.js', 'mupdf-wasm.wasm']

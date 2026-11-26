@@ -125,6 +125,7 @@ export function createPdfReflowSession(document: any, pages: readonly any[], can
         await worker.request<void>('open', { buffer: snapshot, sizes: pages.map((page: any) => page.size), engineUrl: new URL(runtimeUrl('mupdf', 'mupdf.js'), location.origin).href }, [snapshot])
         await worker.request<void>('layout-begin', layout)
         const skipped: number[] = []
+        let skipReason = ''
         const timing = { page: 0, render: 0, ocr: 0, layout: 0, pages: 0 }
         // 只排这一段（含端点）；不传则整本
         const from = Math.max(0, Math.min(range?.from ?? 0, pages.length - 1))
@@ -171,6 +172,7 @@ export function createPdfReflowSession(document: any, pages: readonly any[], can
             // 取消要如实抛出；其它情况（某页损坏、OCR 失败）跳过该页继续，别让整本重排失败
             if (signal.aborted || callerSignal.aborted || (error as any)?.fatal) throw error
             skipped.push(index + 1)
+            skipReason ||= String((error as any)?.message || error)
             diagnosticLog('warn', 'pdf.reflow.page.skipped', { page: index + 1, error: String((error as any)?.message || error) })
           }
           progress(index - from + 1, count)
@@ -183,7 +185,9 @@ export function createPdfReflowSession(document: any, pages: readonly any[], can
           page: ms(timing.page), render: ms(timing.render), ocr: ms(timing.ocr), layout: ms(timing.layout),
           finish: ms(performance.now() - finishAt), skipped: skipped.length,
         })
-        if (skipped.length) diagnosticLog('info', 'pdf.reflow.pages.skipped', { count: skipped.length, pages: skipped.slice(0, 50) })
+        if (skipped.length) diagnosticLog('info', 'pdf.reflow.pages.skipped', { count: skipped.length, pages: skipped.slice(0, 50), reason: skipReason })
+        // 一页都没排出来就别返回空文档：用户只会看到一片空白，还以为是重排成功。
+        if (!timing.pages) throw new Error(`${messages.pdfReflowEmpty || '重排没有生成任何页面'}${skipReason ? `：${skipReason}` : ''}`)
         return document_
       } finally { callerSignal.removeEventListener('abort', cancel) }
     },

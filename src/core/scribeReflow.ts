@@ -49,8 +49,13 @@ export function readMuPdfPage(document: any, index: number, size: { width: numbe
         line = null
       },
     })
-    // The session will request SiYuan OCR for scanned pages, not their old text layer.
-    if (page.scan) { page.lines = []; return page }
+    // 整页扫描且文字层基本为空才交给 SiYuan OCR；OCR 版 PDF 的隐形文字层是可用的，就当文字页读。
+    // 以前一律丢掉文字层，OCR 一旦不可用整本重排就退化成空白文档。
+    const glyphs = page.lines.reduce((sum: number, line: any) => sum + line.sourceText.trim().length, 0)
+    if (page.scan) {
+      if (glyphs < 120) { page.lines = []; return page }
+      page.scan = false
+    }
     // MuPDF's segmenter supplies reading order. Its JS walk currently skips structure
     // nodes, so use JSON for order and the unsegmented walk for exact glyph quads.
     segmented = native.toStructuredText('segment,paragraph-break,collect-styles')

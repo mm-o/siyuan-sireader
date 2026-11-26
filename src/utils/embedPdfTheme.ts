@@ -1,45 +1,36 @@
 import { PRESET_THEMES, type ReadTheme } from '@/composables/useSetting'
-
-type ThemePreference = 'light' | 'dark'
 import type { ThemeConfig } from '@embedpdf/viewer'
 
-const darkThemes = new Set(['dark', 'night', 'gold'])
-const root = () => document.documentElement
-const cssVar = (name: string, fallback: string, el: Element = root()) =>
-  (getComputedStyle(el).getPropertyValue(name).trim() || getComputedStyle(root()).getPropertyValue(name).trim() || fallback)
-const cssVarValue = (value: string, el?: Element) =>
-  value.startsWith('var(') ? cssVar(value.slice(4, -1), value, el) : value
-
-const isDarkColor = (color = '') => {
-  const hex = color.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i)?.[1]
-  const parts = hex
-    ? (hex.length === 3 ? [...hex].map(c => Number.parseInt(c + c, 16)) : [0, 2, 4].map(i => Number.parseInt(hex.slice(i, i + 2), 16)))
-    : color.match(/\d+(\.\d+)?/g)?.slice(0, 3).map(Number)
-  return !!parts && (parts[0] * 299 + parts[1] * 587 + parts[2] * 114) / 1000 < 128
+const cssVar = (name: string, fallback = '') => getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback
+// 主题色可能写成 var(--b3-…)，取一次真实颜色即可。
+const resolveColor = (value = '') => value.startsWith('var(') ? cssVar(value.slice(4, -1)) : value
+// 背景色够暗就是深色主题，不再维护主题名清单。
+const luminance = (color = '') => {
+  const hex = color.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i)?.[1] || ''
+  const rgb = hex.length === 3 ? [...hex].map(char => Number.parseInt(char + char, 16)) : [0, 2, 4].map(index => Number.parseInt(hex.slice(index, index + 2), 16))
+  return hex ? (rgb[0] * 299 + rgb[1] * 587 + rgb[2] * 114) / 1000 : -1
 }
 
-export const embedPdfThemePreference = (theme = '', el?: Element, customTheme?: ReadTheme): ThemePreference => {
-  if (darkThemes.has(theme)) return 'dark'
-  if (['default', 'almond', 'autumn', 'green', 'blue'].includes(theme)) return 'light'
-  if (theme === 'custom' && customTheme?.bg) return isDarkColor(cssVarValue(customTheme.bg, el)) ? 'dark' : 'light'
-  const mode = [root().dataset.themeMode, root().className, document.body?.className].join(' ')
-  return /dark/i.test(mode) || isDarkColor(cssVar('--b3-theme-background', '#ffffff', el)) ? 'dark' : 'light'
-}
-
-export const buildEmbedPdfTheme = (theme = '', el?: Element, customTheme?: ReadTheme): ThemeConfig => {
-  const preference = embedPdfThemePreference(theme, el, customTheme)
-  const readTheme = theme === 'custom' ? customTheme : PRESET_THEMES[theme]
-  const bg = readTheme?.bg ? cssVarValue(readTheme.bg, el) : cssVar('--b3-theme-background', '#f3f4f6', el)
-  const color = readTheme?.color ? cssVarValue(readTheme.color, el) : cssVar('--b3-theme-on-surface', '#111827', el)
-  const primary = cssVar('--b3-theme-primary', '#3b82f6', el)
-  return {
-    preference,
+// PDF 的配色只跟设置里的阅读主题走，一次算出两件事：EmbedPDF 的 theme 令牌，和页面纸的样式。
+// 令牌管它的界面（画布、正文、阴影、圆角）；页面纸是位图、图元自带隔离层，只能在页面容器上
+// 加 `!important` 背景 + 混合/反色：浅色正片叠底压到画布色，深色反色并补回色相。
+export const buildEmbedPdfLook = (theme = '', customTheme?: ReadTheme) => {
+  const read: ReadTheme = (theme === 'custom' ? customTheme : PRESET_THEMES[theme]) || ({} as ReadTheme)
+  const bg = read.bg || '#ffffff', color = read.color || '#202124'
+  const dark = luminance(resolveColor(bg)) < 128
+  const themeConfig: ThemeConfig = {
+    preference: dark ? 'dark' : 'light',
     tokens: {
-      canvas: bg, surface: bg, 'surface-raised': bg, text: color,
-      'text-muted': cssVar('--b3-theme-on-surface-variant', color, el),
-      accent: preference === 'dark' ? cssVar('--b3-theme-primary-light', primary, el) : primary,
-      border: cssVar('--b3-border-color', '#d1d5db', el),
-      hover: cssVar('--b3-list-hover', bg, el),
+      canvas: bg,
+      'page-background': bg,
+      surface: bg,
+      'surface-raised': bg,
+      text: color,
+      'page-shadow': dark ? '0 4px 14px rgb(0 0 0 / 0.45)' : '0 6px 18px rgb(0 0 0 / 0.18)',
+      radius: cssVar('--b3-border-radius', '6px'),
     },
   }
+  const paint = dark ? 'filter:invert(1) hue-rotate(180deg)' : 'mix-blend-mode:multiply'
+  const pageCss = `[style*="--epdf-page-background"]{background:${bg} !important;${paint}}`
+  return { theme: themeConfig, pageCss }
 }

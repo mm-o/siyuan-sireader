@@ -136,7 +136,7 @@
           <template v-else-if="modalMode === 'edit'">
             <div v-if="panelCover" class="sr-panel-cover"><img :src="panelCover" /></div>
 
-            <div v-for="f in editFields" :key="f.key" class="sr-form-item">
+            <div v-for="f in editFields" :key="f.key" v-show="!editBindOnly || f.key === 'bind'" class="sr-form-item">
               <span class="ft__secondary">{{ f.label }}</span>
               <input v-if="f.type === 'text'" v-model="editForm[f.key]" class="b3-text-field sr-input" :placeholder="f.placeholder" />
               <select v-else-if="f.type === 'select'" v-model="editForm[f.key]" class="b3-select sr-select"><option v-for="opt in f.options" :key="opt.value" :value="opt.value">{{ opt.label }}</option></select>
@@ -212,6 +212,8 @@ const batchTags = ref(''), batchGroups = ref<string[]>([])
 const batchTagAction = ref<'add' | 'remove' | 'set'>('add'), batchGroupAction = ref<'add' | 'remove' | 'set'>('add')
 const editForm = ref(createDefaultEditForm())
 const bindSearch = ref(''), bindResults = ref<any[]>([])
+// 没有「书籍编辑」权益时，编辑面板只保留绑定文档这一项。
+const editBindOnly = ref(false)
 const cloudInput = ref(''), cloudKeyword = ref(''), cloudLoading = ref(false), cloudError = ref(''), cloudResults = ref<SiyuanCloudNode[]>([]), cloudSelectedPaths = ref<string[]>([]), cloudImportGroups = ref<Record<string, string[]>>({})
 const { items: importItems, draft: importDraft, parsing: importParsing, importing, progress: importProgress, hasItems: importHasItems, selectedCount: importSelectedCount, linkSelectedCount: importLinkSelectedCount, allSelected: importAllSelected, reset: resetImport, pickAndParseFiles, parseDraftUrls, importSelected } = useBookImport()
 
@@ -554,7 +556,20 @@ const confirmImport = async (mode: 'file' | 'link') => {
   if (!res.failed) closePopups()
 }
 const toggleImportItem = (item: { selected: boolean; error: string; loading: boolean }) => { if (!item.error && !item.loading) item.selected = !item.selected }
-const openBookPanel = async (mode: 'detail' | 'edit', book: Book) => { closeMenu(); panelBook.value = await bookshelfManager.getBook(book.url) || book; if (mode === 'edit') { if (!can.value('book-edit')) return showUpgrade('书籍编辑'); editingBook.value = panelBook.value.url; resetEditForm(); assignEditForm(panelBook.value) } modalMode.value = mode }
+const openBookPanel = async (mode: 'detail' | 'edit', book: Book, opts: { bindOnly?: boolean } = {}) => {
+  closeMenu()
+  panelBook.value = await bookshelfManager.getBook(book.url) || book
+  if (mode === 'edit') {
+    // 绑定文档免费：没有「书籍编辑」权益时只放开绑定这一项，其它字段不展示。
+    const member = can.value('book-edit')
+    if (!member && !opts.bindOnly) return showUpgrade('书籍编辑')
+    editBindOnly.value = !member
+    editingBook.value = panelBook.value.url
+    resetEditForm()
+    assignEditForm(panelBook.value)
+  }
+  modalMode.value = mode
+}
 // 复制书籍的 Markdown 链接：无章节、无位置，模板自动收起章节位，链接落到 sireader://resume。
 const handleCopyBookLink = async (book: Book) => {
   closeMenu()
@@ -621,7 +636,7 @@ const showContextMenu = (book: Book, e: MouseEvent) => {
   const clearMoveGroups = moveGroupKeyword.value ? { icon: 'iconClose', label: tx('clearGroupSearch', 'Clear Group Search'), click: () => { moveGroupKeyword.value = ''; closeMenu(); showContextMenu(book, e) } } : null
   const groupMenu = [searchMoveGroups, ...(clearMoveGroups ? [clearMoveGroups] : []), ...(book.groups.length ? [{ icon: 'iconFiles', label: tx('bookshelf', 'Bookshelf'), click: () => updateBookField(book, 'group', 'home', tx('bookshelf', 'Bookshelf')) }, ...(moveGroups.length ? [{ type: 'separator' }] : [])] : []), ...moveGroups.map(g => ({ icon: 'iconFolder', label: g.name, click: () => updateBookField(book, 'group', g.id, `${tx('moveTo', 'Move to')}: ${g.name}`) }))]
   const m = new Menu()
-  ;[{ icon: 'iconPlay', label: tx('openBook', 'Open Book'), click: () => readBook(book) }, { icon: 'iconInfo', label: tx('bookDetails', 'Book Details'), click: () => openBookPanel('detail', book) }, { icon: 'iconFolder', label: tx('openDataLocation', '打开数据所在位置'), click: () => revealBookFile(book) }, { icon: 'iconCopy', label: tx('copyLink', 'Copy Link'), click: () => handleCopyBookLink(book) }, { icon: 'iconCheck', label: selectedBookUrls.value.includes(book.url) ? tx('unselectBook', 'Cancel Selection') : tx('selectBook', 'Select This Book'), click: () => toggleSelectBook(book) }, { icon: 'iconStar', label: tx('rate', 'Rating'), type: 'submenu', submenu: ratingMenu }, { icon: 'iconCheck', label: tx('markStatus', 'Mark Status'), type: 'submenu', submenu: statusItems(status => updateBookField(book, 'status', status, tx(status, status))) }, { icon: 'iconFolder', label: tx('moveTo', 'Move To'), type: 'submenu', submenu: groupMenu }, { icon: hasBinding ? 'iconLinkOff' : 'iconLink', label: hasBinding ? tx('unbindDocument', 'Unbind Document') : tx('bindDocument', 'Bind Document'), click: () => openBookPanel('edit', book) }, { icon: 'iconDownload', label: tx('importAnnotations', 'Import Annotations'), click: () => importBookAnnotations(book) }, { type: 'separator' }, { icon: 'iconEdit', label: tx('editInfo', 'Edit Information'), click: () => openBookPanel('edit', book) }, { icon: 'iconTrashcan', label: tx('removeBook', 'Remove'), click: () => { closeMenu(); confirmDelete.value = { type: 'book', id: book.url, item: book } } }].forEach(item => m.addItem(item as any))
+  ;[{ icon: 'iconPlay', label: tx('openBook', 'Open Book'), click: () => readBook(book) }, { icon: 'iconInfo', label: tx('bookDetails', 'Book Details'), click: () => openBookPanel('detail', book) }, { icon: 'iconFolder', label: tx('openDataLocation', '打开数据所在位置'), click: () => revealBookFile(book) }, { icon: 'iconCopy', label: tx('copyLink', 'Copy Link'), click: () => handleCopyBookLink(book) }, { icon: 'iconCheck', label: selectedBookUrls.value.includes(book.url) ? tx('unselectBook', 'Cancel Selection') : tx('selectBook', 'Select This Book'), click: () => toggleSelectBook(book) }, { icon: 'iconStar', label: tx('rate', 'Rating'), type: 'submenu', submenu: ratingMenu }, { icon: 'iconCheck', label: tx('markStatus', 'Mark Status'), type: 'submenu', submenu: statusItems(status => updateBookField(book, 'status', status, tx(status, status))) }, { icon: 'iconFolder', label: tx('moveTo', 'Move To'), type: 'submenu', submenu: groupMenu }, { icon: hasBinding ? 'iconLinkOff' : 'iconLink', label: hasBinding ? tx('unbindDocument', 'Unbind Document') : tx('bindDocument', 'Bind Document'), click: () => openBookPanel('edit', book, { bindOnly: true }) }, { icon: 'iconDownload', label: tx('importAnnotations', 'Import Annotations'), click: () => importBookAnnotations(book) }, { type: 'separator' }, { icon: 'iconEdit', label: tx('editInfo', 'Edit Information'), click: () => openBookPanel('edit', book) }, { icon: 'iconTrashcan', label: tx('removeBook', 'Remove'), click: () => { closeMenu(); confirmDelete.value = { type: 'book', id: book.url, item: book } } }].forEach(item => m.addItem(item as any))
   openMenu(m, e)
 }
 
@@ -681,7 +696,10 @@ const toggleGroupRule = (field: any, value: any) => {
 const resetEditForm = () => { editForm.value = createDefaultEditForm(); bindSearch.value = ''; bindResults.value = [] }
 const saveEdit = async () => {
   if (!editingBook.value) return
-  const result = await bookshelfManager.updateBookInfo(editingBook.value, editForm.value)
+  // 只绑定模式（无书籍编辑权益）只写绑定字段，不碰其它信息。
+  const result = editBindOnly.value
+    ? { success: await bookshelfManager.updateBook(editingBook.value, { bindDocId: editForm.value.bindDocId || '', bindDocName: editForm.value.bindDocName || '' }) }
+    : await bookshelfManager.updateBookInfo(editingBook.value, editForm.value)
   if (!result.success) return showMessage(result.error || '保存失败', 2000, 'error')
   await refresh()
   showMessage('保存成功', 2000, 'info')

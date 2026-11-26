@@ -19,6 +19,34 @@ Professional eBook reader for EPUB/PDF/MOBI/TXT/online novels. PDFs support high
 
 ## 📝 Latest Updates
 
+## v2.8.4 (2026-11-26)
+
+### Added
+
+- PDF theme support: the page, canvas, text, page shadow and control corners follow the reading theme, working with both the built-in presets and custom theme colors, and switching themes applies immediately.
+- A new "Runtime assets" settings section gathers the PDF reflow runtime (MuPDF), the speech runtime (sherpa-onnx) and the offline voice models in one place, each row showing whether it is downloaded, where it lives, and a download button.
+
+### Changed
+
+- "Note insertion" is split by purpose into "Note insertion" and "Annotations & Sync"; every row now puts its label on top with the control filling the row, and descriptions moved to hover tooltips.
+- PDF "Page sharpness (scans)" moved to "Interface layout" with a one-line description.
+- The sync path keeps only four actions: create the block, update it, append a comment, delete it; the ineffective dedupe and all debug logging are gone.
+- PDF theming now lives in a single file, dropping the theme-name lists, dark-mode probing and per-node recolouring.
+
+### Fixed
+
+- Annotation sync follows your "Insert target": Open document, Daily Note and Clipboard each do their own thing, and the bound document is only the fallback for "Under notebook / Under document" or when insertion fails.
+- The clipboard target really copies now, once per annotation.
+- Annotation blocks keep their shape: one annotation maps to one block, edits rewrite that block, and comments are written into the note instead of adding another quote level.
+- A failed cursor insert falls back to the bound document with a toast, and "Sync on add" no longer inserts the same annotation twice.
+- Deleting an annotation deletes only its own block: no leftovers and no `tree not found` errors.
+- Bound-document checks use the filesystem, so a document bound a moment ago is no longer treated as deleted.
+- Link templates are exported exactly as configured: empty placeholders no longer leave `****`, a dangling `- ` or extra blank lines.
+- Multi-line notes and several comments no longer fall out of the quote block, and `$&` or `$1` in a note is no longer treated as a replacement pattern.
+- Binding a document no longer needs membership: without the "Book editing" entitlement the "Bind document" menu entry works directly.
+- Reflowing a scanned PDF no longer produces a blank document: an OCR'd PDF with a text layer reflows from that layer, and a reflow that lays out no page fails with the reason instead of returning an empty file.
+- Fixed the first-use runtime download for reflow and offline reading: the download source is restored, and the failure message names both the file URL and the target folder.
+
 ## v2.8.3 (2026-11-23)
 
 ### Fixed

@@ -16,6 +16,10 @@ appliesTo: ">=2.7.0"
 
 只读模式关闭编辑类工具，只保留浏览与复制，适合校对或借阅场景。
 
+## 主题
+
+PDF 的颜色跟随阅读主题：画布、纸张、正文、页面阴影和控件圆角都取设置里的主题色，预设主题和自定义主题（背景色、文字色）都支持。切换主题即时生效，不用重新打开 PDF；深色主题下页面会自动反色并保留标注颜色。
+
 ## 面板
 
 - 大纲：按 PDF 书签结构跳转。
@@ -30,6 +34,13 @@ appliesTo: ">=2.7.0"
 ## 重排
 
 重排把固定版式 PDF 转成可重排文本，便于调整字号与行距。重排稿与原书分别保存标注与回链，阅读进度按源页映射；切换前会等待保存，加载失败时回退到上一文档。
+
+首次使用重排会下载 MuPDF 运行时（约 10 MB），离线朗读同样会下载语音运行时。如果下载失败，可以手动下载后放到插件目录（路径相对工作空间）：
+
+- 重排：`data/public/siyuan-sireader/runtime/mupdf/`，需要 `mupdf.js`、`mupdf-wasm.js`、`mupdf-wasm.wasm`
+- 离线朗读：`data/public/siyuan-sireader/runtime/sherpa-onnx/`，需要 `sherpa-onnx.wasm`
+
+下载地址：[SiReader runtime assets](https://github.com/mm-o/siyuan-sireader/releases/tag/runtime-v1)（四个文件都在这个页面的 Assets 里）。插件内也有入口：设置 → 运行时组件（MuPDF、语音运行时、离线语音模型都在这一节），每行右侧的下载按钮会打开这个页面。放好后重新打开 PDF 或重新点击重排即可，不需要重启思源。
 
 ## 边界与限制
 

@@ -212,7 +212,7 @@ const embedPdfMark=(item:any)=>{
   const a=item?.annotation||item, page=(a.pageIndex??0)+1, bookmark=a.custom?.type==='bookmark', redaction=a.type===PDF_REDACT_TYPE
   const text=a.custom?.title||a.custom?.text||a.contents||(redaction?i18n.value.redaction||'Redaction':PDF_SHAPE_TYPES.includes(a.type)?i18n.value.shapeAnnotation||'形状标注':i18n.value.annotation||i18n.value.mark||'Annotation')
   const color=[a.strokeColor,a.color,a.fontColor,a.backgroundColor].map(embedPdfColor).find(c=>c&&c!=='transparent')||'#ffcd45'
-  return Object.assign(item,{id:a.id,inReplyToId:a.inReplyToId,type:bookmark?'bookmark':redaction?'redaction':a.type===1||a.type===3?'note':'highlight',format:'pdf',readOnly:a.flags?.includes('readOnly'),page,cfi:`#page-${page}`,title:bookmark?text:a.custom?.title,text:bookmark?text:a.custom?.text||a.contents||text,note:bookmark||redaction?'':a.custom?.note||a.contents||'',tags:a.custom?.tags||[],blockId:a.custom?.blockId||a.custom?.blockIds?.[0],blockIds:a.custom?.blockIds,color,style:embedPdfStyle(a.type,a.custom),timestamp:new Date(a.created||a.modified||Date.now()).getTime(),chapter:bookmark?'':a.custom?.chapter||`${i18n.value.page||'Page '}${page}${i18n.value.pageSuffix||''}`,customOrder:a.custom?.customOrder,quote:a.custom?.text||''})
+  return Object.assign(item,{id:a.id,inReplyToId:a.inReplyToId,type:bookmark?'bookmark':redaction?'redaction':a.type===1||a.type===3?'note':'highlight',format:'pdf',readOnly:a.flags?.includes('readOnly'),page,cfi:`#page-${page}`,title:bookmark?text:a.custom?.title,text:bookmark?text:a.custom?.text||a.contents||text,note:bookmark||redaction?'':a.custom?.note||a.contents||'',tags:a.custom?.tags||[],blockId:a.custom?.blockId||a.custom?.blockIds?.[0],blockIds:a.custom?.blockIds,insertedAt:a.custom?.insertedAt,color,style:embedPdfStyle(a.type,a.custom),timestamp:new Date(a.created||a.modified||Date.now()).getTime(),chapter:bookmark?'':a.custom?.chapter||`${i18n.value.page||'Page '}${page}${i18n.value.pageSuffix||''}`,customOrder:a.custom?.customOrder,quote:a.custom?.text||''})
 }
 const compact=(value:Record<string,any>)=>Object.fromEntries(Object.entries(value).filter(([,v])=>v!==undefined))
 const refreshEmbedPdfMarks=()=>{
@@ -242,43 +242,37 @@ const queuePdfSync=(key:string,run:()=>Promise<void>)=>{
   pdfSyncQueues.set(key,task)
   void trackPending(task.finally(()=>{if(pdfSyncQueues.get(key)===task)pdfSyncQueues.delete(key)}))
 }
-// 回复不独立建块，挂到父标注所在的块上。
-const syncEmbedPdfReply=(event:any,mark:any,a:any,eventUrl:string,eventKey:string)=>{
-  // 只认真实评论正文：占位回复对象 contents 为空，embedPdfMark 的兜底会给出“标注”之类假文本。
-  const replyText=String(a?.contents||a?.custom?.note||a?.custom?.text||'').trim(),deleting=event?.type==='delete'
-  if(!replyText&&!deleting)return
-  const replyBlockId=mark.blockId||''
-  if(deleting&&!replyBlockId)return
-  const parentMark=embedPdfMark({annotation:(embedPdfReaderRef.value?.annotationActions.get(mark.inReplyToId)||{id:mark.inReplyToId})})
-  queuePdfSync(`${eventUrl}:${mark.inReplyToId}`,async()=>{
-    try{
-      const m=await import('@/utils/copy')
-      if(deleting)return void await m.syncMarkOnDelete(replyBlockId)
-      const bid=await m.appendReplyToMark({...parentMark,replyBlockId},replyText,{bookUrl:eventUrl,isPdf:true})
-      // 首次插入后把回复自己的块 id 写回：之后编辑只改这块，不再追加第二条。
-      if(bid&&bid!==replyBlockId&&bid!==(parentMark.blockId||parentMark.blockIds?.[0]))await persistPdfMark(mark,{blockId:bid},a,eventKey)
-    }catch{}
-  })
+// 评论（PDF 回复）就是标注的笔记：并进 note 一起写，块与标注一一对应，和 EPUB 走同一条路径。
+const pdfCommentsOf=(mark:any,event:any)=>{
+  const self=event?.annotation
+  const known=embedPdfMarks.value.filter(item=>item.inReplyToId===mark.id&&item.id!==self?.id).map(item=>String(item.text||'').trim())
+  const own=event?.type!=='delete'&&self?.inReplyToId===mark.id?[String(self.contents||'').trim()]:[]
+  return [...known,...own].filter(Boolean)
 }
 const syncEmbedPdfEvent=(event:any)=>{
   const a=event?.annotation,mark=a&&embedPdfMark({annotation:cloneStorageValue(a)})
-  const eventUrl=event?.bookUrl||getPdfBookUrl(),eventKey=event?.storageKey||embedPdfDocumentContext.value?.storageKey||props.bookInfo?.dataId||getBookUrl()
   if(!mark)return
-  const key=`${eventUrl}:${mark.id}`
-  if(event?.type==='delete')pdfDeletedMarks.add(key)
-  else if(pdfDeletedMarks.has(key))return
-  if(mark.inReplyToId)return syncEmbedPdfReply(event,mark,a,eventUrl,eventKey)
+  const eventUrl=event?.bookUrl||getPdfBookUrl(),eventKey=event?.storageKey||embedPdfDocumentContext.value?.storageKey||props.bookInfo?.dataId||getBookUrl()
+  const reply=!!mark.inReplyToId,deleting=event?.type==='delete'
+  // 回复不单独建块：它只改写父标注那一条。父标注删掉了就没什么可写的。
+  const owner=reply?embedPdfReaderRef.value?.annotationActions.get(mark.inReplyToId):cloneStorageValue(a)
+  if(!owner)return
+  const target=reply?embedPdfMark({annotation:owner}):mark,key=`${eventUrl}:${target.id}`
+
+  if(!reply){ if(deleting)pdfDeletedMarks.add(key); else if(pdfDeletedMarks.has(key))return }
   queuePdfSync(key,async()=>{
     try{
       const m=await import('@/utils/copy')
-      if(event?.type==='delete')return void await m.syncMarkOnDelete(mark)
-      const next=await imageEmbedPdfMark(mark,eventKey).catch(()=>mark),boundId=next.blockId||next.blockIds?.[0]
+      if(deleting){
+        if(!reply)return void await m.syncMarkOnDelete(target)
+        // 旧版本给回复单独建过块：删回复时顺手清掉，块与标注保持一一对应。
+        if(mark.blockId||mark.blockIds?.length)await m.syncMarkOnDelete(mark)
+      }
+      const base=await imageEmbedPdfMark(target,eventKey).catch(()=>target)
+      const comments=pdfCommentsOf(target,event),next=comments.length?{...base,note:[base.note,...comments].filter(Boolean).join('\n')}:base
       // 完成/取消完成只是状态位，正文没变就不写块，避免反复追加“标注”。
       const statusOnly=event?.type==='update'&&'completed' in (a?.custom||{})&&!(a?.contents||'').trim()
-      const ctx={bookUrl:eventUrl,isPdf:true,statusOnly,marks:{updateMark:(item:any,updates:any)=>persistPdfMark(item,updates,a,eventKey)}}
-      // 已绑定一律更新复用；只有从未绑定才创建，防止 create 事件对已绑定标注重复插入。
-      if(boundId)await m.updateMarkInDoc({...next,blockId:boundId},ctx)
-      else await m.syncMarkOnCreate(next,ctx)
+      await m.syncMark(next,{bookUrl:eventUrl,isPdf:true,statusOnly,marks:{updateMark:(item:any,updates:any)=>persistPdfMark(item,updates,owner,eventKey)}})
     }catch(e){console.error('[PdfSync]',e)}
   })
 }

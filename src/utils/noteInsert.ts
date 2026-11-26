@@ -79,6 +79,7 @@ const insertAtCursor = (content: string, i18n: Record<string, string> = {}) => {
   if (!insertContent) throw new Error(i18n.noteInsertUnsupportedVersion || '当前思源版本不支持光标位置插入，请升级思源后重试')
 
   const { status } = insertContent({ data: content, dataType: 'markdown' })
+
   if (status === 'inserted') return
 
   const messages: Record<Exclude<InsertContentStatus, 'inserted'>, [string, string]> = {
@@ -106,17 +107,10 @@ export const getCurrentDocId = async (blockId = '') => {
 }
 
 // ===== 块插入 =====
-const writeBlock = (mode: InsertMode, content: string, blockId: string, docId: string) => ({
-  updateBlock: () => api.updateBlock('markdown', content, blockId),
-  prependBlock: () => api.insertBlock('markdown', content, blockId),
-  appendBlock: () => api.insertBlock('markdown', content, undefined, blockId),
-  prependDoc: () => api.prependBlock('markdown', content, docId),
-  appendDoc: () => api.appendBlock('markdown', content, docId),
-  insertBlock: () => api.insertBlock('markdown', content, undefined, blockId),
-}[mode] || (() => api.insertBlock('markdown', content, undefined, blockId)))()
+// 文档级只有「顶部 / 底部」两种落点，其余一律追加到底部。
 export const insertToDoc = async (text: string, docId: string, mode: InsertMode = 'appendDoc') => {
   if (!docId) throw new Error('未找到目标文档')
-  await ({ prependDoc: () => api.prependBlock('markdown', text, docId), appendDoc: () => api.appendBlock('markdown', text, docId) }[mode] || (() => api.appendBlock('markdown', text, docId)))()
+  await (mode === 'prependDoc' ? api.prependBlock('markdown', text, docId) : api.appendBlock('markdown', text, docId))
 }
 
 // ===== 当前文档插入 =====
@@ -134,12 +128,18 @@ const requestCurrentInsert = (text: string, settings: ReaderSettings, i18n?: Rec
   })
 }
 const insertCurrent = async (text: string, settings: ReaderSettings, i18n?: Record<string, string>) => {
-  if (settings.noteInsertMode === 'insertBlock') return insertAtCursor(text, i18n)
-  const blockId = getCurrentBlockId()
-  const docId = await getCurrentDocId(blockId)
+  const mode = settings.noteInsertMode
+  if (mode === 'insertBlock') return insertAtCursor(text, i18n)
+  const blockId = getCurrentBlockId(), docId = await getCurrentDocId(blockId)
   if (!docId) throw new Error('未找到当前文档')
-  if (!blockId) return settings.noteInsertMode === 'prependDoc' ? api.prependBlock('markdown', text, docId) : api.appendBlock('markdown', text, docId)
-  await writeBlock(settings.noteInsertMode, text, blockId, docId)
+  if (!blockId) return mode === 'prependDoc' ? api.prependBlock('markdown', text, docId) : api.appendBlock('markdown', text, docId)
+  const place: Record<string, () => any> = {
+    updateBlock: () => api.updateBlock('markdown', text, blockId),
+    prependBlock: () => api.insertBlock('markdown', text, blockId),
+    prependDoc: () => api.prependBlock('markdown', text, docId),
+    appendDoc: () => api.appendBlock('markdown', text, docId),
+  }
+  await (place[mode] || (() => api.insertBlock('markdown', text, undefined, blockId)))()
 }
 
 // ===== 笔记文档复用 =====
@@ -156,25 +156,21 @@ const ensureNotebookId = async (settings: ReaderSettings) => {
   await import('@/composables/useSetting').then(({ settingsManager }) => settingsManager.save(current || settings)).catch(() => {})
   return next
 }
-const getCreateDocPath = async (parentID?: string, notebook?: string) => {
-  const docId = createNodeId()
-  if (!parentID) return { docId, path: `/${docId}.sy` }
-  const parentPath = (await api.getPathByID(parentID, notebook)).path
-  return { docId, path: `${parentPath.replace(/\.sy$/, '')}/${docId}.sy` }
-}
 export const ensureNoteDocument = async (title: string, settings: ReaderSettings, key: string, parentID?: string) => {
   const notebook = parentID ? getNotebookId(settings) : await ensureNotebookId(settings)
   if (!notebook) throw new Error('未设置目标笔记本')
   const existing = await getDocIdByAttr(key)
   if (existing) return existing
-  const { path } = await getCreateDocPath(parentID, notebook)
-  const created = String((await api.createDoc(notebook, path, sanitize(title), ''))?.id || '')
+  const docId = createNodeId()
+  const parentPath = parentID ? (await api.getPathByID(parentID, notebook)).path.replace(/\.sy$/, '') : ''
+  const created = String((await api.createDoc(notebook, `${parentPath}/${docId}.sy`, sanitize(title), ''))?.id || '')
   if (!created) throw new Error('创建笔记文档失败')
   await api.setBlockAttrs(created, { [ATTR]: key })
   return created
 }
 const appendToNoteDoc = async (title: string, settings: ReaderSettings, text: string, key: string, parentID?: string) => {
   const id = await ensureNoteDocument(title, settings, key, parentID)
+
   if (key.startsWith('book:')) {
     const bookUrl = key.slice(5)
     if (bookUrl) {

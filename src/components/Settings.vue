@@ -111,21 +111,28 @@ const docAssetExcludeFields = computed(() => {
     { key: 'docAssetExcludeRegex' as const, label: i.docAssetExcludeRegex || '排除正则（可选）', hint: i.docAssetExcludeRegexDesc || '高级用法，匹配后不自动加入书架', value: settings.value.docAssetExcludeRegex || '', placeholder: i.docAssetExcludeRegexPlaceholder || '.*办法.*\\.pdf$' },
   ].map(f => ({ ...f, set: set(f.key) }))
 })
+// 「写入」：标注/笔记落到哪里、长什么样。
 const noteFields = computed(() => [
-  checkboxField('annotationSyncOnAdd', props.i18n.annotationSyncOnAdd || '添加时同步', settings.value.annotationSyncOnAdd, value => (settings.value.annotationSyncOnAdd = value, save()), true, props.i18n.annotationSyncOnAddDesc || '新增标注时自动同步到已绑定文档'),
-  checkboxField('annotationSyncOnDelete', props.i18n.annotationSyncOnDelete || '删除时同步', settings.value.annotationSyncOnDelete, value => (settings.value.annotationSyncOnDelete = value, save()), true, props.i18n.annotationSyncOnDeleteDesc || '删除标注时同步删除已绑定块'),
-  { key: 'pdfRenderMaxWidth', type: 'range', label: `${props.i18n.pdfRenderMaxWidth || '页面清晰度（扫描件）'} · ${Number(settings.value.pdfRenderMaxWidth) || 640}`, value: Number(settings.value.pdfRenderMaxWidth) || 640, min: 640, max: 3200, step: 640, hint: props.i18n.pdfRenderMaxWidthDesc || '底图宽度：越大扫描件越清晰、打开越慢；默认 640（官方默认），觉得扫描件发虚再往上调，重新打开 PDF 后生效', set: (value: number) => (settings.value.pdfRenderMaxWidth = value, save()) },
-  checkboxField('pdfMarkImageWithAnnotations', props.i18n.pdfMarkImageWithAnnotations || '标注图片包含标注样式', !!settings.value.pdfMarkImageWithAnnotations, value => (settings.value.pdfMarkImageWithAnnotations = value, save()), true, '形状标注导出图片时是否把标注框本身也带上'),
-  selectField('noteInsertTarget', props.i18n.noteInsertTarget || '插入位置', settings.value.noteInsertTarget, NOTE_TARGET_OPTIONS.map(value => ({ value, label: props.i18n[`noteInsertTarget${value.charAt(0).toUpperCase()}${value.slice(1)}`] || value })), value => (settings.value.noteInsertTarget = value as any, save())),
-  selectField('noteInsertMode', props.i18n.noteInsertMode || '插入方式', settings.value.noteInsertMode, NOTE_MODE_OPTIONS.map(value => ({ value, label: props.i18n[NOTE_MODE_LABELS[value]] || value })), value => (settings.value.noteInsertMode = value as any, save()), settings.value.noteInsertTarget === 'current'),
-  selectField('notebookId', props.i18n.notebookId || props.i18n.notebook || '笔记本', settings.value.notebookId || '', notebooks.value.map((nb:any) => ({ value: nb.id, label: nb.name })), value => (settings.value.notebookId = value, save()), ['notebook', 'dailynote'].includes(settings.value.noteInsertTarget), props.i18n.notSelected || '未选择'),
-  selectField('linkFormatPreset', props.i18n.linkFormatPreset || '模板预设', linkFormatPresetValue.value, linkFormatPresetOptions.map(value => ({ value: LINK_FORMAT_PRESETS[value], label: props.i18n[`linkFormatPreset${value.charAt(0).toUpperCase()}${value.slice(1)}`] || value })), applyLinkFormatPreset, true, props.i18n.selectPreset || '请选择'),
-  { key: 'linkFormat', type: 'textarea', label: props.i18n.linkFormat || '链接格式', value: settings.value.linkFormat, set: (value:string) => (settings.value.linkFormat = value, debouncedSave()), hint: props.i18n.linkFormatDesc || '可用变量：书名 作者 章节 位置 链接 文本 笔记 图片' },
-  { key: 'wereadExportTemplate', type: 'textarea', rows: 12, label: '微信读书导出模板', value: settings.value.wereadExportTemplate || '', set: (value:string) => (settings.value.wereadExportTemplate = value, debouncedSave()), hint: '支持变量：{{书名}} {{封面}} {{作者}} {{链接}} {{详情链接}} {{bookId}} {{ISBN}} {{出版社}} {{分类}} {{出版时间}} {{字数}} {{阅读人数}} {{评分}} {{简介}} {{目录}} {{划线}} {{想法}} {{划线与想法}}' },
-  { key: 'annotationTagPresets', type: 'textarea', label: props.i18n.annotationTagPresets || '标注标签预设', value: settings.value.annotationTagPresets, set: (value:string) => (settings.value.annotationTagPresets = value, debouncedSave()), hint: props.i18n.annotationTagPresetsDesc || '每行一组：分组: 标签1, 标签2' },
-  searchField('parentDoc', props.i18n.parentDoc || '父文档', settings.value.parentDoc ? [settings.value.parentDoc] : [], insertDoc.state.value.input, insertDoc.state.value.results, value => (insertDoc.state.value.input = value, !value.trim() && (insertDoc.state.value.results = [])), insertDoc.search, doc => insertDoc.select(doc, selectInsertDoc), () => clearInsertDoc(), settings.value.noteInsertTarget === 'document'),
-  searchField('quickSendDocs', props.i18n.quickSendDocs || '快捷发送文档', settings.value.quickSendDocs || [], quickDoc.state.value.input, quickDoc.state.value.results, value => (quickDoc.state.value.input = value, !value.trim() && (quickDoc.state.value.results = [])), quickDoc.search, doc => quickDoc.select(doc, addQuickDoc), (_doc:any, i:number) => removeQuickDoc(i), true, props.i18n.quickSendDocsDesc || '用于快速发送标注', 'quickDoc')
+  selectField('noteInsertTarget', props.i18n.noteInsertTarget || '插入位置', settings.value.noteInsertTarget, NOTE_TARGET_OPTIONS.map(value => ({ value, label: props.i18n[`noteInsertTarget${value.charAt(0).toUpperCase()}${value.slice(1)}`] || value })), value => (settings.value.noteInsertTarget = value as any, save()), true, props.i18n.noteInsertTargetDesc || '标注和笔记写到哪里'),
+  selectField('noteInsertMode', props.i18n.noteInsertMode || '插入方式', settings.value.noteInsertMode, NOTE_MODE_OPTIONS.map(value => ({ value, label: props.i18n[NOTE_MODE_LABELS[value]] || value })), value => (settings.value.noteInsertMode = value as any, save()), settings.value.noteInsertTarget === 'current', props.i18n.noteInsertModeDesc || '「打开文档」时插在光标处，还是文档首尾'),
+  selectField('notebookId', props.i18n.notebookId || '笔记笔记本', settings.value.notebookId || '', notebooks.value.map((nb:any) => ({ value: nb.id, label: nb.name })), value => (settings.value.notebookId = value, save()), ['notebook', 'dailynote'].includes(settings.value.noteInsertTarget), props.i18n.notebookDesc || '「笔记本下」的文档归属，「Daily Note」写该笔记本的日记', props.i18n.notSelected || '未选择'),
+  searchField('parentDoc', props.i18n.parentDoc || '父文档', settings.value.parentDoc ? [settings.value.parentDoc] : [], insertDoc.state.value.input, insertDoc.state.value.results, value => (insertDoc.state.value.input = value, !value.trim() && (insertDoc.state.value.results = [])), insertDoc.search, doc => insertDoc.select(doc, selectInsertDoc), () => clearInsertDoc(), settings.value.noteInsertTarget === 'document', props.i18n.parentDocDesc || '「文档下」时在这篇文档下新建子文档'),
+  selectField('linkFormatPreset', props.i18n.linkFormatPreset || '模板预设', linkFormatPresetValue.value, linkFormatPresetOptions.map(value => ({ value: LINK_FORMAT_PRESETS[value], label: props.i18n[`linkFormatPreset${value.charAt(0).toUpperCase()}${value.slice(1)}`] || value })), applyLinkFormatPreset, true, props.i18n.linkFormatPresetDesc || '先套预设，再在下面微调', props.i18n.selectPreset || '请选择'),
+  { key: 'linkFormat', type: 'textarea', label: props.i18n.linkFormat || '链接格式', value: settings.value.linkFormat, set: (value:string) => (settings.value.linkFormat = value, debouncedSave()), hint: props.i18n.linkFormatDesc || '变量：书名 作者 章节 位置 链接 文本 笔记 图片；一行里的变量全为空时这行不输出' },
+  { key: 'wereadExportTemplate', type: 'textarea', rows: 8, label: props.i18n.wereadExportTemplate || '微信读书导出模板', value: settings.value.wereadExportTemplate || '', set: (value:string) => (settings.value.wereadExportTemplate = value, debouncedSave()), hint: props.i18n.wereadExportTemplateDesc || '微信读书导出成文档时使用，变量用 {{书名}} {{划线}} 这种写法' },
 ].filter((item:any) => item.show !== false))
+// 「同步」与标注相关：什么时候写、长什么样、发到哪。
+const markFields = computed(() => [
+  checkboxField('annotationSyncOnAdd', props.i18n.annotationSyncOnAdd || '添加时同步', settings.value.annotationSyncOnAdd, value => (settings.value.annotationSyncOnAdd = value, save()), true, props.i18n.annotationSyncOnAddDesc || '新标注自动写入：绑定了文档就写绑定文档，否则按上面的插入位置'),
+  checkboxField('annotationSyncOnDelete', props.i18n.annotationSyncOnDelete || '删除时同步', settings.value.annotationSyncOnDelete, value => (settings.value.annotationSyncOnDelete = value, save()), true, props.i18n.annotationSyncOnDeleteDesc || '删除标注时一并删掉它写入的块'),
+  { key: 'annotationTagPresets', type: 'textarea', label: props.i18n.annotationTagPresets || '标注标签预设', value: settings.value.annotationTagPresets, set: (value:string) => (settings.value.annotationTagPresets = value, debouncedSave()), hint: props.i18n.annotationTagPresetsDesc || '每行一组：分组: 标签1, 标签2' },
+  checkboxField('pdfMarkImageWithAnnotations', props.i18n.pdfMarkImageWithAnnotations || '标注图片包含标注样式', !!settings.value.pdfMarkImageWithAnnotations, value => (settings.value.pdfMarkImageWithAnnotations = value, save()), true, props.i18n.pdfMarkImageWithAnnotationsDesc || '形状标注导出成图片时是否带上标注框'),
+  searchField('quickSendDocs', props.i18n.quickSendDocs || '快捷发送文档', settings.value.quickSendDocs || [], quickDoc.state.value.input, quickDoc.state.value.results, value => (quickDoc.state.value.input = value, !value.trim() && (quickDoc.state.value.results = [])), quickDoc.search, doc => quickDoc.select(doc, addQuickDoc), (_doc:any, i:number) => removeQuickDoc(i), true, props.i18n.quickSendDocsDesc || '标注卡片「快捷发送」的目标文档，和插入位置无关', 'quickDoc')
+].filter((item:any) => item.show !== false))
+const noteSections = computed(() => [
+  { key: 'other', title: props.i18n.noteInsert || '笔记插入', icon: 'other', fields: noteFields.value },
+  { key: 'mark', title: props.i18n.markSync || '标注与同步', icon: 'mark', fields: markFields.value },
+])
 
 // 交互方法
 const isOpen = (key:string) => !!openGroups.value[key]
@@ -288,6 +295,41 @@ const bookshelfRows = computed(() => bookshelfHiddenFields.map(item => ({
   checkbox: settings.value.bookshelfHiddenItems?.includes(item.value),
   onCheck: (checked:boolean) => toggleBookshelfHidden(item.value, checked)
 })))
+// 运行时组件不在插件包里：首次自动下载，失败时这里给出下载页和落盘目录，并显示是否已就绪。
+const RUNTIME_URL = 'https://github.com/mm-o/siyuan-sireader/releases/tag/runtime-v1'
+const runtimeState = ref<Record<string, { ready: boolean; missing: string[] } | undefined>>({})
+const runtimeChecking = ref(false)
+const checkRuntime = async () => {
+  runtimeChecking.value = true
+  try {
+    const { MUPDF_FILES, SHERPA_FILES, runtimeStatus } = await import('@/services/runtimeAssets')
+    const [pdf, tts] = await Promise.all([runtimeStatus('mupdf', MUPDF_FILES), runtimeStatus('sherpa-onnx', SHERPA_FILES)])
+    runtimeState.value = { pdf, tts }
+  } finally { runtimeChecking.value = false }
+}
+watch(() => isOpen('runtime'), open => { if (open) void checkRuntime() }, { immediate: true })
+const runtimeRows = computed(() => [
+  ['pdf', props.i18n.pdfReflowRuntime || 'PDF 重排运行时（MuPDF）', 'runtime/mupdf/', props.i18n.pdfReflowRuntimeDesc || '首次使用会自动下载；下载失败时点右侧按钮下载，放到 data/public/siyuan-sireader/runtime/mupdf/'],
+  ['tts', props.i18n.ttsRuntime || '离线朗读运行时（sherpa-onnx）', 'runtime/sherpa-onnx/', props.i18n.ttsRuntimeDesc || '首次使用会自动下载；下载失败时点右侧按钮下载，放到 data/public/siyuan-sireader/runtime/sherpa-onnx/'],
+].map(([key, text, folder, hint]) => {
+  const state = runtimeState.value[key]
+  const status = !state ? (props.i18n.runtimeChecking || '检查中…') : state.ready ? (props.i18n.runtimeReady || '已下载') : (props.i18n.runtimeMissing || '未下载')
+  return {
+    key: `runtime-${key}`, text, hint, meta: status,
+    metaTitle: `data/public/siyuan-sireader/${folder}${state?.missing.length ? `（缺 ${state.missing.join('、')}）` : ''}`,
+    action: () => window.open(RUNTIME_URL, '_blank'),
+    actionTitle: props.i18n.runtimeDownload || '下载',
+    actionIcon: '#iconDownload',
+  }
+}))
+const runtimeRefreshRow = computed(() => [{
+  key: 'runtime-refresh',
+  text: props.i18n.runtimeRefresh || '重新检查下载状态',
+  hint: RUNTIME_URL,
+  action: () => void checkRuntime(),
+  actionTitle: runtimeChecking.value ? (props.i18n.loading || '加载中') : (props.i18n.refresh || '刷新'),
+  actionIcon: '#iconRefresh',
+}])
 const fontGuideRows = computed(() => [{
   key: 'custom-fonts',
   text: 'data/public/siyuan-sireader/fonts/',
@@ -533,34 +575,22 @@ onUnmounted(() => window.removeEventListener('sireaderSettingsUpdated', syncAnno
             </template>
         </SettingSection>
 
-        <SettingSection :title="i18n.noteInsert || '笔记插入'" :icon="settingSectionIcon('root', 'other')" :open="isOpen('other')" @toggle="toggleAccordion('other')">
-            <template v-for="field in noteFields" :key="field.key">
-              <li v-if="field.type === 'search'" class="b3-list-item b3-list-item--hide-action sr-note-search">
-                <span class="b3-list-item__toggle fn__hidden"></span>
+        <SettingSection v-for="section in noteSections" :key="section.key" :title="section.title" :icon="settingSectionIcon('root', section.icon)" :open="isOpen(section.key)" @toggle="toggleAccordion(section.key)">
+            <li v-for="field in section.fields" :key="field.key" class="b3-list-item b3-list-item--hide-action sr-note-row">
+              <span class="b3-list-item__toggle fn__hidden"></span>
+              <div class="sr-note-row__body">
+                <span class="b3-list-item__text" :class="{ ariaLabel: !!field.hint }" :aria-label="field.hint || undefined">{{ field.label }}</span>
                 <SettingRows v-if="field.docs?.length" :rows="docRows(field)" :i18n="i18n" />
-                <div>
-                  <input :value="field.input" class="b3-text-field" :placeholder="i18n?.searchDocPlaceholder || '搜索文档'" @input="field.setInput(($event.target as HTMLInputElement).value); ($event.target as HTMLInputElement).value.trim() && field.search()" @keyup.enter="field.search()">
-                  <SettingRows v-if="field.results?.length" :rows="docResultRows(field)" :i18n="i18n" />
-                </div>
-              </li>
-              <SettingItem v-else-if="field.type === 'range'" :item="{ key: field.key, type: 'range', min: field.min, max: field.max, step: field.step }" :model-value="field.value" :label="field.label" :hint="field.hint" :i18n="i18n" @input="field.set" />
-              <li v-else-if="field.type === 'textarea'" class="b3-list-item b3-list-item--hide-action sr-note-textarea">
-                <span class="b3-list-item__toggle fn__hidden"></span>
-                <span class="b3-list-item__text" :class="{ ariaLabel: !!field.hint }" :aria-label="field.hint || undefined">{{ field.label }}</span>
-                <span class="fn__space"></span>
-                <textarea :value="field.value" class="b3-text-field sr-textarea-control" :rows="field.rows || 4" :placeholder="field.placeholder || ''" @input="field.set(($event.target as HTMLTextAreaElement).value)"></textarea>
-              </li>
-              <li v-else class="b3-list-item b3-list-item--hide-action">
-                <span class="b3-list-item__toggle fn__hidden"></span>
-                <span class="b3-list-item__text" :class="{ ariaLabel: !!field.hint }" :aria-label="field.hint || undefined">{{ field.label }}</span>
-                <span class="fn__space"></span>
-                <select v-if="field.type === 'select'" :value="field.value" class="b3-select sr-control" @change="field.set(($event.target as HTMLSelectElement).value)">
+                <input v-if="field.type === 'search'" :value="field.input" class="b3-text-field sr-note-control" :placeholder="i18n?.searchDocPlaceholder || '按回车搜索'" @input="field.setInput(($event.target as HTMLInputElement).value); ($event.target as HTMLInputElement).value.trim() && field.search()" @keyup.enter="field.search()">
+                <textarea v-else-if="field.type === 'textarea'" :value="field.value" class="b3-text-field sr-note-control" :rows="field.rows || 4" :placeholder="field.placeholder || ''" @input="field.set(($event.target as HTMLTextAreaElement).value)"></textarea>
+                <select v-else-if="field.type === 'select'" :value="field.value" class="b3-select sr-note-control" @change="field.set(($event.target as HTMLSelectElement).value)">
                   <option v-if="field.empty" value="">{{ field.empty }}</option>
                   <option v-for="opt in (field.options || [])" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
                 </select>
-                <label v-else class="fn__flex-center"><input :checked="field.value" type="checkbox" class="b3-switch" @change="field.set(($event.target as HTMLInputElement).checked)"></label>
-              </li>
-            </template>
+                <SettingRows v-if="field.results?.length" :rows="docResultRows(field)" :i18n="i18n" />
+              </div>
+              <label v-if="field.type === 'checkbox'" class="fn__flex-center"><input :checked="field.value" type="checkbox" class="b3-switch" @change="field.set(($event.target as HTMLInputElement).checked)"></label>
+            </li>
         </SettingSection>
 
         <SettingSection :title="i18n.ttsSettings || '语音朗读'" :icon="settingSectionIcon('root', 'tts')" :open="isOpen('tts')" @toggle="toggleAccordion('tts')">
@@ -582,13 +612,18 @@ onUnmounted(() => window.removeEventListener('sireaderSettingsUpdated', syncAnno
                   <SettingRows :rows="section.rows" :empty="section.empty" :load-label="section.loadLabel" :loading="loadingTTS" :i18n="i18n" @load="!loadingTTS && loadTTS()" />
                 </template>
               </template>
-              <SectionTitle :title="i18n.ttsOfflinePack || '离线语音模型'" :icon="settingSectionIcon('voice', 'ttsOffline')" :open="isSubOpen('ttsOffline')" :aria-label="i18n.ttsOfflinePackDesc || '管理下载与导入的离线 TTS 模型'" @toggle="toggleSub('ttsOffline')" />
-              <template v-if="isSubOpen('ttsOffline')">
-                <li class="fn__none"><input id="sr-tts-model-folder" type="file" multiple webkitdirectory directory @change="importOfflineTTS"><input ref="ttsModelArchiveInput" type="file" accept=".tar.bz2,application/x-bzip2" @change="event => importOfflineTTS(event, true)"></li>
-                <SettingRows :rows="offlineTTSRows" />
-              </template>
             </template>
             <SettingRows v-else :rows="[]" :empty="i18n.ttsNotConfigured || '语音未配置'" :i18n="i18n" />
+        </SettingSection>
+
+        <SettingSection :title="i18n.runtimeAssets || '运行时组件'" :icon="settingSectionIcon('root', 'runtime')" :open="isOpen('runtime')" @toggle="toggleAccordion('runtime')">
+          <SettingRows :rows="runtimeRows" :i18n="i18n" />
+          <SettingRows :rows="runtimeRefreshRow" :i18n="i18n" />
+          <SectionTitle :title="i18n.ttsOfflinePack || '离线语音模型'" :icon="settingSectionIcon('voice', 'ttsOffline')" :open="isSubOpen('ttsOffline')" :aria-label="i18n.ttsOfflinePackDesc || '管理下载与导入的离线 TTS 模型'" @toggle="toggleSub('ttsOffline')" />
+          <template v-if="isSubOpen('ttsOffline')">
+            <li class="fn__none"><input id="sr-tts-model-folder" type="file" multiple webkitdirectory directory @change="importOfflineTTS"><input ref="ttsModelArchiveInput" type="file" accept=".tar.bz2,application/x-bzip2" @change="event => importOfflineTTS(event, true)"></li>
+            <SettingRows :rows="offlineTTSRows" />
+          </template>
         </SettingSection>
 
       <div class="sr-settings-actions">
@@ -627,10 +662,11 @@ onUnmounted(() => window.removeEventListener('sireaderSettingsUpdated', syncAnno
 .bs-tree :deep(.sr-section-title > svg.b3-list-item__graphic){width:14px;height:14px;flex:0 0 14px;color:var(--b3-theme-on-surface);opacity:.86;stroke-width:1.8;shape-rendering:geometricPrecision}
 .bs-tree :deep(.sr-section-title:hover > svg.b3-list-item__graphic){color:inherit;opacity:1}
 .sr-control{width:80px}
-/* 笔记插入里的多行行：控件另起一行，整行不再横向溢出（和 SettingItem 的行内结构保持一致） */
-.bs-tree :deep(.sr-note-textarea),.bs-tree :deep(.sr-note-search){flex-wrap:wrap}
-.bs-tree :deep(.sr-note-textarea .sr-textarea-control),.bs-tree :deep(.sr-note-search > div){flex:1 1 100%}
-.bs-tree :deep(.sr-note-search .b3-text-field){width:100%;box-sizing:border-box}
+/* 笔记插入 / 标注与同步的统一行：标题在上、控件占满一行；开关靠右，说明走 tooltip */
+.bs-tree :deep(.sr-note-row){align-items:center}
+.bs-tree :deep(.sr-note-row__body){flex:1;min-width:0;display:flex;flex-direction:column;gap:6px}
+.bs-tree :deep(.sr-note-control){width:100%;box-sizing:border-box;resize:vertical}
+.bs-tree :deep(.sr-note-row .b3-list){margin:0}
 .sr-settings-actions{display:flex;justify-content:center;align-items:center;gap:8px;padding:8px 0 0}
 .sr-license-actions{align-self:center;gap:4px;flex-wrap:wrap;justify-content:flex-end}
 .sr-license-card{display:flex;flex-direction:column;align-items:stretch;gap:10px}

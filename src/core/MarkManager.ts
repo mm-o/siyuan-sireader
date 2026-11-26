@@ -1,4 +1,4 @@
-﻿/**
+/**
  * 统一标注管理器 - PDF/EPUB 双格式
  */
 import type{Plugin}from'siyuan'
@@ -362,8 +362,8 @@ export class MarkManager{
   private async tryAutoSync(m:Mark){
     if(m.type==='bookmark')return
     try{
-      const{syncMarkOnCreate}=await import('@/utils/copy')
-      await syncMarkOnCreate(m,{bookUrl:this.bookUrl,isPdf:false,reader:this.reader,marks:this})
+      const{syncMark}=await import('@/utils/copy')
+      await syncMark(m,{bookUrl:this.bookUrl,isPdf:false,reader:this.reader,marks:this})
     }catch(e){console.error('[AutoSync]',e)}
   }
 

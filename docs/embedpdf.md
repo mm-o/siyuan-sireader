@@ -6,10 +6,15 @@ SiReader uses EmbedPDF as the only PDF reader path.
 - Runtime package: `@embedpdf/snippet`
 - License: MIT
 
-The bundled runtime is pinned to `@embedpdf/snippet@2.15.1`, the latest stable
-2.x release. The upstream 3.0.0-next line is preview-only. EmbedPDF's
-annotation API remains compatible with 2.14.4; 2.15.x primarily refreshes the
-PDFium/runtime and rendering fixes.
+The bundled runtime is pinned to `@embedpdf/engine` + `@embedpdf/viewer` 3.2.0.
+Viewer look comes from the 3.x `theme` config (`preference` + `tokens` such as
+`canvas`, `page-background`, `page-shadow`, `radius`, `font`), which is a live
+config key: changing it does not remount the viewer.
+SiReader maps the reading-theme colors onto those tokens and adds one shadow
+stylesheet for the page paper (`src/utils/embedPdfTheme.ts`): the rendered page is
+a bitmap, so the page container gets the theme background with `!important` plus
+`mix-blend-mode: multiply` (light themes) or `invert(1) hue-rotate(180deg)`
+(dark themes). No other PDF styling ships from SiReader.
 
 ## Runtime
 

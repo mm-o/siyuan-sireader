@@ -20,7 +20,7 @@ import { alignLegacyPdfAnnotations, needsLegacyPdfTextAlign } from '@/core/dataM
 import { createLatestSaver, deleteEmbedPdfAnnotation, readEmbedPdfAnnotations, readEmbedPdfProgress, trackPending, upsertEmbedPdfAnnotation, writeEmbedPdfProgress, writeManagedFile } from '@/core/storage'
 import { diagnosticLog } from '@/core/diagnostics'
 import { showTooltip } from '@/core/MarkManager'
-import { buildEmbedPdfTheme } from '@/utils/embedPdfTheme'
+import { buildEmbedPdfLook } from '@/utils/embedPdfTheme'
 import { copyMark } from '@/utils/copy'
 import { embedPdfLocale } from '@/utils/embedPdfLocale'
 import { isMobile } from '@/utils/mobile'
@@ -90,7 +90,18 @@ const zoom = () => {
   const value = props.settings?.pdfZoomLevel
   return typeof value === 'number' && value > 0 ? { level: value } : { mode: typeof value === 'string' ? value : 'fit-width' }
 }
-const theme = () => buildEmbedPdfTheme(props.theme, host.value, props.customTheme)
+const look = () => buildEmbedPdfLook(props.theme, props.customTheme)
+// 页面纸和图案是位图，EmbedPDF 只换自己的界面：往阅读器的 shadow 里挂一张样式表，
+// 用上游同一个 var() 钩子 + !important 压过它渲染时写的内联背景，换页/缩放自动生效。
+const pageSheet = typeof CSSStyleSheet === 'undefined' ? null : new CSSStyleSheet()
+const paintPages = (retry = 3) => {
+  const root = (element as any)?.shadowRoot as ShadowRoot | undefined
+  // 自定义元素挂载后 shadow 树可能还没建好，稍等重试几次。
+  if (!root) { if (retry > 0) setTimeout(() => paintPages(retry - 1), 80); return }
+  if (!pageSheet) return
+  pageSheet.replaceSync(look().pageCss)
+  if (!root.adoptedStyleSheets.includes(pageSheet)) root.adoptedStyleSheets = [...root.adoptedStyleSheets, pageSheet]
+}
 
 let element: any
 let viewer: any
@@ -718,7 +729,7 @@ function configuration() {
   ]
   return {
     locale: embedPdfLocale((window as any).siyuan?.config?.lang || '', props.i18n?.name),
-    theme: theme(),
+    theme: look().theme,
     appState: appState(),
     icons: readerIconPaths,
     identity: { displayName: 'SiReader' },
@@ -826,6 +837,7 @@ watch([host, () => props.source], async ([target, source], _, onCleanup) => {
       element = next
       // 中文字体必须落在宿主上（变量会继承进 shadow），否则文本框里的中文是方框。
       next.style.setProperty('--embedpdf-host-font', PDF_FONT_STACK)
+      paintPages()
       if (documentId) element.features = pdfFeatures
       // 上游评论/笔记输入框不判断输入法组合态，回车确认候选词会被当成提交；组合期间拦在本层，不进上游。
       const guardIme = (event: KeyboardEvent) => {
@@ -847,7 +859,7 @@ watch([host, () => props.source], async ([target, source], _, onCleanup) => {
   }
 }, { flush: 'post' })
 
-watch(() => [props.theme, props.customTheme], () => { if (element) element.theme = theme() }, { deep: true })
+watch(() => [props.theme, props.customTheme], () => { if (!element) return; element.theme = look().theme; paintPages() }, { deep: true })
 watch(appState, value => { if (element) element.appState = value }, { deep: true })
 onBeforeUnmount(() => session?.abort())
 defineExpose({ flushAnnotations, annotationActions, executeCommand, stopRestore })

@@ -205,24 +205,13 @@ const failWorker = (error: Error) => {
   worker = null
   activeManifestId = ''
 }
-const inspectWorkerResponse = async (url: string) => {
-  try {
-    const response = await fetch(url, { cache: 'no-store' })
-    const content = await response.clone().text()
-    console.error('[SiReader Offline TTS] Worker script response', { url, status: response.status, contentType: response.headers.get('content-type'), contentLength: response.headers.get('content-length'), preview: content.slice(0, 240) })
-  } catch (error) {
-    console.error('[SiReader Offline TTS] Worker script diagnostic fetch failed', { url, error })
-  }
-}
 const getWorker = () => {
   if (worker) return worker
   const url = `/plugins/${pluginInfo.name}/offlineTTS.worker.js`
-  console.info('[SiReader Offline TTS] Starting worker', { url, modelId: activeManifestId || undefined })
   worker = new Worker(url, { name: 'sireader-offline-tts' })
   worker.onmessage = (event: MessageEvent) => {
     const { id, result, error, type } = event.data || {}
     if (type === 'ready') {
-      console.info('[SiReader Offline TTS] Worker script started', { url })
       return
     }
     if (type === 'fatal') {
@@ -245,7 +234,6 @@ const getWorker = () => {
     const error = new Error(details ? `离线语音工作线程异常：${details}` : '离线语音工作线程异常')
     console.error('[SiReader Offline TTS] Worker crashed', { modelId: activeManifestId, message: event.message, filename: event.filename, line: event.lineno, column: event.colno, error: event.error, pending: [...pending].map(([id, request]) => ({ id, type: request.type })) })
     event.preventDefault()
-    void inspectWorkerResponse(url)
     failWorker(error)
   }
   return worker

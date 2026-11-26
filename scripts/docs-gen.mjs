@@ -202,7 +202,6 @@ const FEATURE_LABEL = {
   translate: '翻译',
   'dict-offline': '离线词典',
   'dict-advanced': '高级词典',
-  'siyuan-sync': '思源同步',
 }
 const LEVEL_RANK = { trial: 1, monthly: 2, annual: 3, lifetime: 4 }
 const featureRows = Object.entries(paidFeatures)
@@ -211,6 +210,7 @@ const featureRows = Object.entries(paidFeatures)
 const freeRows = [
   '| 基础阅读（EPUB/PDF/TXT/在线） | — | 免费 |',
   '| 普通标注与书签 | — | 免费 |',
+  '| 标注同步到思源文档（含文档绑定） | — | 免费 |',
   '| 有道、必应基础词典 | — | 免费 |',
 ]
 

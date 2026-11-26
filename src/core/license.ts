@@ -96,7 +96,6 @@ const PAID_FEATURES: Record<string, string> = {
   'translate': 'trial',
   'dict-offline': 'trial',
   'dict-advanced': 'trial',
-  'siyuan-sync': 'monthly',
 }
 
 const LEVELS: Record<string, number> = { free: 0, trial: 1, monthly: 2, annual: 3, lifetime: 4 }
